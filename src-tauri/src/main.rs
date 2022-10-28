@@ -1,34 +1,32 @@
 #![cfg_attr(
-all(not(debug_assertions), target_os = "linux"),
-windows_subsystem = "linux"
+    all(not(debug_assertions), target_os = "linux"),
+    windows_subsystem = "linux"
 )]
 
-use std::fs::{canonicalize, read};
-use tauri::http::ResponseBuilder;
-use tauri::Manager;
+use tauri::{http::ResponseBuilder, Manager};
 
 mod web;
 
-use web::{microsoft_login, ms_login};
+use web::{authenticate, show_microsoft_login_page};
 
 fn main() {
     tauri::Builder::default()
-        .register_uri_scheme_protocol("tauri", |app, request| {
-            let mut path = request.uri().replace("tauri://auth", "");
-            println!("path: {}", path);
-            let content = read(canonicalize(&path)?)?;
-            let (data, meta) = if path.ends_with(".html") {
-                (content, "text/html")
-            } else if path.ends_with(".js") {
-                (content, "text/javascript")
-            } else if path.ends_with(".png") {
-                (content, "image/png")
-            } else {
-                unimplemented!();
-            };
-            ResponseBuilder::new().header("Access-Control-Allow-Origin", "tauri://auth").mimetype(meta).body(data)
+        .register_uri_scheme_protocol("autmc", |app_handle, request| {
+            println!("{:#?}", request);
+            if let Some(window) = app_handle.get_window("login") {
+                // - Panics if the event loop is not running yet, usually when called on the [`setup`](crate::Builder#method.setup) closure.
+                // - Panics when called on the main thread, usually on the [`run`](crate::App#method.run) closure.
+                window.close().unwrap();
+            }
+            let req = request.uri().to_owned();
+            tauri::async_runtime::spawn(async move {
+                // TODO: Emit an authentication error
+                let res = authenticate(&req).await;
+            });
+            let body: Vec<u8> = "<h1>Hello World!</h1>".as_bytes().to_vec();
+            ResponseBuilder::new().mimetype("text/html").body(body)
         })
-        .invoke_handler(tauri::generate_handler![microsoft_login, ms_login])
+        .invoke_handler(tauri::generate_handler![show_microsoft_login_page])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
