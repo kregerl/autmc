@@ -1,8 +1,8 @@
 use phf::phf_map;
 use reqwest::StatusCode;
 use serde::{ser::SerializeStructVariant, Deserialize, Serialize};
-use serde_json::{json, Value};
-use std::collections::HashMap;
+use serde_json::{json};
+use std::{collections::HashMap};
 use tauri::Wry;
 use url::Url;
 
@@ -14,6 +14,8 @@ const MICROSOFT_TOKEN_URL: &str = "https://login.microsoftonline.com/consumers/o
 const XBOX_LIVE_AUTHENTICATE_URL: &str = "https://user.auth.xboxlive.com/user/authenticate";
 const XTXS_AUTHENTICATE_URL: &str = "https://xsts.auth.xboxlive.com/xsts/authorize";
 const MINECRAFT_AUTHENTICATE_URL: &str = "https://api.minecraftservices.com/authentication/login_with_xbox";
+const MINECRAFT_LICENSE_URL: &str = "https://api.minecraftservices.com/entitlements/mcstore";
+const MINECRAFT_PROFILE_URL: &str = "https://api.minecraftservices.com/minecraft/profile";
 
 static XERR_HINTS: phf::Map<&'static str, &'static str> = phf_map! {
     "2148916233" => "2148916233: The account doesn't have an Xbox account. Once they sign up for one (or login through minecraft.net to create one) then they can proceed with the login. This shouldn't happen with accounts that have purchased Minecraft with a Microsoft account, as they would've already gone through that Xbox signup process.",
@@ -25,6 +27,7 @@ static XERR_HINTS: phf::Map<&'static str, &'static str> = phf_map! {
 
 // REVIEW: Remove '_' prefix from unused fields when they're used. Just there to make the compilier happy. :)
 // REVIEW: Many unused fields, serde will ignore unknown fields while deserializing... Remove these?
+#[allow(unused)]
 #[derive(Debug, Deserialize)]
 struct MicrosoftTokenSuccess {
     token_type: String,
@@ -36,9 +39,9 @@ struct MicrosoftTokenSuccess {
     refresh_token: String,
 }
 
+#[allow(unused)]
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
-// TODO: Create a separate success sttuct that can be returned, making error an actual AuthenticationError
 enum MicrosoftTokenResponse {
     Success(MicrosoftTokenSuccess),
     Failure {
@@ -54,11 +57,6 @@ enum MicrosoftTokenResponse {
 }
 
 #[derive(Debug, Deserialize)]
-struct XboxDisplayClaim {
-    xui: Value
-}
-
-#[derive(Debug, Deserialize)]
 struct XboxTokenSuccess {
     #[serde(rename = "IssueInstant")]
     _issue_instant: String,
@@ -67,17 +65,14 @@ struct XboxTokenSuccess {
     #[serde(rename = "Token")]
     token: String,
     #[serde(rename = "DisplayClaims")]
-    dislpay_claims: XboxDisplayClaim,
+    display_claims: HashMap<String, Vec<HashMap<String, String>>>,
 }
 
-// TODO: Replace this function with a much simpler version. Store display_claims as a HashMap<String, Vec<HashMap<String, String>>>
 impl XboxTokenSuccess {
-    pub fn get_user_hash(&self) -> AuthResult<String> {
-        let uhs = self.dislpay_claims.xui.pointer("/0/uhs");
-        match uhs {
-            Some(json_value) => Ok(json_value.as_str().unwrap().into()),
-            None => Err(AuthenticationError::JsonParseError("Unable to parse the user hash.".into()))
-        }
+    pub fn get_user_hash(&self) -> Option<String> {
+        let xui = self.display_claims.get("xui")?;
+        let uhs = xui.first()?.get("uhs")?;
+        Some(uhs.into())
     }
 }
 
@@ -99,11 +94,49 @@ enum XboxTokenResponse {
     },
 }
 
+#[allow(unused)]
 #[derive(Debug, Deserialize)]
 struct MinecraftTokenResponse {
     // This is not the uuid of the mc account
     username: String,
+    access_token: String,
+    expires_in: u32,
+    token_type: String,
 }
+
+#[allow(unused)]
+#[derive(Debug, Deserialize)]
+struct MinecraftProfileSkin {
+    id: String,
+    state: String,
+    url: String,
+    variant: String,
+    alias: String,
+}
+
+#[allow(unused)]
+#[derive(Debug, Deserialize)]
+struct MinecraftProfileSuccess {
+    id: String, 
+    name: String,
+    skins: Vec<MinecraftProfileSkin>,
+    // TODO: Missing capes, dont know what the response would look like.
+}
+
+#[derive(Debug, Deserialize)]
+enum MinecraftProfileResponse {
+    Success(MinecraftProfileSuccess),
+    Failure {
+        #[serde(rename = "errorType")]
+        _error_type: String,
+        error: String,
+        #[serde(rename = "errorMessage")]
+        error_message: String,
+        #[serde(rename = "developerMessage")]
+        _developer_message: String,
+    }   
+}
+
 
 #[derive(Debug)]
 pub enum AuthenticationError {
@@ -116,12 +149,15 @@ pub enum AuthenticationError {
         message: String,
         hint: String,
     },
+    MinecraftProfileError {
+        error: String,
+        error_message: String,
+    },
     UnknownQueryParameter(String),
     UrlParseError(url::ParseError),
     RequestError(reqwest::Error),
     WindowError(tauri::Error),
     HttpResponseError(Option<StatusCode>),
-    JsonParseError(String),
 }
 
 pub type AuthResult<T> = core::result::Result<T, AuthenticationError>;
@@ -162,6 +198,20 @@ impl Serialize for AuthenticationError {
                 state.serialize_field("hint", &hint)?;
                 state.end()
             }
+            AuthenticationError::MinecraftProfileError{
+                error, 
+                error_message
+            } => {
+                let mut state = serializer.serialize_struct_variant(
+                    "AuthenticationError",
+                    2,
+                    "MinecraftProfileError",
+                    2,
+                )?;
+                state.serialize_field("error", &error)?;
+                state.serialize_field("error_message", &error_message)?;
+                state.end()
+            }
             AuthenticationError::UnknownQueryParameter(error) => serializer.serialize_str(&error),
             AuthenticationError::UrlParseError(error) => {
                 serializer.serialize_str(&error.to_string())
@@ -178,7 +228,6 @@ impl Serialize for AuthenticationError {
                 };
                 serializer.serialize_str(&error)
             }
-            AuthenticationError::JsonParseError(error) => serializer.serialize_str(&error),
         }?)
     }
 }
@@ -241,10 +290,17 @@ pub async fn authenticate(uri: &str) -> AuthResult<()> {
     let xsts_auth_response = obtain_xsts_token(&xbl_auth_response.token).await?;
     println!("Xsts Token: {:#?}", xsts_auth_response);
     println!();
-    let user_hash = xsts_auth_response.get_user_hash()?;
-    println!("UserHash: {}", user_hash);
+    let user_hash = xsts_auth_response.get_user_hash().unwrap();
+    let minecraft_auth_response = obtain_minecraft_token(&xsts_auth_response.token, &user_hash).await?;
+    println!("Minecraft Token: {:#?}", minecraft_auth_response);
     println!();
-    let _ = obtain_minecraft_token(&xsts_auth_response.token, &user_hash).await?;
+    // REVIEW: Since Xbox Game Pass users don't technically own the game, the entitlement endpoint will show as such.
+    // It should be used to check the official public key from liblauncher.so but whats the point in checking if
+    // a user owns the game before attempting the next step, if it won't work for Xbox Game Pass users anyway?
+    // let _ = check_license(&minecraft_auth_response.access_token).await?;
+
+    let minecraft_profile = obtain_minecraft_profile(&minecraft_auth_response.access_token).await?;
+    println!("{:#?}", minecraft_profile);
     Ok(())
 }
 
@@ -353,32 +409,73 @@ async fn obtain_xsts_token(xbl_token: &str) -> AuthResult<XboxTokenSuccess> {
     check_xbox_error(response).await
 }
 
-async fn obtain_minecraft_token(xsts_token: &str, user_hash: &str) -> AuthResult<()> {
+/// Sends request to the mojang `/login_with_xbox` endpoint using the user hash and XSTS token
+async fn obtain_minecraft_token(xsts_token: &str, user_hash: &str) -> AuthResult<MinecraftTokenResponse> {
     let client = reqwest::Client::new();
-    let identity_token = format!("XBL3.0 x={};{}", user_hash, xsts_token);
-    println!("Identity Token: {}", identity_token);
     let response = client
     .post(MINECRAFT_AUTHENTICATE_URL)
     .header("Content-Type", "application/json")
     .header("Accept", "application/json")
     .body(json!({
-        "identityToken": identity_token,
+        "identityToken": format!("XBL3.0 x={};{}", user_hash, xsts_token),
         "ensureLegacyEnabled": true
     }).to_string())
     .send()
     .await?;
 
-    println!("Minecraft Auth Result: {:#?}", &response.text().await?);
-    // println!("Minecraft Auth Result: {:#?}", response);
-    // if response.status().is_success() {
-    //     let token_response = response.json::<MinecraftTokenResponse>().await?;
-        
-    //     Ok(())
-    // } else {
-    //     Err(AuthenticationError::HttpResponseError(Some(response.status())))
-    // }
-    Ok(())
+    if response.status().is_success() {
+        let token_response = response.json::<MinecraftTokenResponse>().await?;
+        Ok(token_response)
+    } else {
+        Err(AuthenticationError::HttpResponseError(Some(response.status())))
+    }
 }
+
+#[allow(unused)]
+/// Unused for now, currently cannot show if a Xbox Game Pass user owns the game so whats the point in checking... 
+async fn check_license(access_token: &str) -> AuthResult<()> {
+    let client = reqwest::Client::new();
+    let response = client
+    .get(MINECRAFT_LICENSE_URL)
+    .header("Content-Type", "application/json")
+    .header("Accept", "application/json")
+    .header("Authorization", format!("Bearer {}", access_token))
+    .send()
+    .await?;
+
+    println!("{:#?}", &response);
+    println!("{:#?}", response.text().await?);
+
+    Ok(())
+} 
+
+// Obtains the Minecraft profile information like uuid, username, skins, and capes 
+async fn obtain_minecraft_profile(access_token: &str) -> AuthResult<MinecraftProfileSuccess> {
+    let client = reqwest::Client::new();
+    let response = client
+    .get(MINECRAFT_PROFILE_URL)
+    .header("Content-Type", "application/json")
+    .header("Accept", "application/json")
+    .header("Authorization", format!("Bearer {}", access_token))
+    .send()
+    .await?;
+
+    if response.status().is_success() {
+        let profile_response = response.json::<MinecraftProfileResponse>().await?;
+        match profile_response {
+            MinecraftProfileResponse::Success(success) => Ok(success),
+            MinecraftProfileResponse::Failure { error, error_message, .. } =>  {
+                Err(AuthenticationError::MinecraftProfileError {
+                    error,
+                    error_message,
+                })
+            },
+        }
+    } else {
+        Err(AuthenticationError::HttpResponseError(Some(response.status())))
+    }
+}
+
 
 /// Retrieves the successful response from a reqwest::Response
 /// 
