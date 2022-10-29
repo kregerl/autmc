@@ -14,6 +14,8 @@ fn main() {
         .register_uri_scheme_protocol("autmc", |app_handle, request| {
             println!("{:#?}", request);
             if let Some(window) = app_handle.get_window("login") {
+                // FIXME: Check for window closing errors anyway
+                // Neither of the following should be possible in this instance. 
                 // - Panics if the event loop is not running yet, usually when called on the [`setup`](crate::Builder#method.setup) closure.
                 // - Panics when called on the main thread, usually on the [`run`](crate::App#method.run) closure.
                 window.close().unwrap();
@@ -22,6 +24,7 @@ fn main() {
             tauri::async_runtime::spawn(async move {
                 // TODO: Emit an authentication error
                 let res = authenticate(&req).await;
+                println!("Auth Result: {:#?}", res);
             });
             let body: Vec<u8> = "<h1>Hello World!</h1>".as_bytes().to_vec();
             ResponseBuilder::new().mimetype("text/html").body(body)
