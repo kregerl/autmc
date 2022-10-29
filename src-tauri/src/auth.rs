@@ -26,10 +26,10 @@ static XERR_HINTS: phf::Map<&'static str, &'static str> = phf_map! {
 };
 
 // REVIEW: Remove '_' prefix from unused fields when they're used. Just there to make the compilier happy. :)
-// REVIEW: Many unused fields, serde will ignore unknown fields while deserializing... Remove these?
+// REVIEW: Many unused fields, serde will ignore unknown fields while deserializing... Remove these and the #[allow(unused)]?
 #[allow(unused)]
 #[derive(Debug, Deserialize)]
-struct MicrosoftTokenSuccess {
+pub struct MicrosoftTokenSuccess {
     token_type: String,
     scope: String,
     expires_in: u32,
@@ -124,6 +124,7 @@ struct MinecraftProfileSuccess {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(untagged)]
 enum MinecraftProfileResponse {
     Success(MinecraftProfileSuccess),
     Failure {
@@ -137,6 +138,22 @@ enum MinecraftProfileResponse {
     }   
 }
 
+#[allow(unused)]
+pub enum AuthMode {
+    /// Contains the redirect uri
+    Full(String),
+    /// Contains the Microsoft refresh token
+    MicrosoftRefresh(String),
+    /// Contains the Microsoft successful response
+    MinecraftRefresh(MicrosoftTokenSuccess),
+}
+
+enum MicrosoftGrantType {
+    /// Contains the authorization code
+    Authorization(String),
+    /// Contains the refresh token
+    Refresh(String)
+}
 
 #[derive(Debug)]
 pub enum AuthenticationError {
@@ -157,7 +174,7 @@ pub enum AuthenticationError {
     UrlParseError(url::ParseError),
     RequestError(reqwest::Error),
     WindowError(tauri::Error),
-    HttpResponseError(Option<StatusCode>),
+    HttpResponseError(StatusCode),
 }
 
 pub type AuthResult<T> = core::result::Result<T, AuthenticationError>;
@@ -220,13 +237,8 @@ impl Serialize for AuthenticationError {
                 serializer.serialize_str(&error.to_string())
             }
             AuthenticationError::WindowError(error) => serializer.serialize_str(&error.to_string()),
-            AuthenticationError::HttpResponseError(msg) => {
-                let error = if let Some(message) = msg {
-                    format!("400 Bad Request: {}", message)
-                } else {
-                    "400 Bad Request".into()
-                };
-                serializer.serialize_str(&error)
+            AuthenticationError::HttpResponseError(status_code) => {
+                serializer.serialize_str(&format!("Status code: {}", status_code))
             }
         }?)
     }
@@ -282,8 +294,26 @@ pub async fn show_microsoft_login_page(app_handle: tauri::AppHandle<Wry>) -> Aut
 
 // Fully authenciate with microsoft, xboxlive, and finally minecraft.
 // TODO: Add extra parameters once the flow is worked out to allow refresh tokens to work.
-pub async fn authenticate(uri: &str) -> AuthResult<()> {
-    let microsoft_auth_response = obtain_microsoft_token(uri).await?;
+pub async fn authenticate(auth_mode: AuthMode) -> AuthResult<()> {
+    // Depending on the auth mode, will request necessary tokens.
+    let microsoft_auth_response = match auth_mode {
+        AuthMode::Full(uri) => {
+            // If were doing a full auth flow, retrieve the code from the redirect uri. 
+            let authorization_code = retrieve_authorization_code(&uri)?;
+            let auth_mode = MicrosoftGrantType::Authorization(authorization_code);
+            let microsoft_auth_response = obtain_microsoft_token(auth_mode).await?;
+            microsoft_auth_response
+        },
+        AuthMode::MicrosoftRefresh(refresh_token) => {
+            // Use the refresh token to get a new access token.
+            let microsoft_auth_response = obtain_microsoft_token(MicrosoftGrantType::Refresh(refresh_token)).await?;
+            microsoft_auth_response
+        },
+        // Return the success response since the access token is still valid  
+        AuthMode::MinecraftRefresh(success_response) => success_response,
+    };
+    println!("Microsoft: {:#?}", microsoft_auth_response);
+    println!();
     let xbl_auth_response = obtain_xbl_token(&microsoft_auth_response.access_token).await?;
     println!("Xbl Token: {:#?}", xbl_auth_response);
     println!();
@@ -300,49 +330,17 @@ pub async fn authenticate(uri: &str) -> AuthResult<()> {
     // let _ = check_license(&minecraft_auth_response.access_token).await?;
 
     let minecraft_profile = obtain_minecraft_profile(&minecraft_auth_response.access_token).await?;
-    println!("{:#?}", minecraft_profile);
+    println!("minecraft_profile {:#?}", minecraft_profile);
     Ok(())
 }
 
-/// Retrieves the Microsoft access token from the `code` parameter of the redirect uri
-async fn obtain_microsoft_token(uri: &str) -> AuthResult<MicrosoftTokenSuccess> {
-    // Parse query parameters out of redirect url to get authentication code or errors.
+/// Parse query parameters out of redirect url to get authentication code or errors.
+fn retrieve_authorization_code(uri: &str) -> AuthResult<String> {
     let parsed_url = Url::parse(uri)?;
     let parameter_map: HashMap<String, String> = parsed_url.query_pairs().into_owned().collect();
     if parameter_map.contains_key("code") {
         let authorization_code = parameter_map.get("code").unwrap();
-        let client = reqwest::Client::new();
-        // Send the post request with the body.
-        let resp = client
-            .post(MICROSOFT_TOKEN_URL)
-            .form(&[
-                ("client_id", CLIENT_ID),
-                ("scope", SCOPE),
-                ("code", authorization_code),
-                // redirect_uri must exactly match the redirect uri from the login url.
-                ("redirect_uri", REDIRECT_URL),
-                ("grant_type", "authorization_code"),
-            ])
-            .send()
-            .await?;
-
-        // If request was successful, retrieve the token or error
-        if resp.status().is_success() {
-            let token_response = resp.json::<MicrosoftTokenResponse>().await?;
-            match token_response {
-                MicrosoftTokenResponse::Success(success) => Ok(success),
-                MicrosoftTokenResponse::Failure {
-                    error,
-                    error_description,
-                    ..
-                } => Err(AuthenticationError::MicrosoftError {
-                    error_type: error,
-                    error_description,
-                }),
-            }
-        } else {
-            Err(AuthenticationError::HttpResponseError(Some(resp.status())))
-        }
+        Ok(authorization_code.into())
     } else if parameter_map.contains_key("error") && parameter_map.contains_key("error_description") {
         // Should not be able to get an error without an error_description
         let error_type = parameter_map.get("error").unwrap();
@@ -357,6 +355,52 @@ async fn obtain_microsoft_token(uri: &str) -> AuthResult<MicrosoftTokenSuccess> 
             "Unknown query parameters in url {}",
             uri
         )))
+    }
+}
+
+/// Retrieves the Microsoft access token from the `code` parameter of the redirect uri
+async fn obtain_microsoft_token(auth_mode: MicrosoftGrantType) -> AuthResult<MicrosoftTokenSuccess> {
+    let mut form: HashMap<&str, &str> = HashMap::new();
+    form.insert("client_id", CLIENT_ID);
+    form.insert("scope", SCOPE);
+    form.insert("redirect_uri", REDIRECT_URL);
+
+    let code = match auth_mode {
+        MicrosoftGrantType::Authorization(authorization_code) => {
+            form.insert("grant_type", "authorization_code");
+            authorization_code
+        },
+        MicrosoftGrantType::Refresh(refresh_token) => {
+            form.insert("grant_type", "refresh_token");
+            refresh_token
+        },
+    };
+    form.insert("code", &code);
+
+    let client = reqwest::Client::new();
+    // Send the post request with the body.
+    let resp = client
+        .post(MICROSOFT_TOKEN_URL)
+        .form(&form)
+        .send()
+        .await?;
+
+    // If request was successful, retrieve the token or error
+    if resp.status().is_success() {
+        let token_response = resp.json::<MicrosoftTokenResponse>().await?;
+        match token_response {
+            MicrosoftTokenResponse::Success(success) => Ok(success),
+            MicrosoftTokenResponse::Failure {
+                error,
+                error_description,
+                ..
+            } => Err(AuthenticationError::MicrosoftError {
+                error_type: error,
+                error_description,
+            }),
+        }
+    } else {
+        Err(AuthenticationError::HttpResponseError(resp.status()))
     }
 }
 
@@ -385,7 +429,7 @@ async fn obtain_xbl_token(access_token: &str) -> AuthResult<XboxTokenSuccess> {
     check_xbox_error(response).await
 }
 
-/// Sends request to the XTXS `/authorize` endpoint using an XboxLive access token
+/// Sends request to the Xbox Secure Token Service `/authorize` endpoint using an XboxLive access token
 async fn obtain_xsts_token(xbl_token: &str) -> AuthResult<XboxTokenSuccess> {
     let client = reqwest::Client::new();
     let response = client
@@ -427,7 +471,7 @@ async fn obtain_minecraft_token(xsts_token: &str, user_hash: &str) -> AuthResult
         let token_response = response.json::<MinecraftTokenResponse>().await?;
         Ok(token_response)
     } else {
-        Err(AuthenticationError::HttpResponseError(Some(response.status())))
+        Err(AuthenticationError::HttpResponseError(response.status()))
     }
 }
 
@@ -472,12 +516,11 @@ async fn obtain_minecraft_profile(access_token: &str) -> AuthResult<MinecraftPro
             },
         }
     } else {
-        Err(AuthenticationError::HttpResponseError(Some(response.status())))
+        Err(AuthenticationError::HttpResponseError(response.status()))
     }
 }
 
-
-/// Retrieves the successful response from a reqwest::Response
+/// Retrieves the successful response from a reqwest::Response from an XBL endpoint
 /// 
 /// On error gather any XBL error hints and add them to the XboxError variant
 /// 
@@ -497,6 +540,6 @@ async fn check_xbox_error(response: reqwest::Response) -> AuthResult<XboxTokenSu
             }
         }
     } else {
-        Err(AuthenticationError::HttpResponseError(Some(response.status())))
+        Err(AuthenticationError::HttpResponseError(response.status()))
     }
 }
