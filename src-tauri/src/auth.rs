@@ -1,9 +1,10 @@
+use log::info;
 use phf::phf_map;
 use reqwest::StatusCode;
 use serde::{ser::SerializeStructVariant, Deserialize, Serialize};
 use serde_json::{json};
-use std::{collections::HashMap};
-use tauri::Wry;
+use std::{collections::HashMap, io::{Error, Write, BufReader}, path::{PathBuf, Path}, fs::File, sync::Arc};
+use tauri::{Wry, async_runtime::Mutex};
 use url::Url;
 
 const CLIENT_ID: &str = "94fd28d0-faa6-4d85-920d-69a2abe16bcd";
@@ -28,7 +29,7 @@ static XERR_HINTS: phf::Map<&'static str, &'static str> = phf_map! {
 // REVIEW: Remove '_' prefix from unused fields when they're used. Just there to make the compilier happy. :)
 // REVIEW: Many unused fields, serde will ignore unknown fields while deserializing... Remove these and the #[allow(unused)]?
 #[allow(unused)]
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct MicrosoftTokenSuccess {
     token_type: String,
     scope: String,
@@ -36,11 +37,11 @@ pub struct MicrosoftTokenSuccess {
     // Probably dont need this see https://stackoverflow.com/questions/45681890/oauth-with-azure-ad-v2-0-what-is-the-ext-expires-in-parameter-returned-by-azure
     ext_expires_in: u32,
     access_token: String,
-    refresh_token: String,
+    pub refresh_token: String,
 }
 
 #[allow(unused)]
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 enum MicrosoftTokenResponse {
     Success(MicrosoftTokenSuccess),
@@ -56,8 +57,8 @@ enum MicrosoftTokenResponse {
     },
 }
 
-#[derive(Debug, Deserialize)]
-struct XboxTokenSuccess {
+#[derive(Debug, Serialize, Deserialize)]
+pub struct XboxTokenSuccess {
     #[serde(rename = "IssueInstant")]
     _issue_instant: String,
     #[serde(rename = "NotAfter")]
@@ -76,7 +77,7 @@ impl XboxTokenSuccess {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 enum XboxTokenResponse {
     Success(XboxTokenSuccess),
@@ -95,8 +96,8 @@ enum XboxTokenResponse {
 }
 
 #[allow(unused)]
-#[derive(Debug, Deserialize)]
-struct MinecraftTokenResponse {
+#[derive(Debug, Serialize, Deserialize)]
+pub struct MinecraftTokenResponse {
     // This is not the uuid of the mc account
     username: String,
     access_token: String,
@@ -105,7 +106,7 @@ struct MinecraftTokenResponse {
 }
 
 #[allow(unused)]
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct MinecraftProfileSkin {
     id: String,
     state: String,
@@ -115,15 +116,15 @@ struct MinecraftProfileSkin {
 }
 
 #[allow(unused)]
-#[derive(Debug, Deserialize)]
-struct MinecraftProfileSuccess {
+#[derive(Debug, Serialize, Deserialize)]
+pub struct MinecraftProfileSuccess {
     id: String, 
     name: String,
     skins: Vec<MinecraftProfileSkin>,
     // TODO: Missing capes, dont know what the response would look like.
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 enum MinecraftProfileResponse {
     Success(MinecraftProfileSuccess),
@@ -138,14 +139,15 @@ enum MinecraftProfileResponse {
     }   
 }
 
+
 #[allow(unused)]
 pub enum AuthMode {
     /// Contains the redirect uri
     Full(String),
     /// Contains the Microsoft refresh token
     MicrosoftRefresh(String),
-    /// Contains the Microsoft successful response
-    MinecraftRefresh(MicrosoftTokenSuccess),
+    /// Contains the Microsoft access token
+    MinecraftRefresh(Account),
 }
 
 enum MicrosoftGrantType {
@@ -156,6 +158,7 @@ enum MicrosoftGrantType {
 }
 
 #[derive(Debug)]
+// TODO: Implement Display for this error type.
 pub enum AuthenticationError {
     MicrosoftError {
         error_type: String,
@@ -263,6 +266,12 @@ impl From<tauri::Error> for AuthenticationError {
 }
 
 #[tauri::command]
+pub async fn validate_active_account(app_handle: tauri::AppHandle<Wry>) {
+    // TODO: Implement validation of active account from app_handle.state() of type tauri::State<AccountState>
+    info!("check_account Called");
+}
+
+#[tauri::command]
 pub async fn show_microsoft_login_page(app_handle: tauri::AppHandle<Wry>) -> AuthResult<()> {
     let login_url = Url::parse_with_params(
         MICROSOFT_LOGIN_URL,
@@ -292,29 +301,122 @@ pub async fn show_microsoft_login_page(app_handle: tauri::AppHandle<Wry>) -> Aut
     Ok(())
 }
 
-// Fully authenciate with microsoft, xboxlive, and finally minecraft.
-// TODO: Add extra parameters once the flow is worked out to allow refresh tokens to work.
-pub async fn authenticate(auth_mode: AuthMode) -> AuthResult<()> {
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct Account {
+    pub uuid: String,
+    pub name: String,
+    // IDEA: Skin url for head?
+    pub microsoft_access_token: String,
+    pub microsoft_access_token_expiry: i64,
+    pub microsoft_refresh_token: String,
+    pub minecraft_access_token: String,
+    pub minecraft_access_token_expiry: i64,
+}
+
+
+#[derive(Debug)]
+pub struct AccountState(pub Arc<Mutex<AccountManager>>);
+
+impl AccountState {
+    pub fn new(app_dir: &PathBuf) -> Self {
+       Self(Arc::new(Mutex::new(AccountManager::new(app_dir))))
+    }
+}
+
+#[derive(Debug, Default, Deserialize, Serialize)]
+pub struct AccountManager {
+    #[serde(skip)]
+    path: PathBuf,
+    active: Option<String>,
+    accounts: HashMap<String, Account>,
+}
+
+// IDEA: Serialize account information into a binary file instead of a json.
+//       Is it possible some random unauth'd person can use reuse refresh tokens?
+impl AccountManager {
+    /// Call on app setup.
+    pub fn new(app_dir: &Path) -> Self {
+        Self {
+            path: app_dir.into(),
+            active: Default::default(),
+            accounts: Default::default(),
+        }
+    }
+
+    /// Deserialize account information into `app_dir/accounts.json`
+    pub fn deserialize_accounts(&mut self) -> Result<(), Error> {
+        let path = &self.path.join("accounts.json");
+        let file = File::open(&path)?;
+        let reader = BufReader::new(file);
+        let deserialized_account_manager = serde_json::from_reader::<BufReader<File>, AccountManager>(reader)?;
+        self.active = deserialized_account_manager.active;
+        self.accounts = deserialized_account_manager.accounts;
+        Ok(())
+    }
+
+    /// Serialize account information into `app_dir/accounts.json`
+    pub fn serialize_accounts(&self) -> Result<(), Error> {
+        let json = serde_json::to_string(&self)?;
+        let path = &self.path.join("accounts.json");
+        let mut file = File::create(path)?;
+        info!("Serialized account manager.");
+        file.write_all(json.as_bytes())
+    }
+
+    /// Get a stored account by uuid.
+    pub fn get_account(&self, uuid: &str) -> Option<&Account> {
+        self.accounts.get(uuid)
+    }
+
+    /// Get the active account
+    pub fn get_active_account(&self) -> Option<&Account> {
+        if let Some(active_uuid) = &self.active {
+            self.get_account(active_uuid)
+        } else {
+            None
+        }
+    }
+
+    /// Add and activate an account, overwriting any existing accounts with the same uuid.
+    pub fn add_and_activate_account(&mut self, account: Account) {
+        self.active = Some(account.uuid.clone());
+        self.add_account(account);
+        info!("Added and activated account: {:#?}", &self.active);
+    }
+
+    /// Adds an account, overwriting any existing accounts with the same uuid.
+    pub fn add_account(&mut self, account: Account) {
+        self.accounts.insert(account.uuid.clone(), account);
+    }
+}
+
+
+/// Fully authenciate with microsoft, xboxlive, and finally minecraft.
+pub async fn authenticate(auth_mode: AuthMode) -> AuthResult<Account> {
+    // Timestamp in seconds
+    let now = chrono::Local::now().timestamp();
     // Depending on the auth mode, will request necessary tokens.
-    let microsoft_auth_response = match auth_mode {
+    let microsoft_token = match auth_mode {
         AuthMode::Full(uri) => {
             // If were doing a full auth flow, retrieve the code from the redirect uri. 
             let authorization_code = retrieve_authorization_code(&uri)?;
             let auth_mode = MicrosoftGrantType::Authorization(authorization_code);
             let microsoft_auth_response = obtain_microsoft_token(auth_mode).await?;
-            microsoft_auth_response
+            let expiry = now + (microsoft_auth_response.expires_in - 10) as i64;
+            (microsoft_auth_response.access_token, microsoft_auth_response.refresh_token, expiry)
         },
         AuthMode::MicrosoftRefresh(refresh_token) => {
             // Use the refresh token to get a new access token.
             let microsoft_auth_response = obtain_microsoft_token(MicrosoftGrantType::Refresh(refresh_token)).await?;
-            microsoft_auth_response
+            let expiry = now + (microsoft_auth_response.expires_in - 10) as i64;
+            (microsoft_auth_response.access_token, microsoft_auth_response.refresh_token, expiry)
         },
-        // Return the success response since the access token is still valid  
-        AuthMode::MinecraftRefresh(success_response) => success_response,
+        // Return the microsoft access token since it is still valid
+        AuthMode::MinecraftRefresh(account) => (account.microsoft_access_token, account.microsoft_refresh_token, account.microsoft_access_token_expiry),
     };
-    println!("Microsoft: {:#?}", microsoft_auth_response);
+    println!("Microsoft: {:#?}", microsoft_token);
     println!();
-    let xbl_auth_response = obtain_xbl_token(&microsoft_auth_response.access_token).await?;
+    let xbl_auth_response = obtain_xbl_token(&microsoft_token.0).await?;
     println!("Xbl Token: {:#?}", xbl_auth_response);
     println!();
     let xsts_auth_response = obtain_xsts_token(&xbl_auth_response.token).await?;
@@ -322,6 +424,7 @@ pub async fn authenticate(auth_mode: AuthMode) -> AuthResult<()> {
     println!();
     let user_hash = xsts_auth_response.get_user_hash().unwrap();
     let minecraft_auth_response = obtain_minecraft_token(&xsts_auth_response.token, &user_hash).await?;
+    let minecraft_auth_expiry = now + (minecraft_auth_response.expires_in - 10) as i64;
     println!("Minecraft Token: {:#?}", minecraft_auth_response);
     println!();
     // REVIEW: Since Xbox Game Pass users don't technically own the game, the entitlement endpoint will show as such.
@@ -331,7 +434,16 @@ pub async fn authenticate(auth_mode: AuthMode) -> AuthResult<()> {
 
     let minecraft_profile = obtain_minecraft_profile(&minecraft_auth_response.access_token).await?;
     println!("minecraft_profile {:#?}", minecraft_profile);
-    Ok(())
+    Ok(Account {
+        uuid: minecraft_profile.id,
+        name: minecraft_profile.name,
+        // IDEA: Skin url for head?
+        microsoft_access_token: microsoft_token.0,
+        microsoft_access_token_expiry: microsoft_token.2,
+        microsoft_refresh_token: microsoft_token.1,
+        minecraft_access_token: minecraft_auth_response.access_token,
+        minecraft_access_token_expiry: minecraft_auth_expiry,
+    })
 }
 
 /// Parse query parameters out of redirect url to get authentication code or errors.
@@ -368,14 +480,14 @@ async fn obtain_microsoft_token(auth_mode: MicrosoftGrantType) -> AuthResult<Mic
     let code = match auth_mode {
         MicrosoftGrantType::Authorization(authorization_code) => {
             form.insert("grant_type", "authorization_code");
-            authorization_code
+            ("code", authorization_code)
         },
         MicrosoftGrantType::Refresh(refresh_token) => {
             form.insert("grant_type", "refresh_token");
-            refresh_token
+            ("refresh_token", refresh_token)
         },
     };
-    form.insert("code", &code);
+    form.insert(code.0, &code.1);
 
     let client = reqwest::Client::new();
     // Send the post request with the body.
@@ -385,6 +497,9 @@ async fn obtain_microsoft_token(auth_mode: MicrosoftGrantType) -> AuthResult<Mic
         .send()
         .await?;
 
+    let x = &resp;
+    println!("{:#?}", x);
+    
     // If request was successful, retrieve the token or error
     if resp.status().is_success() {
         let token_response = resp.json::<MicrosoftTokenResponse>().await?;

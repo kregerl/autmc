@@ -1,22 +1,37 @@
 <script lang="ts">
-    import {invoke} from "@tauri-apps/api/tauri";
-    import {open} from "@tauri-apps/api/shell"
-    import MenuButton from "./components/MenuButton.svelte";
+    import { listen } from '@tauri-apps/api/event'
+    import { onMount } from 'svelte';
+    import { link, Router, Route, Link, navigate } from "svelte-navigator";
+    import Login from './components/Login.svelte';
+    import Home from "./components/Home.svelte";
+    import { invoke } from '@tauri-apps/api/tauri';
 
-    const url = "https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize?prompt=select_account&client_id=94fd28d0-faa6-4d85-920d-69a2abe16bcd&response_type=code&scope=XboxLive.signin%20offline_access&redirect_uri=autmc://localhost"
-
-    function microsoftLogin() {
-        // open(url)
-        invoke('show_microsoft_login_page').catch((err) => console.log(err));
-        // console.log("Here")
-        // window.location.replace('autmc://auth')
-    }
+    // const unlisten =  listen("auth_result", (event) => {
+    //     console.log(event);
+    //     console.log("Here");
+    //     navigate("/");
+    // })
+    onMount(async () => {
+        invoke("validate_selected_account");
+    });
+    
+    // window.onload = function() {
+    //     // TODO: Check the state's account manager, if theres an active account redirect to `/home` else, stay at '/'.
+    //     console.log("On Load");
+    // };
 
 </script>
 
 <main>
-    <MenuButton on:click={microsoftLogin}>Log In</MenuButton>
+    <Router>
+        <Route path="/login" component={Login}/>
+        <Route path="/" component={Home}/>
+    </Router>
 </main>
 
 <style>
+    main {
+        width: 100%;
+        height: 100%;
+    }
 </style>
