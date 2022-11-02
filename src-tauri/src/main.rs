@@ -5,14 +5,16 @@
 mod auth;
 mod loader;
 
-use log::{info, warn};
+use log::{info, warn, error};
 use std::{
     fs::{self},
     path::PathBuf,
 };
 use tauri::{http::{ResponseBuilder, Request, Response}, App, Manager, Wry, AppHandle};
 use serde::ser::{StdError};
-use auth::{authenticate, show_microsoft_login_page, validate_active_account, AccountState, AuthMode};
+use auth::{authenticate, show_microsoft_login_page, AccountState, AuthMode};
+
+use crate::auth::{redirect, validate_account};
 // use loader::obtain_vanilla_manifest;
 
 fn main() {
@@ -25,7 +27,7 @@ fn main() {
             }
             _ => {}
         })
-        .invoke_handler(tauri::generate_handler![show_microsoft_login_page, validate_active_account])
+        .invoke_handler(tauri::generate_handler![show_microsoft_login_page])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
@@ -47,6 +49,7 @@ fn setup(app: &mut App<Wry>) -> Result<(), Box<(dyn StdError + 'static)>> {
 
     let app_handle = app.handle();
     // Spawn an async thread and use the app_handle to refresh active account.
+    // TODO: Maybe emit event to display a toast telling the user what happened.
     tauri::async_runtime::spawn(async move {
         let account_state: tauri::State<AccountState> = app_handle.state();
         let mut account_manager = account_state.0.lock().await;
@@ -54,27 +57,28 @@ fn setup(app: &mut App<Wry>) -> Result<(), Box<(dyn StdError + 'static)>> {
             Ok(_) => {}
             Err(_) => {
                 // If no accounts are saved, bail on this thread since user will need to enter credentials.
-                warn!("No account.json exists!");
+                info!("No account.json exists!");
+
+                if let Err(error) = redirect(&app_handle, "login") {
+                    error!("{}", error);
+                } 
                 return;
             }
         }
         let deserialized_account = account_manager.get_active_account();
         // If there is some active account, retrieve it and attempt to refresh access tokens.
-        if let Some(active_account) = deserialized_account {
-            let auth_mode =
-                AuthMode::MicrosoftRefresh(active_account.microsoft_refresh_token.clone());
-            // TODO: Add another function that will figure out which auth mode to use based on account expiry dates, etc...
-            let auth_result = authenticate(auth_mode).await;
-            match auth_result {
-                Ok(account) => {
-                    info!("Successfully refreshed account: {}", &account.uuid);
-                    account_manager.add_and_activate_account(account);
+        match deserialized_account {
+            Some(active_account) => {
+                let validation_result = validate_account(active_account).await;
+                // FIXME: Dont just unwrap, give user any auth errors.
+                let account = validation_result.unwrap();
+                account_manager.add_and_activate_account(account);
+            },
+            None => {
+                if let Err(error) = redirect(&app_handle, "login") {
+                    error!("{}", error);
                 }
-                Err(err) => {
-                    warn!("Error trying to refresh account: {:#?}", err);
-                    return;
-                }
-            }
+            },
         }
     });
     Ok(())
@@ -84,25 +88,26 @@ fn setup(app: &mut App<Wry>) -> Result<(), Box<(dyn StdError + 'static)>> {
 fn autmc_uri_scheme(app_handle: &AppHandle<Wry>, request: &Request) -> Result<Response, Box<dyn std::error::Error>> {
     info!("Retrieved request to custom uri scheme 'autmc://'");
     if let Some(window) = app_handle.get_window("login") {
-        // FIXME: Check for window closing errors anyway
         // Neither of the following should be possible in this instance.
         // - Panics if the event loop is not running yet, usually when called on the [`setup`](crate::Builder#method.setup) closure.
         // - Panics when called on the main thread, usually on the [`run`](crate::App#method.run) closure.
         window.close().unwrap();
     }
     let url = request.uri().to_owned();
-
     let handle = app_handle.clone();
+    // Spawn a thread to handle authentication.
     tauri::async_runtime::spawn(async move {
         // TODO: Emit an authentication error
         let auth_mode = AuthMode::Full(url);
         let res = authenticate(auth_mode).await;
         println!("Auth Result: {:#?}", &res);
+        // FIXME: Dont just unwrap, give user any auth errors.
         let account = res.unwrap();
 
         let account_state: tauri::State<AccountState> = handle.state();
         let mut account_manager = account_state.0.lock().await;
 
+        // Save account to account manager.
         account_manager.add_and_activate_account(account);
         match account_manager.serialize_accounts() {
             Ok(_) => {}
@@ -132,7 +137,7 @@ fn init_logger(log_dir: &PathBuf) -> Result<(), fern::InitError> {
                 message
             ))
         })
-        .level(log::LevelFilter::Info)
+        .level(log::LevelFilter::Debug)
         .chain(std::io::stdout())
         .chain(fern::log_file(log_path.as_os_str())?)
         .apply()?;

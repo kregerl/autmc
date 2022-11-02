@@ -11,9 +11,6 @@
     //     console.log("Here");
     //     navigate("/");
     // })
-    onMount(async () => {
-        invoke("validate_selected_account");
-    });
     
     // window.onload = function() {
     //     // TODO: Check the state's account manager, if theres an active account redirect to `/home` else, stay at '/'.

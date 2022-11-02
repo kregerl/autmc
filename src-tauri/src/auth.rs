@@ -1,10 +1,10 @@
-use log::info;
+use log::{info, error, debug};
 use phf::phf_map;
 use reqwest::StatusCode;
 use serde::{ser::SerializeStructVariant, Deserialize, Serialize};
 use serde_json::{json};
 use std::{collections::HashMap, io::{Error, Write, BufReader}, path::{PathBuf, Path}, fs::File, sync::Arc};
-use tauri::{Wry, async_runtime::Mutex};
+use tauri::{Wry, async_runtime::Mutex, Manager};
 use url::Url;
 
 const CLIENT_ID: &str = "94fd28d0-faa6-4d85-920d-69a2abe16bcd";
@@ -139,15 +139,18 @@ enum MinecraftProfileResponse {
     }   
 }
 
-
 #[allow(unused)]
 pub enum AuthMode {
     /// Contains the redirect uri
     Full(String),
     /// Contains the Microsoft refresh token
     MicrosoftRefresh(String),
-    /// Contains the Microsoft access token
-    MinecraftRefresh(Account),
+    /// Contains the Microsoft access token, Microsoft refresh token, and access token expiry
+    MinecraftRefresh{
+        access_token: String,
+        refresh_token: String,
+        access_token_expiry: i64,   
+    },
 }
 
 enum MicrosoftGrantType {
@@ -266,12 +269,6 @@ impl From<tauri::Error> for AuthenticationError {
 }
 
 #[tauri::command]
-pub async fn validate_active_account(app_handle: tauri::AppHandle<Wry>) {
-    // TODO: Implement validation of active account from app_handle.state() of type tauri::State<AccountState>
-    info!("check_account Called");
-}
-
-#[tauri::command]
 pub async fn show_microsoft_login_page(app_handle: tauri::AppHandle<Wry>) -> AuthResult<()> {
     let login_url = Url::parse_with_params(
         MICROSOFT_LOGIN_URL,
@@ -301,7 +298,7 @@ pub async fn show_microsoft_login_page(app_handle: tauri::AppHandle<Wry>) -> Aut
     Ok(())
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Account {
     pub uuid: String,
     pub name: String,
@@ -331,8 +328,8 @@ pub struct AccountManager {
     accounts: HashMap<String, Account>,
 }
 
-// IDEA: Serialize account information into a binary file instead of a json.
-//       Is it possible some random unauth'd person can use reuse refresh tokens?
+// FIXME: Storing tokens in plaintext is bad... store them in the platform keystore using keyring-rs
+//        Only need to store ms_access_token, ms_refresh_token, and mc_access_token. Everything else can be in a different format. 
 impl AccountManager {
     /// Call on app setup.
     pub fn new(app_dir: &Path) -> Self {
@@ -390,6 +387,57 @@ impl AccountManager {
     }
 }
 
+// TODO: Move most of this account stuff to resource manager module. 
+
+pub async fn validate_account(account: &Account) -> AuthResult<Account> {
+    let now = chrono::Local::now().timestamp();
+    // Account expired.
+    if account.minecraft_access_token_expiry <= now {
+        debug!("Minecraft Token Expired.");
+        if account.microsoft_access_token_expiry <= now {
+            debug!("Microsoft Token Expired.");
+            // Refresh access token.
+            let auth_mode = AuthMode::MicrosoftRefresh(account.microsoft_refresh_token.to_owned());
+            let auth_result = authenticate(auth_mode).await?;
+            Ok(auth_result)
+        } else {
+            debug!("Microsoft token Valid.");
+            // MS access_token is fine, use that for minecraft auth. 
+            let auth_mode = AuthMode::MinecraftRefresh {
+                access_token: account.microsoft_access_token.to_owned(),
+                refresh_token: account.microsoft_refresh_token.to_owned(),
+                access_token_expiry: account.microsoft_access_token_expiry,
+            };
+            let auth_result = authenticate(auth_mode).await?;
+            Ok(auth_result)
+        }
+    } else {
+        debug!("Minecraft Token Valid.");
+        // Account has not expired
+        Ok(account.clone())
+    }
+}
+
+/// Attempts to redirect the main window to the specified endpoint
+/// Specify endpoint without a leading `/`.  
+pub fn redirect(app_handle: &tauri::AppHandle<Wry>, endpoint: &str) -> tauri::Result<()> {
+    let window_name = "main";
+    let main_window = app_handle.get_window(&window_name);
+    match main_window {
+        // If main window exists, try to redirect
+        Some(window) => {
+            let js = format!("window.location.replace('http://localhost:8080/{}')", endpoint);
+            Ok(window.eval(&js)?)
+        },
+        // IDEA: If launcher ever goes to tray, this might need to be changed.
+        // If main window doesn't exist then we shouldn't exist, panic.
+        None => {
+            let error = format!("Trying to access window `{}` but it does not exist anymore.", &window_name);
+            error!("{}", error);
+            panic!("{}", error);
+        }
+    }
+}
 
 /// Fully authenciate with microsoft, xboxlive, and finally minecraft.
 pub async fn authenticate(auth_mode: AuthMode) -> AuthResult<Account> {
@@ -412,7 +460,7 @@ pub async fn authenticate(auth_mode: AuthMode) -> AuthResult<Account> {
             (microsoft_auth_response.access_token, microsoft_auth_response.refresh_token, expiry)
         },
         // Return the microsoft access token since it is still valid
-        AuthMode::MinecraftRefresh(account) => (account.microsoft_access_token, account.microsoft_refresh_token, account.microsoft_access_token_expiry),
+        AuthMode::MinecraftRefresh{ access_token, refresh_token, access_token_expiry } => (access_token, refresh_token, access_token_expiry),
     };
     println!("Microsoft: {:#?}", microsoft_token);
     println!();
