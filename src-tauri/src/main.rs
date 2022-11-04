@@ -5,17 +5,18 @@
 mod auth;
 mod loader;
 
-use log::{info, warn, error};
+use log::{error, info, warn};
+use serde::ser::StdError;
 use std::{
     fs::{self},
-    path::PathBuf,
+    path::{PathBuf, Path},
 };
-use tauri::{http::{ResponseBuilder, Request, Response}, App, Manager, Wry, AppHandle};
-use serde::ser::{StdError};
-use auth::{authenticate, show_microsoft_login_page, AccountState, AuthMode};
-
-use crate::auth::{redirect, validate_account};
-// use loader::obtain_vanilla_manifest;
+use tauri::{
+    http::{Request, Response, ResponseBuilder},
+    App, AppHandle, Manager, Wry,
+};
+use auth::{authenticate, show_microsoft_login_page, redirect, validate_account, AccountState, AuthMode};
+use loader::{obtain_manifests, ResourceState};
 
 fn main() {
     tauri::Builder::default()
@@ -27,12 +28,12 @@ fn main() {
             }
             _ => {}
         })
-        .invoke_handler(tauri::generate_handler![show_microsoft_login_page])
+        .invoke_handler(tauri::generate_handler![show_microsoft_login_page, obtain_manifests])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
 
-/// First thing called on application setup. 
+/// First thing called on application setup.
 fn setup(app: &mut App<Wry>) -> Result<(), Box<(dyn StdError + 'static)>> {
     let path_resolver = app.path_resolver();
 
@@ -46,12 +47,13 @@ fn setup(app: &mut App<Wry>) -> Result<(), Box<(dyn StdError + 'static)>> {
 
     // Attach the account manager to the app using 'AccountState'
     app.manage(AccountState::new(&app_dir));
-
+    app.manage(ResourceState::new(&app_dir));
     let app_handle = app.handle();
+
     // Spawn an async thread and use the app_handle to refresh active account.
     // TODO: Maybe emit event to display a toast telling the user what happened.
     tauri::async_runtime::spawn(async move {
-        let account_state: tauri::State<AccountState> = app_handle.state();
+        let account_state: tauri::State<AccountState> = app_handle.try_state().expect("`AccountState` should already be managed.");
         let mut account_manager = account_state.0.lock().await;
         match account_manager.deserialize_accounts() {
             Ok(_) => {}
@@ -61,7 +63,7 @@ fn setup(app: &mut App<Wry>) -> Result<(), Box<(dyn StdError + 'static)>> {
 
                 if let Err(error) = redirect(&app_handle, "login") {
                     error!("{}", error);
-                } 
+                }
                 return;
             }
         }
@@ -73,19 +75,27 @@ fn setup(app: &mut App<Wry>) -> Result<(), Box<(dyn StdError + 'static)>> {
                 // FIXME: Dont just unwrap, give user any auth errors.
                 let account = validation_result.unwrap();
                 account_manager.add_and_activate_account(account);
-            },
+
+                match account_manager.serialize_accounts() {
+                    Ok(_) => {}
+                    Err(err) => warn!("Could not properly serialize account information: {}", err),
+                }
+            }
             None => {
                 if let Err(error) = redirect(&app_handle, "login") {
                     error!("{}", error);
                 }
-            },
+            }
         }
     });
     Ok(())
 }
 
-/// Callback for when a window is redirected to 'autmc://' 
-fn autmc_uri_scheme(app_handle: &AppHandle<Wry>, request: &Request) -> Result<Response, Box<dyn std::error::Error>> {
+/// Callback for when a window is redirected to 'autmc://'
+fn autmc_uri_scheme(
+    app_handle: &AppHandle<Wry>,
+    request: &Request,
+) -> Result<Response, Box<dyn std::error::Error>> {
     info!("Retrieved request to custom uri scheme 'autmc://'");
     if let Some(window) = app_handle.get_window("login") {
         // Neither of the following should be possible in this instance.
@@ -109,6 +119,7 @@ fn autmc_uri_scheme(app_handle: &AppHandle<Wry>, request: &Request) -> Result<Re
 
         // Save account to account manager.
         account_manager.add_and_activate_account(account);
+
         match account_manager.serialize_accounts() {
             Ok(_) => {}
             Err(err) => warn!("Could not properly serialize account information: {}", err),
@@ -125,6 +136,7 @@ fn init_logger(log_dir: &PathBuf) -> Result<(), fern::InitError> {
     if !log_dir.is_dir() {
         fs::create_dir(&log_dir)?;
     }
+    purge_old_logs(&log_dir)?;
     let log_path = log_dir.join(format!("launcher_log_{}.log", datetime));
     fern::Dispatch::new()
         .format(|out, message, record| {
@@ -141,5 +153,16 @@ fn init_logger(log_dir: &PathBuf) -> Result<(), fern::InitError> {
         .chain(std::io::stdout())
         .chain(fern::log_file(log_path.as_os_str())?)
         .apply()?;
+    Ok(())
+}
+
+fn purge_old_logs(log_dir: &Path) -> Result<(), std::io::Error> {
+    let file_paths = fs::read_dir(log_dir)?;
+    println!("{:#?}", file_paths);
+
+    // FIXME: Sorted in reverse order.
+    let mut dir_entries = file_paths.filter_map(|path| path.ok()).collect::<Vec<_>>();
+    dir_entries.sort_by_key(|key| key.file_name());
+    println!("{:#?}", dir_entries);
     Ok(())
 }

@@ -1,11 +1,11 @@
 <script lang="ts">
-    import { listen } from '@tauri-apps/api/event'
+    import { listen } from "@tauri-apps/api/event"
     import { invoke } from "@tauri-apps/api/tauri";
     import { link } from "svelte-navigator";
     import MenuButton from "./MenuButton.svelte";
 
     function microsoftLogin() {
-        invoke('show_microsoft_login_page').catch((err) => console.log(err));
+        invoke("show_microsoft_login_page").catch((err) => console.log(err));
     }
 </script>
 

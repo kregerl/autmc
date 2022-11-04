@@ -4,6 +4,7 @@
     import { link, Router, Route, Link, navigate } from "svelte-navigator";
     import Login from './components/Login.svelte';
     import Home from "./components/Home.svelte";
+    import NewInstance from "./components/NewInstance.svelte";
     import { invoke } from '@tauri-apps/api/tauri';
 
     // const unlisten =  listen("auth_result", (event) => {
@@ -23,6 +24,7 @@
     <Router>
         <Route path="/login" component={Login}/>
         <Route path="/" component={Home}/>
+        <Route path="/new-instance" component={NewInstance}/>
     </Router>
 </main>
 
