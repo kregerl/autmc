@@ -16,7 +16,7 @@ use tauri::{
     App, AppHandle, Manager, Wry,
 };
 use auth::{authenticate, show_microsoft_login_page, redirect, validate_account, AccountState, AuthMode};
-use loader::{obtain_manifests, ResourceState};
+use loader::{obtain_manifests, obtain_version, ResourceState};
 
 fn main() {
     tauri::Builder::default()
@@ -28,7 +28,7 @@ fn main() {
             }
             _ => {}
         })
-        .invoke_handler(tauri::generate_handler![show_microsoft_login_page, obtain_manifests])
+        .invoke_handler(tauri::generate_handler![show_microsoft_login_page, obtain_manifests, obtain_version])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
@@ -53,6 +53,14 @@ fn setup(app: &mut App<Wry>) -> Result<(), Box<(dyn StdError + 'static)>> {
     // Spawn an async thread and use the app_handle to refresh active account.
     // TODO: Maybe emit event to display a toast telling the user what happened.
     tauri::async_runtime::spawn(async move {
+        // Download manifests into the resource manager
+        let resource_state: tauri::State<ResourceState> = app_handle.try_state().expect("`ResourceState` should already be managed.");
+        let mut resource_manager = resource_state.0.lock().await;
+        match resource_manager.download_manifests().await {
+            Ok(_) => {},
+            Err(error) => error!("Manifest Error: {:#?}", error),
+        }
+
         let account_state: tauri::State<AccountState> = app_handle.try_state().expect("`AccountState` should already be managed.");
         let mut account_manager = account_state.0.lock().await;
         match account_manager.deserialize_accounts() {
@@ -74,8 +82,11 @@ fn setup(app: &mut App<Wry>) -> Result<(), Box<(dyn StdError + 'static)>> {
                 let validation_result = validate_account(active_account).await;
                 // FIXME: Dont just unwrap, give user any auth errors.
                 let account = validation_result.unwrap();
+                // Save account to account manager.
                 account_manager.add_and_activate_account(account);
 
+              
+                
                 match account_manager.serialize_accounts() {
                     Ok(_) => {}
                     Err(err) => warn!("Could not properly serialize account information: {}", err),
@@ -114,7 +125,7 @@ fn autmc_uri_scheme(
         // FIXME: Dont just unwrap, give user any auth errors.
         let account = res.unwrap();
 
-        let account_state: tauri::State<AccountState> = handle.state();
+        let account_state: tauri::State<AccountState> = handle.try_state().expect("`AccountState` should already be managed.");
         let mut account_manager = account_state.0.lock().await;
 
         // Save account to account manager.

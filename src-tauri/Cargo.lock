@@ -71,6 +71,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "fern",
+ "indexmap",
  "keyring",
  "log",
  "phf 0.11.1",
