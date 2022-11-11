@@ -70,7 +70,7 @@ fn setup(app: &mut App<Wry>) -> Result<(), Box<(dyn StdError + 'static)>> {
                 info!("No account.json exists!");
 
                 if let Err(error) = redirect(&app_handle, "login") {
-                    error!("{}", error);
+                    error!("{}", error.to_string());
                 }
                 return;
             }
@@ -92,7 +92,7 @@ fn setup(app: &mut App<Wry>) -> Result<(), Box<(dyn StdError + 'static)>> {
             }
             None => {
                 if let Err(error) = redirect(&app_handle, "login") {
-                    error!("{}", error);
+                    error!("{}", error.to_string());
                 }
             }
         }

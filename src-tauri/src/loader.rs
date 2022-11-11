@@ -1,13 +1,13 @@
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
-    sync::Arc, io::{self, Write, BufReader}, fs::{File, self}, string::FromUtf8Error,
+    sync::Arc, io::{self, Write, BufReader, Read}, fs::{File, self}, string::FromUtf8Error, time::Instant
 };
 use bytes::Bytes;
+use crypto::{sha1::Sha1, digest::Digest};
 use indexmap::IndexMap;
-use log::info;
+use log::{info, error};
 use serde::{de::{Visitor, SeqAccess, Error}, Deserialize, Deserializer, Serialize};
-use sha1::{Digest, Sha1};
 use tauri::{async_runtime::Mutex, AppHandle, Manager, State, Wry};
 
 const VANILLA_MANIFEST_URL: &str =
@@ -66,7 +66,8 @@ pub enum ManifestError {
     Utf8DeserializationError(FromUtf8Error),
     JsonSerializationError(serde_json::Error),
     VersionRetrievalError(String),
-    ResourceError(String)
+    ResourceError(String),
+    InvalidFileDownload(String)
 }
 
 impl Serialize for ManifestError {
@@ -81,6 +82,7 @@ impl Serialize for ManifestError {
             ManifestError::JsonSerializationError(error) => serializer.serialize_str(&error.to_string()),
             ManifestError::VersionRetrievalError(error) => serializer.serialize_str(&error),
             ManifestError::ResourceError(error) => serializer.serialize_str(&error),
+            ManifestError::InvalidFileDownload(error) => serializer.serialize_str(&error),
         }
     }
 }
@@ -155,8 +157,8 @@ fn string_or_strings_as_vec<'de, D>(deserializer: D) -> Result<Vec<String>, D::E
         fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error> where A: SeqAccess<'de> {
             let mut vec: Vec<String> = Vec::new();
 
-            while let Some(elem) = seq.next_element::<&str>()? {
-                vec.push(elem.into());
+            while let Some(elem) = seq.next_element::<String>()? {
+                vec.push(elem);
             }
             Ok(vec)
         }
@@ -267,6 +269,12 @@ struct VanillaVersion {
     version_type: String,
 }
 
+#[derive(Debug)]
+enum JarType {
+    Client,
+    Server
+}
+
 // async fn obtain_vanilla_manifest() -> ManifestResult<VanillaManifest> {
 //     let client = reqwest::Client::new();
 //     let response = client.get(VANILLA_MANIFEST_URL).send().await?;
@@ -281,18 +289,42 @@ async fn obtain_vanilla_version(url: &str) -> ManifestResult<Bytes> {
     Ok(response.bytes().await?)
 }
 
-async fn obtain_library_jar_bytes(url: &str) -> ManifestResult<Bytes> {
+/// Download the bytes for a file at the specified `url`
+async fn obtain_file_bytes(url: &str) -> ManifestResult<Bytes> {
     let client = reqwest::Client::new();
     let response = client.get(url).send().await?;
     Ok(response.bytes().await?)
 }
 
+/// Validates that the hash of `bytes` matches the `valid_hash`
 fn validate_hash(bytes: &Bytes, valid_hash: &str) -> bool {
     let mut hasher = Sha1::new();
-    hasher.update(bytes);
-    let result = hasher.finalize();
-    println!("Hasher Result: {:#?}", result);
-    false
+    hasher.input(bytes);
+    let result = hasher.result_str();
+    result == valid_hash
+}
+
+/// Validates that the `path` exists and that the hash of it matches `valid_hash`
+fn validate_file_hash(path: &Path, valid_hash: &str) -> bool {
+    if !path.exists() {
+        return false;
+    }
+    let result = read_bytes_from_file(path);
+    if let Ok(bytes) = result {
+        let valid = validate_hash(&bytes, &valid_hash);
+        info!("REMOVEME: Is file valid: {}", valid);
+        valid
+    } else {
+        false
+    }
+}
+
+fn read_bytes_from_file(path: &Path) -> ManifestResult<Bytes> {
+    let mut file = File::open(&path)?;
+    let metadata = file.metadata()?;
+    let mut buffer = vec![0; metadata.len() as usize];
+    file.read(&mut buffer)?;
+    Ok(Bytes::from(buffer))
 }
 
 #[tauri::command]
@@ -316,7 +348,9 @@ pub async fn obtain_version(selected: String, app_handle: AppHandle<Wry>) -> Man
     let version = resource_manager.download_vanilla_version(&selected).await?;
 
     resource_manager.download_libraries(&version.libraries).await?;
-    info!("Completed. Got version: {:#?}", version);
+    
+    resource_manager.download_game_jar(JarType::Client, &version.downloads.client, &version.id).await?;
+
     Ok(())
 }
 
@@ -378,13 +412,14 @@ impl ResourceManager {
     async fn download_vanilla_version(&self, version_id: &str) -> ManifestResult<VanillaVersion> {
         if let Some(manifest) = &self.vanilla_manifest {
             if let Some(manifest_version) = manifest.versions.get(version_id) {
-                if self.has_version_cached(version_id) {
-                    // TODO: Check that the hash of the downloaded file is the same as  the hash in the manifest.
+                // If there is a version json cached and its hash matches the manifest hash, load it.
+                if validate_file_hash(&self.get_version_file_path(version_id), &manifest_version.sha1) {
                     info!("Loading vanilla version `{}` from disk.", version_id);
                     self.deserialize_cached_vanilla_version(version_id)
                 } else {
                     info!("Requesting vanilla version from {}", &manifest_version.url);
                     let bytes = obtain_vanilla_version(&manifest_version.url).await?;
+                    validate_hash(&bytes, "");
 
                     info!("REMOVEME: Serializing vanilla version {}", version_id);
                     self.serialize_version(&version_id, &bytes)?;
@@ -392,6 +427,7 @@ impl ResourceManager {
                     info!("REMOVEME: Reading vanilla version struct from string");
                     let byte_str = String::from_utf8(bytes.to_vec())?;
                     let vanilla_version = serde_json::from_str::<VanillaVersion>(&byte_str)?;
+                    info!("Finished downloading version `{}`", version_id);
                     Ok(vanilla_version)
                 }
             } else {
@@ -406,29 +442,67 @@ impl ResourceManager {
     }
 
     async fn download_libraries(&self, libraries: &[Library]) -> ManifestResult<()> {
+        info!("Downloading {} libraries...", libraries.len());
         if !self.libraries_dir.exists() {
             fs::create_dir(&self.libraries_dir)?;
         }
+        let start = Instant::now();
         for library in libraries {
             let artifact = &library.downloads.artifact;
             let path = self.libraries_dir.join(&artifact.path);
             // Create all parent dirs if they dont already exist.
             let parent_dir = path.parent().unwrap();
             fs::create_dir_all(parent_dir)?;
-            
-            // Write bytes into the jar file specified.
-            let mut file = File::open(path)?;
-            let bytes = obtain_library_jar_bytes(&artifact.metadata.url).await?;
+
+            if path.exists() && validate_file_hash(&path, &artifact.metadata.sha1) {
+                info!("Library {} already exists, skipping download.", library.name);
+                continue;
+            } else {
+                info!("Downloading library {}", &library.name);
+                // Write bytes into the jar file specified.
+                let bytes = obtain_file_bytes(&artifact.metadata.url).await?;
+                if !validate_hash(&bytes, &artifact.metadata.sha1) {
+                    let err = format!("Error downloading {}, invalid hash.", &library.name);
+                    error!("{}", err);
+                    return Err(ManifestError::InvalidFileDownload(err));
+                }
+                let mut file = File::create(path)?;
+                file.write_all(&bytes)?;
+            }
+        }
+        info!("Successfully downloaded libraries in {}ms", start.elapsed().as_millis());
+        Ok(())
+    }
+
+    /// Downloads a game jar (client or server) to ${app_dir}/versions/(client|server)/${version_id}.jar
+    async fn download_game_jar(&self, jar_type: JarType, download: &DownloadMetadata, version_id: &str) -> ManifestResult<()> {
+        let jar_str = match jar_type {
+            JarType::Client => "client",
+            JarType::Server => "server",
+        };
+        // Create all dirs in path to file location.
+        let dir_path = &self.version_dir.join(&jar_str);
+        fs::create_dir_all(dir_path)?;
+
+        let path = dir_path.join(format!("{}.jar", version_id));
+        // Check if the file exists and the hash matches the download's sha1.
+        if !validate_file_hash(&path, &download.sha1) {
+            info!("Downloading {} {} jar", version_id, jar_str);
+            let bytes = obtain_file_bytes(&download.url).await?;
+            if !validate_hash(&bytes, &download.sha1) {
+                let err = format!("Error downloading {} {} jar, invalid hash.", version_id, jar_str); 
+                error!("{}", err);
+                return Err(ManifestError::InvalidFileDownload(err));
+            }
+            let mut file = File::create(path)?;
             file.write_all(&bytes)?;
-            validate_hash(&bytes, &artifact.metadata.sha1);
         }
         Ok(())
     }
 
-    /// Checks to see if ${app_dir}/versions/${version_id}.json exists.
-    fn has_version_cached(&self, version_id: &str) -> bool {
-        let version_file_path = self.version_dir.join(format!("{}.json", version_id));
-        version_file_path.exists()
+    /// Gets the path to a version json given a `version_id`
+    fn get_version_file_path(&self, version_id: &str) -> PathBuf {
+        self.version_dir.join(format!("{}.json", version_id))
     }
 
     /// Deserialize a cached vanilla version json from disk.
@@ -436,7 +510,8 @@ impl ResourceManager {
         let path = self.version_dir.join(format!("{}.json", version_id));
         let file = File::open(path)?;
         let reader = BufReader::new(file);
-        Ok(serde_json::from_reader::<BufReader<File>, VanillaVersion>(reader)?)
+        let version  = serde_json::from_reader::<BufReader<File>, VanillaVersion>(reader)?;
+        Ok(version)
     }
 
     /// Seralize a vanilla version from bytes to disk.
