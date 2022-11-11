@@ -85,8 +85,6 @@ fn setup(app: &mut App<Wry>) -> Result<(), Box<(dyn StdError + 'static)>> {
                 // Save account to account manager.
                 account_manager.add_and_activate_account(account);
 
-              
-                
                 match account_manager.serialize_accounts() {
                     Ok(_) => {}
                     Err(err) => warn!("Could not properly serialize account information: {}", err),
