@@ -384,7 +384,7 @@ impl AccountManager {
     pub fn add_and_activate_account(&mut self, account: Account) {
         self.active = Some(account.uuid.clone());
         self.add_account(account);
-        info!("Added and activated account: {:#?}", &self.active);
+        info!("Added and activated account: {}", self.active.as_ref().unwrap());
     }
 
     /// Adds an account, overwriting any existing accounts with the same uuid.

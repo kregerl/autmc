@@ -3,3 +3,5 @@
 /json-examples/
 .DS_Store
 .vscode
+.tmp/*
+.tmp

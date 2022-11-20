@@ -1,17 +1,23 @@
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
-    sync::Arc, io::{self, Write, BufReader, Read}, fs::{File, self}, string::FromUtf8Error, time::Instant
+    sync::Arc, io::{self, Write, BufReader, Read}, fs::{File, self}, string::FromUtf8Error, time::Instant, env, mem::size_of
 };
 use bytes::Bytes;
 use crypto::{sha1::Sha1, digest::Digest};
 use indexmap::IndexMap;
-use log::{info, error};
-use serde::{de::{Visitor, SeqAccess, Error}, Deserialize, Deserializer, Serialize};
+use log::{info, error, warn};
+use serde::{de::{Visitor, SeqAccess, Error, DeserializeOwned}, Deserialize, Deserializer, Serialize};
 use tauri::{async_runtime::Mutex, AppHandle, Manager, State, Wry};
+
+use crate::downloader::{Downloadable, download_all_callback, DownloadError};
 
 const VANILLA_MANIFEST_URL: &str =
     "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
+
+/// The url to download assets from. Uses the hash as the endpoint: `...net/<first 2 hex letters of hash>/<whole hash>`
+const VANILLA_ASSET_BASE_URL: &str = "http://resources.download.minecraft.net";
+const JAVA_VERSION_MANIFEST: &str = "https://launchermeta.mojang.com/v1/products/java-runtime/2ec0cc96c44e5a76b9c8b7c39df7210883d12871/all.json";
 
 /// We dont really care about the latest version since we preserve json order.
 // #[derive(Debug, Deserialize)]
@@ -180,6 +186,61 @@ struct DownloadMetadata {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+struct Asset {
+    path: String,
+    hash: String,
+    size: u32
+}
+
+impl Downloadable for Asset {
+    fn name(&self) -> &str {
+        &self.path
+    }
+
+    fn url(&self) -> String {
+        let first_two_chars = &self.hash.split_at(2);
+        let url = format!("{}/{}/{}", VANILLA_ASSET_BASE_URL, &first_two_chars.0, &self.hash);
+        url
+    }
+
+    fn hash(&self) -> &str {
+        &self.hash
+    }
+
+    fn path(&self, base_dir: &Path) -> PathBuf {
+        base_dir.join(&self.path)
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct AssetObject {
+    #[serde(deserialize_with = "to_asset_vec")]
+    objects: Vec<Asset>
+}
+
+fn to_asset_vec<'de, D>(deserializer: D) -> Result<Vec<Asset>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Debug, Deserialize)]
+    struct TmpAsset {
+        hash: String,
+        size: u32
+    }
+
+    let asset_map: HashMap<String, TmpAsset> = Deserialize::deserialize(deserializer)?;
+    let mut result = Vec::with_capacity(asset_map.len());
+    for (path, tmp_asset) in asset_map {
+        result.push(Asset {
+            path,
+            hash: tmp_asset.hash,
+            size: tmp_asset.size
+        });
+    }
+    Ok(result)
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 struct AssetIndex {
     id: String,
     #[serde(flatten)]
@@ -216,11 +277,30 @@ struct LibraryDownloads {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-struct Library {
+pub struct Library {
     downloads: LibraryDownloads,
     name: String,
     rules: Option<Vec<Rule>>,
 }
+
+impl Downloadable for Library {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn url(&self) -> String {
+        self.downloads.artifact.metadata.url.to_owned()
+    }
+
+    fn hash(&self) -> &str {
+        &self.downloads.artifact.metadata.sha1
+    }
+
+    fn path(&self, base_dir: &Path) -> PathBuf {
+        base_dir.join(&self.downloads.artifact.path)
+    }
+}
+
 
 #[derive(Debug, Deserialize, Serialize)]
 struct ClientLoggerFile {
@@ -238,6 +318,7 @@ struct ClientLogger {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+// TODO: What about server logging?
 struct Logging {
     client: ClientLogger,
 }
@@ -275,22 +356,159 @@ enum JarType {
     Server
 }
 
-// async fn obtain_vanilla_manifest() -> ManifestResult<VanillaManifest> {
-//     let client = reqwest::Client::new();
-//     let response = client.get(VANILLA_MANIFEST_URL).send().await?;
+#[derive(Debug, Deserialize)]
+struct JavaRuntimeAvailability {
+    group: u32,
+    progress: u32
+}
 
-//     let manifest = response.json::<VanillaManifest>().await?;
-//     Ok(manifest)
-// }
+#[derive(Debug, Deserialize)]
+struct JavaRuntimeVesion {
+    name: String,
+    released: String,
+}
 
-async fn obtain_vanilla_version(url: &str) -> ManifestResult<Bytes> {
+#[derive(Debug, Deserialize)]
+struct JavaRuntime {
+    availability: JavaRuntimeAvailability,
+    manifest: DownloadMetadata,
+    version: JavaRuntimeVesion,
+}
+
+#[derive(Debug, Deserialize)]
+struct JavaManifest {
+    #[serde(rename = "java-runtime-alpha", deserialize_with = "deserialize_java_runtime")]
+    java_runtime_alpha: Option<JavaRuntime>,
+    #[serde(rename = "java-runtime-beta", deserialize_with = "deserialize_java_runtime")]
+    java_runtime_beta: Option<JavaRuntime>,
+    #[serde(rename = "java-runtime-gamma", deserialize_with = "deserialize_java_runtime")]
+    java_runtime_gamma: Option<JavaRuntime>,
+    #[serde(rename = "jre-legacy", deserialize_with = "deserialize_java_runtime")]
+    jre_legacy: Option<JavaRuntime>,
+    #[serde(rename = "minecraft-java-exe", deserialize_with = "deserialize_java_runtime")]
+    minecraft_java_exe: Option<JavaRuntime>,
+}
+
+fn deserialize_java_runtime<'de, D>(deserializer: D) -> Result<Option<JavaRuntime>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+
+    let runtimes: Vec<JavaRuntime> = Deserialize::deserialize(deserializer)?;
+    if runtimes.len() > 1 {
+        warn!("Got more java runtimes than expected. Expected 1 but got {}", runtimes.len());
+        Ok(None)
+    } else {
+        // We know we have atleast one element
+        Ok(runtimes.into_iter().nth(0))
+    }
+}
+
+
+#[derive(Debug, Deserialize)]
+struct JavaVersionManifest {
+    versions: HashMap<String, JavaManifest>,
+}
+
+#[cfg(test)]
+pub async fn download_java_version_manifest() -> ManifestResult<()> {
+    let client = reqwest::Client::new();
+    let response = client.get(JAVA_VERSION_MANIFEST).send().await?;
+    let java_version_manifest: HashMap<String, JavaManifest> = response.json().await?;
+    println!("{:#?}", java_version_manifest);
+    Ok(())
+}
+
+#[cfg(test)]
+pub async fn download_java_runtime_manifest(url: &str) -> ManifestResult<()> {
     let client = reqwest::Client::new();
     let response = client.get(url).send().await?;
-    Ok(response.bytes().await?)
+    let java_runtime_manifest: JavaRuntimeManifest = response.json().await?;
+    println!("{:#?}", java_runtime_manifest);
+    Ok(())
+}
+
+#[derive(Debug, Deserialize)]
+struct JavaRuntimeDownload {
+    lzma: Option<DownloadMetadata>,
+    raw: DownloadMetadata,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type")]
+enum JavaRuntimeType {
+    #[serde(rename = "file")]
+    File {
+        path: String,
+        downloads: JavaRuntimeDownload,
+        executable: bool
+    },
+    #[serde(rename = "directory")]
+    Directory(String),
+    #[serde(rename = "link")]
+    Symlink {
+        path: String,
+        target: String
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct JavaRuntimeManifest {
+    #[serde(deserialize_with = "to_java_runtime_vec")]
+    files: Vec<JavaRuntimeType>,
+}
+
+fn to_java_runtime_vec<'de, D>(deserializer: D) -> Result<Vec<JavaRuntimeType>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Debug, Deserialize)]
+    #[serde(tag = "type")]
+    enum TmpJavaRuntimeType {
+        #[serde(rename = "file")]
+        File {
+            downloads: JavaRuntimeDownload,
+            executable: bool
+        },
+        #[serde(rename = "directory")]
+        Directory,
+        #[serde(rename = "link")]
+        Symlink {
+            target: String
+        }
+    }
+    let x =  Deserialize::deserialize(deserializer)?;
+    println!("{:#?}", x);
+    let jrt_map: HashMap<String, TmpJavaRuntimeType> = x;
+    println!("HERE: {:#?}", jrt_map);
+    let mut result = Vec::with_capacity(jrt_map.len());
+    for (path, tmp_jrt) in jrt_map {
+        result.push(match tmp_jrt {
+            TmpJavaRuntimeType::File { downloads, executable } => JavaRuntimeType::File {
+                path,
+                downloads,
+                executable
+            },  
+            TmpJavaRuntimeType::Directory => JavaRuntimeType::Directory(path),
+            TmpJavaRuntimeType::Symlink { target } => JavaRuntimeType::Symlink{
+                path,
+                target
+            },
+        });
+    }
+    Ok(result)
+}
+
+async fn download_json_object<T>(url: &str) -> reqwest::Result<T> 
+where T: DeserializeOwned
+{
+    let client = reqwest::Client::new();
+    let response = client.get(url).send().await?;
+    Ok(response.json().await?)
 }
 
 /// Download the bytes for a file at the specified `url`
-async fn obtain_file_bytes(url: &str) -> ManifestResult<Bytes> {
+async fn download_bytes_from_url(url: &str) -> reqwest::Result<Bytes> {
     let client = reqwest::Client::new();
     let response = client.get(url).send().await?;
     Ok(response.bytes().await?)
@@ -305,6 +523,7 @@ fn validate_hash(bytes: &Bytes, valid_hash: &str) -> bool {
 }
 
 /// Validates that the `path` exists and that the hash of it matches `valid_hash`
+//TODO: Use this when a `strict` setting is enabled.
 fn validate_file_hash(path: &Path, valid_hash: &str) -> bool {
     if !path.exists() {
         return false;
@@ -319,12 +538,91 @@ fn validate_file_hash(path: &Path, valid_hash: &str) -> bool {
     }
 }
 
+/// Reads and returns bytes from the file specified in `path`
 fn read_bytes_from_file(path: &Path) -> ManifestResult<Bytes> {
     let mut file = File::open(&path)?;
     let metadata = file.metadata()?;
     let mut buffer = vec![0; metadata.len() as usize];
     file.read(&mut buffer)?;
     Ok(Bytes::from(buffer))
+}
+
+/// Checks if a single rule matches every case. 
+/// Returns true when an allow rule matches or a disallow rule does not match.
+fn rule_matches(rule: &Rule) -> bool {
+    match &rule.rule_type {
+        RuleType::Features(_feature_rules) => todo!("Implement feature rules for arguments"),
+        RuleType::OperatingSystem(os_rules) => {
+            // Check if all the rules match the current system.
+            let mut rule_matches = false;
+            for (key, value) in os_rules {
+                match key.as_str() {
+                    "name" => {
+                        let os_type = env::consts::OS;
+                        if value == os_type || (os_type == "macos" && value == "osx") {
+                            rule_matches = true;
+                        }
+                    },
+                    "arch" => {
+                        let os_arch = env::consts::ARCH;
+                        if value == os_arch || (value == "x86" && os_arch == "x86_64") {
+                            rule_matches = true;
+                        }
+                    },
+                    _ => unimplemented!("Unknown rule map key: {}", key),
+                }
+            }
+            // Check if we allow or disallow this downloadable
+            match rule.action.as_str() {
+                "allow" => rule_matches,
+                "disallow" => !rule_matches,
+                _ => unimplemented!("Unknwon rule action: {}", rule.action),
+            }
+        },
+    }
+}
+
+fn rules_match(rules: &[Rule]) -> bool {
+    let mut result = false;
+    for rule in rules {
+        if rule_matches(rule) {
+            result = true;
+        } else {
+            return false;
+        }
+    }
+    result
+}
+
+// HACK: This key generation to get the java version is not optimal and could
+//       use to be redone. This uses architecture to map to known java manifest versions.
+//       If the manifest ever changes this function most likely needs to be updated. 
+fn determine_key_for_java_manifest<'a>(java_version_manifest_map: &HashMap<String, JavaManifest>) -> &'a str {
+    let os = env::consts::OS;
+    let key = if os == "macos" {
+        "mac-os"
+    } else {
+        os
+    };
+
+    if java_version_manifest_map.contains_key(key) {
+        return key;
+    }
+    let architecture = env::consts::ARCH;
+    match key {
+        "linux" => {
+            if architecture == "x86" {"linux-i386"} else {key}
+        },
+        "mac-os" => {
+            if architecture == "arm" {"mac-os-arm64"} else {key}
+        },
+        "windows" => {
+            if architecture == "x86" {"windows-x86"} 
+            else if architecture == "x86_64" {"windows-x64"} 
+            else {unreachable!("Unexpected windows architecture: {}", architecture)}
+        },
+        _ => {unreachable!("Unknown java version os: {}. Expected `linux`, `mac-os` or `windows`", key)},
+    }
 }
 
 #[tauri::command]
@@ -345,11 +643,37 @@ pub async fn obtain_version(selected: String, app_handle: AppHandle<Wry>) -> Man
         .expect("`ResourceState` should already be managed.");
     let resource_manager = resource_state.0.lock().await;
 
+    let start = Instant::now();
+
     let version = resource_manager.download_vanilla_version(&selected).await?;
 
-    resource_manager.download_libraries(&version.libraries).await?;
+    let libraries: Vec<Library> = version.libraries.into_iter().filter_map(|lib| {
+        // If we have any rules... 
+        if let Some(rules) = &lib.rules {
+            // and the rules dont match
+            if !rules_match(&rules) {
+                // remove
+                None
+            } else {
+                // Otherwise keep lib in download list
+                Some(lib)
+            }
+        } else {
+            // Otherwise keep lib in download list
+            Some(lib)
+        }
+    }).collect();
+
+    let lib_paths = resource_manager.download_libraries(&libraries).await?;
     
-    resource_manager.download_game_jar(JarType::Client, &version.downloads.client, &version.id).await?;
+    let game_jar_path = resource_manager.download_game_jar(JarType::Client, &version.downloads.client, &version.id).await?;
+
+    let java_path = resource_manager.download_java_version(&version.java_version.component, version.java_version.major_version).await?;
+
+    resource_manager.download_logging_configurations(&version.logging.client.file).await?;
+    
+    resource_manager.download_assets(&version.asset_index).await?;
+    info!("Finished download instance in {}ms", start.elapsed().as_millis());
 
     Ok(())
 }
@@ -367,17 +691,20 @@ pub struct ResourceManager {
     app_dir: PathBuf,
     version_dir: PathBuf,
     libraries_dir: PathBuf,
+    logging_dir: PathBuf,
+    asset_dir: PathBuf,
     vanilla_manifest: Option<VanillaManifest>,
     // TODO: Forge and Fabric manifests.
 }
 
-// TODO: Validate hashes when a version is selected.
 impl ResourceManager {
     pub fn new(app_dir: &Path) -> Self {
         Self {
             app_dir: app_dir.into(),
             version_dir: app_dir.join("versions"),
             libraries_dir: app_dir.join("libraries"),
+            logging_dir: app_dir.join("logging"),
+            asset_dir: app_dir.join("assets"),
             vanilla_manifest: None,
         }
     }
@@ -418,7 +745,7 @@ impl ResourceManager {
                     self.deserialize_cached_vanilla_version(version_id)
                 } else {
                     info!("Requesting vanilla version from {}", &manifest_version.url);
-                    let bytes = obtain_vanilla_version(&manifest_version.url).await?;
+                    let bytes = download_bytes_from_url(&manifest_version.url).await?;
                     validate_hash(&bytes, "");
 
                     info!("REMOVEME: Serializing vanilla version {}", version_id);
@@ -441,62 +768,134 @@ impl ResourceManager {
         }
     }
 
-    async fn download_libraries(&self, libraries: &[Library]) -> ManifestResult<()> {
+    async fn download_libraries(&self, libraries: &[Library]) -> ManifestResult<Vec<PathBuf>> {
         info!("Downloading {} libraries...", libraries.len());
         if !self.libraries_dir.exists() {
             fs::create_dir(&self.libraries_dir)?;
         }
-        let start = Instant::now();
-        for library in libraries {
-            let artifact = &library.downloads.artifact;
-            let path = self.libraries_dir.join(&artifact.path);
-            // Create all parent dirs if they dont already exist.
-            let parent_dir = path.parent().unwrap();
-            fs::create_dir_all(parent_dir)?;
 
-            if path.exists() && validate_file_hash(&path, &artifact.metadata.sha1) {
-                info!("Library {} already exists, skipping download.", library.name);
-                continue;
-            } else {
-                info!("Downloading library {}", &library.name);
-                // Write bytes into the jar file specified.
-                let bytes = obtain_file_bytes(&artifact.metadata.url).await?;
-                if !validate_hash(&bytes, &artifact.metadata.sha1) {
-                    let err = format!("Error downloading {}, invalid hash.", &library.name);
-                    error!("{}", err);
-                    return Err(ManifestError::InvalidFileDownload(err));
-                }
-                let mut file = File::create(path)?;
-                file.write_all(&bytes)?;
+        let start = Instant::now();
+        let x = download_all_callback(&libraries, &self.libraries_dir, |bytes, lib| {
+            // FIXME: Removing file hashing makes the downloads MUCH faster. Only because of a couple slow hashes, upwards of 1s each
+            if !validate_hash(&bytes, &lib.hash()) {
+                let err = format!("Error downloading {}, invalid hash.", &lib.url());
+                error!("{}", err);
+                return Err(DownloadError::InvalidFileHashError(err));
             }
-        }
+            let path = lib.path(&self.libraries_dir);
+            let mut file = File::create(&path)?;
+            file.write_all(&bytes)?;
+            Ok(())
+        }).await;
         info!("Successfully downloaded libraries in {}ms", start.elapsed().as_millis());
-        Ok(())
+        let mut file_paths: Vec<PathBuf> = Vec::with_capacity(libraries.len());
+        for lib in libraries {
+            file_paths.push(lib.path(&self.libraries_dir));
+        }
+        Ok(file_paths)
     }
 
     /// Downloads a game jar (client or server) to ${app_dir}/versions/(client|server)/${version_id}.jar
-    async fn download_game_jar(&self, jar_type: JarType, download: &DownloadMetadata, version_id: &str) -> ManifestResult<()> {
+    async fn download_game_jar(&self, jar_type: JarType, download: &DownloadMetadata, version_id: &str) -> ManifestResult<PathBuf> {
         let jar_str = match jar_type {
             JarType::Client => "client",
             JarType::Server => "server",
         };
         // Create all dirs in path to file location.
-        let dir_path = &self.version_dir.join(&jar_str);
+        let dir_path = &self.version_dir.join(version_id);
         fs::create_dir_all(dir_path)?;
 
-        let path = dir_path.join(format!("{}.jar", version_id));
+        let path = dir_path.join(format!("{}.jar", &jar_str));
+        let valid_hash = &download.sha1;
         // Check if the file exists and the hash matches the download's sha1.
-        if !validate_file_hash(&path, &download.sha1) {
+        if !validate_file_hash(&path, valid_hash) {
             info!("Downloading {} {} jar", version_id, jar_str);
-            let bytes = obtain_file_bytes(&download.url).await?;
-            if !validate_hash(&bytes, &download.sha1) {
+            let bytes = download_bytes_from_url(&download.url).await?;
+            if !validate_hash(&bytes, valid_hash) {
                 let err = format!("Error downloading {} {} jar, invalid hash.", version_id, jar_str); 
+                error!("{}", err);
+                return Err(ManifestError::InvalidFileDownload(err));
+            }
+            let mut file = File::create(&path)?;
+            file.write_all(&bytes)?;
+        }
+        Ok(path)
+    }
+
+    async fn download_java_version(&self, java_component: &str, _java_version: u32) -> ManifestResult<()> {
+        let java_version_manifest: JavaVersionManifest = download_json_object(JAVA_VERSION_MANIFEST).await?;
+        let manifest_key = determine_key_for_java_manifest(&java_version_manifest.versions);
+
+        let java_manifest = &java_version_manifest.versions.get(manifest_key).unwrap();
+        let runtime_opt = match java_component {
+            "java-runtime-alpha" => &java_manifest.java_runtime_alpha,
+            "java-runtime-beta" => &java_manifest.java_runtime_beta,
+            "java-runtime-gamma" => &java_manifest.java_runtime_gamma,
+            "jre-legacy" => &java_manifest.jre_legacy,
+            "minecraft-java-exe" => &java_manifest.minecraft_java_exe,
+            _ => unreachable!("No such runtime found for java component: {}", &java_component),
+        };
+        match runtime_opt {
+            Some(runtime) => {
+                // let runtime_manifest = &runtime.manifest;
+                self.download_java_from_runtime_manifest(&runtime);
+            },
+            None =>  {
+                let s = format!("Java runtime is empty for component {}", &java_component);
+                error!("{}", s);
+                //TODO: New error type?
+                return Err(ManifestError::VersionRetrievalError(s));
+            },
+        }
+
+
+        Ok(())
+    }
+
+    async fn download_java_from_runtime_manifest(&self, manifest: &JavaRuntime) -> ManifestResult<()> {
+        let version_manifest: JavaRuntimeManifest = download_json_object(&manifest.manifest.url).await?;
+
+        Ok(())
+    }
+
+    /// Downloads a logging configureation into ${app_dir}/logging/${logging_configuration.id}
+    async fn download_logging_configurations(&self, logging_file: &ClientLoggerFile) -> ManifestResult<()> {
+        fs::create_dir_all(&self.logging_dir)?;
+        let path = self.logging_dir.join(format!("{}", &logging_file.id));
+        let valid_hash = &logging_file.metadata.sha1;
+
+        if !validate_file_hash(&path, valid_hash) {
+            info!("Downloading logging configuration {}", logging_file.id);
+            let bytes = download_bytes_from_url(&logging_file.metadata.url).await?;
+            if !validate_hash(&bytes, valid_hash) {
+                let err = format!("Error downloading logging configuration {}, invalid hash.", logging_file.id); 
                 error!("{}", err);
                 return Err(ManifestError::InvalidFileDownload(err));
             }
             let mut file = File::create(path)?;
             file.write_all(&bytes)?;
         }
+        Ok(())
+    }
+
+    //TODO: This probably needs to change a little to support "legacy" versions < 1.7
+    async fn download_assets(&self, asset_index: &AssetIndex) -> ManifestResult<()> {
+        let asset_object: AssetObject = download_json_object(&asset_index.metadata.url).await?;
+        info!("Downloading {} assets", &asset_object.objects.len());
+
+        let start = Instant::now();
+
+        let x = download_all_callback(&asset_object.objects, &self.asset_dir, |bytes, asset| {
+            if !validate_hash(&bytes, &asset.hash()) {
+                let err = format!("Error downloading asset {}, invalid hash.", &asset.name()); 
+                error!("{}", err);
+                return Err(DownloadError::InvalidFileHashError(err));
+            }
+            let mut file = File::create(&asset.path(&self.asset_dir))?;
+            file.write_all(&bytes)?;
+            Ok(())
+        }).await;
+        info!("Finished downloading assets in {}ms - {:#?}", start.elapsed().as_millis(), &x);
         Ok(())
     }
 
@@ -520,7 +919,10 @@ impl ResourceManager {
         if !&self.version_dir.exists() {
             fs::create_dir(&self.version_dir)?;
         }
-        let path = &self.version_dir.join(format!("{}.json", version_id));
+        let dir_path = &self.version_dir.join(version_id);
+        fs::create_dir_all(dir_path)?;
+
+        let path = &dir_path.join(format!("{}.json", version_id));
         let mut file = File::create(path)?;
         file.write_all(bytes)?;
         Ok(())

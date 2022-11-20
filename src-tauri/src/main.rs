@@ -1,9 +1,13 @@
 #![cfg_attr(
     all(not(debug_assertions), target_os = "linux"),
-    windows_subsystem = "linux"
+    windows_subsystem = "windows"
 )]
+
 mod auth;
+mod downloader;
 mod loader;
+#[cfg(test)]
+mod tests;
 
 use log::{error, info, warn};
 use serde::ser::StdError;
@@ -15,9 +19,11 @@ use tauri::{
     http::{Request, Response, ResponseBuilder},
     App, AppHandle, Manager, Wry,
 };
+use regex::Regex;
 use auth::{authenticate, show_microsoft_login_page, redirect, validate_account, AccountState, AuthMode};
 use loader::{obtain_manifests, obtain_version, ResourceState};
 
+const MAX_LOGS: usize = 20;
 fn main() {
     tauri::Builder::default()
         .setup(setup)
@@ -37,10 +43,10 @@ fn main() {
 fn setup(app: &mut App<Wry>) -> Result<(), Box<(dyn StdError + 'static)>> {
     let path_resolver = app.path_resolver();
 
-    let app_dir = path_resolver.app_dir().unwrap();
+    let app_dir = path_resolver.app_config_dir().unwrap();
     fs::create_dir_all(&app_dir)?;
 
-    let log_dir = path_resolver.log_dir().unwrap();
+    let log_dir = path_resolver.app_log_dir().unwrap();
     fs::create_dir_all(&log_dir)?;
     init_logger(&log_dir)?;
     info!("Starting Autmc");
@@ -139,7 +145,6 @@ fn autmc_uri_scheme(
 }
 
 /// Sets up the logger and saves launcher logs to ${app_dir}/logs/launcher_log_${datetime}.log
-// TODO: Check historical logs and remove oldest, keeping only latest (20?) logs
 fn init_logger(log_dir: &PathBuf) -> Result<(), fern::InitError> {
     let datetime = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S");
     if !log_dir.is_dir() {
@@ -147,6 +152,7 @@ fn init_logger(log_dir: &PathBuf) -> Result<(), fern::InitError> {
     }
     purge_old_logs(&log_dir)?;
     let log_path = log_dir.join(format!("launcher_log_{}.log", datetime));
+    let latest_log_path = log_dir.join("latest.log");
     fern::Dispatch::new()
         .format(|out, message, record| {
             out.finish(format_args!(
@@ -158,20 +164,44 @@ fn init_logger(log_dir: &PathBuf) -> Result<(), fern::InitError> {
                 message
             ))
         })
-        .level(log::LevelFilter::Debug)
+        .level(log::LevelFilter::Info)
         .chain(std::io::stdout())
         .chain(fern::log_file(log_path.as_os_str())?)
+        .chain(fern::log_file(latest_log_path.as_os_str() )?)
         .apply()?;
     Ok(())
 }
 
+/// Removes `old` logs, keeping only the latest MAX_LOGS in the log directory. 
 fn purge_old_logs(log_dir: &Path) -> Result<(), std::io::Error> {
     let file_paths = fs::read_dir(log_dir)?;
     println!("{:#?}", file_paths);
 
     // FIXME: Sorted in reverse order.
-    let mut dir_entries = file_paths.filter_map(|path| path.ok()).collect::<Vec<_>>();
-    dir_entries.sort_by_key(|key| key.file_name());
-    println!("{:#?}", dir_entries);
+    let regex = Regex::new("^launcher_log_[0-9]{4}-[0-9]{2}-[0-9]{2}T([0-9]{2}:){2}[0-9]{2}.log$");
+    match regex {
+        Ok(rexp) => {
+            let mut dir_entries = file_paths
+            .filter_map(|path| 
+                path.ok()
+            )
+            .filter_map(|entry| {
+                if rexp.is_match(entry.file_name().to_str().unwrap()) {
+                    Some(entry)
+                } else {
+                    None
+                }
+            }).collect::<Vec<_>>();
+            dir_entries.sort_by_key(|key| key.file_name());
+            dir_entries.reverse();
+            if dir_entries.len() > MAX_LOGS {
+                let removable_entries = &dir_entries[MAX_LOGS..];
+                for entry in removable_entries {
+                    fs::remove_file(log_dir.join(entry.file_name()))?;
+                }
+            }
+        },
+        Err(err) => warn!("{}", err),
+    }
     Ok(())
 }
