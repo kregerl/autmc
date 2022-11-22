@@ -164,7 +164,7 @@ fn init_logger(log_dir: &PathBuf) -> Result<(), fern::InitError> {
                 message
             ))
         })
-        .level(log::LevelFilter::Info)
+        .level(log::LevelFilter::Debug)
         .chain(std::io::stdout())
         .chain(fern::log_file(log_path.as_os_str())?)
         .chain(fern::log_file(latest_log_path.as_os_str() )?)

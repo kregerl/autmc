@@ -1,14 +1,14 @@
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
-    sync::Arc, io::{self, Write, BufReader, Read}, fs::{File, self}, string::FromUtf8Error, time::Instant, env, mem::size_of
+    sync::Arc, io::{self, Write, BufReader, Read}, fs::{File, self}, string::FromUtf8Error, time::Instant, env, mem::size_of, ffi::OsStr
 };
 use bytes::Bytes;
 use crypto::{sha1::Sha1, digest::Digest};
 use indexmap::IndexMap;
-use log::{info, error, warn};
+use log::{info, error, warn, debug};
 use serde::{de::{Visitor, SeqAccess, Error, DeserializeOwned}, Deserialize, Deserializer, Serialize};
-use tauri::{async_runtime::Mutex, AppHandle, Manager, State, Wry};
+use tauri::{async_runtime::Mutex, AppHandle, Manager, State, Wry, api::version};
 
 use crate::downloader::{Downloadable, download_all_callback, DownloadError};
 
@@ -404,12 +404,6 @@ where
     }
 }
 
-
-#[derive(Debug, Deserialize)]
-struct JavaVersionManifest {
-    versions: HashMap<String, JavaManifest>,
-}
-
 #[cfg(test)]
 pub async fn download_java_version_manifest() -> ManifestResult<()> {
     let client = reqwest::Client::new();
@@ -435,18 +429,40 @@ struct JavaRuntimeDownload {
 }
 
 #[derive(Debug, Deserialize)]
+struct JavaRuntimeFile {
+    path: String,
+    downloads: JavaRuntimeDownload,
+    executable: bool,
+}
+
+impl Downloadable for JavaRuntimeFile {
+    fn name(&self) -> &str {
+        &self.path
+    }
+
+    // TODO: Would be better to use lzma download instead.
+    fn url(&self) -> String {
+        self.downloads.raw.url.to_owned()
+    }
+
+    fn hash(&self) -> &str {
+        &self.downloads.raw.sha1
+    }
+
+    fn path(&self, base_dir: &Path) -> PathBuf {
+        base_dir.join(&self.path)
+    }
+}
+
+#[derive(Debug, Deserialize)]
 #[serde(tag = "type")]
 enum JavaRuntimeType {
     #[serde(rename = "file")]
-    File {
-        path: String,
-        downloads: JavaRuntimeDownload,
-        executable: bool
-    },
+    File(JavaRuntimeFile),
     #[serde(rename = "directory")]
     Directory(String),
     #[serde(rename = "link")]
-    Symlink {
+    Link {
         path: String,
         target: String
     }
@@ -473,24 +489,22 @@ where
         #[serde(rename = "directory")]
         Directory,
         #[serde(rename = "link")]
-        Symlink {
+        Link {
             target: String
         }
     }
-    let x =  Deserialize::deserialize(deserializer)?;
-    println!("{:#?}", x);
-    let jrt_map: HashMap<String, TmpJavaRuntimeType> = x;
+    let jrt_map: HashMap<String, TmpJavaRuntimeType> = Deserialize::deserialize(deserializer)?;
     println!("HERE: {:#?}", jrt_map);
     let mut result = Vec::with_capacity(jrt_map.len());
     for (path, tmp_jrt) in jrt_map {
         result.push(match tmp_jrt {
-            TmpJavaRuntimeType::File { downloads, executable } => JavaRuntimeType::File {
+            TmpJavaRuntimeType::File { downloads, executable } => JavaRuntimeType::File(JavaRuntimeFile {
                 path,
                 downloads,
                 executable
-            },  
+            }),  
             TmpJavaRuntimeType::Directory => JavaRuntimeType::Directory(path),
-            TmpJavaRuntimeType::Symlink { target } => JavaRuntimeType::Symlink{
+            TmpJavaRuntimeType::Link { target } => JavaRuntimeType::Link{
                 path,
                 target
             },
@@ -693,6 +707,7 @@ pub struct ResourceManager {
     libraries_dir: PathBuf,
     logging_dir: PathBuf,
     asset_dir: PathBuf,
+    java_dir: PathBuf,
     vanilla_manifest: Option<VanillaManifest>,
     // TODO: Forge and Fabric manifests.
 }
@@ -705,6 +720,7 @@ impl ResourceManager {
             libraries_dir: app_dir.join("libraries"),
             logging_dir: app_dir.join("logging"),
             asset_dir: app_dir.join("assets"),
+            java_dir: app_dir.join("java"),
             vanilla_manifest: None,
         }
     }
@@ -822,11 +838,12 @@ impl ResourceManager {
         Ok(path)
     }
 
-    async fn download_java_version(&self, java_component: &str, _java_version: u32) -> ManifestResult<()> {
-        let java_version_manifest: JavaVersionManifest = download_json_object(JAVA_VERSION_MANIFEST).await?;
-        let manifest_key = determine_key_for_java_manifest(&java_version_manifest.versions);
+    async fn download_java_version(&self, java_component: &str, _java_version: u32) -> ManifestResult<PathBuf> {
+        info!("Downloading java version manifest");
+        let java_version_manifest: HashMap<String, JavaManifest> = download_json_object(JAVA_VERSION_MANIFEST).await?;
+        let manifest_key = determine_key_for_java_manifest(&java_version_manifest);
 
-        let java_manifest = &java_version_manifest.versions.get(manifest_key).unwrap();
+        let java_manifest = &java_version_manifest.get(manifest_key).unwrap();
         let runtime_opt = match java_component {
             "java-runtime-alpha" => &java_manifest.java_runtime_alpha,
             "java-runtime-beta" => &java_manifest.java_runtime_beta,
@@ -835,10 +852,11 @@ impl ResourceManager {
             "minecraft-java-exe" => &java_manifest.minecraft_java_exe,
             _ => unreachable!("No such runtime found for java component: {}", &java_component),
         };
+        info!("Downloading runtime: {:#?}", runtime_opt);
         match runtime_opt {
             Some(runtime) => {
                 // let runtime_manifest = &runtime.manifest;
-                self.download_java_from_runtime_manifest(&runtime);
+                Ok(self.download_java_from_runtime_manifest(&runtime).await?)
             },
             None =>  {
                 let s = format!("Java runtime is empty for component {}", &java_component);
@@ -847,15 +865,61 @@ impl ResourceManager {
                 return Err(ManifestError::VersionRetrievalError(s));
             },
         }
-
-
-        Ok(())
     }
 
-    async fn download_java_from_runtime_manifest(&self, manifest: &JavaRuntime) -> ManifestResult<()> {
+    // TODO: Fix file path to include the `name` of the java version being downloaded. Make sure things are marked executable if specified in "executable"
+    // FIXME: Use an indexmap instead of a hashmap. Complete this process in a single pass since the index map is ordered correctly.
+    //        The correct order is important since it will create dirs before creating files in those dirs. 
+    async fn download_java_from_runtime_manifest(&self, manifest: &JavaRuntime) -> ManifestResult<PathBuf> {
+        info!("Downloading java runtime manifset");
         let version_manifest: JavaRuntimeManifest = download_json_object(&manifest.manifest.url).await?;
+        let base_path = &self.java_dir.join(&manifest.version.name);
 
-        Ok(())
+        let mut files: Vec<JavaRuntimeFile> = Vec::new();
+        // Links is a Vec<(Path, Target)> 
+        let mut links: Vec<(String, String)> = Vec::new();
+        // Create directories first and save the remaining.
+        for jrt in version_manifest.files {
+            match jrt {
+                JavaRuntimeType::File(jrt_file) => files.push(jrt_file),
+                JavaRuntimeType::Directory(dir) => {
+                    let path = &base_path.join(dir);
+                    fs::create_dir_all(path)?;
+                },
+                JavaRuntimeType::Link { path, target } => links.push((path, target)),
+            }
+        }
+        
+        // Next download files.
+        // FIXME: Currently downloading `raw` files, switch to lzma and decompress locally. 
+        info!("Downloading all java files.");
+        let start = Instant::now();
+        let x = download_all_callback(&files, &base_path, |bytes, jrt| {
+            if !validate_hash(&bytes, &jrt.hash()) {
+                let err = format!("Error downloading {}, invalid hash.", &jrt.url());
+                error!("{}", err);
+                return Err(DownloadError::InvalidFileHashError(err));
+            }
+            let path = jrt.path(&base_path);
+            let mut file = File::create(&path)?;
+            file.write_all(&bytes)?;
+            // TODO: Ignoring file permissions currently, theres an "exetutable" field thats unused.
+            Ok(())
+        }).await;
+        info!("Downloaded java in {}ms", start.elapsed().as_millis());
+
+        // Finally create links 
+        for link in links {
+            let to = &base_path.join(link.0);
+            // Cant fail since the dirs were made before
+            let dir_path = to.parent().unwrap().join(link.1);
+            let from = dir_path.canonicalize()?;
+            debug!("Creating symlink between {} and {}", from.display(), to.display());
+            // Create link FROM "target" TO "path" 
+            fs::hard_link(from, to)?;
+        }
+        let java_path = base_path.join("/bin/java");
+        Ok(java_path)
     }
 
     /// Downloads a logging configureation into ${app_dir}/logging/${logging_configuration.id}
