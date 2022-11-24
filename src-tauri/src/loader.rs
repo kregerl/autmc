@@ -4,6 +4,7 @@ use std::{
     sync::Arc, io::{self, Write, BufReader, Read}, fs::{File, self}, string::FromUtf8Error, time::Instant, env, mem::size_of, ffi::OsStr
 };
 use bytes::Bytes;
+use chrono::format;
 use crypto::{sha1::Sha1, digest::Digest};
 use indexmap::IndexMap;
 use log::{info, error, warn, debug};
@@ -583,6 +584,7 @@ fn rule_matches(rule: &Rule) -> bool {
                             rule_matches = true;
                         }
                     },
+                    "version" => {/*TODO: Check version of os to make sure it matches*/},
                     _ => unimplemented!("Unknown rule map key: {}", key),
                 }
             }
@@ -689,7 +691,91 @@ pub async fn obtain_version(selected: String, app_handle: AppHandle<Wry>) -> Man
     resource_manager.download_assets(&version.asset_index).await?;
     info!("Finished download instance in {}ms", start.elapsed().as_millis());
 
+    // https://stackoverflow.com/questions/62186871/how-to-correctly-use-peek-in-rust
+    construct_arguments(&version.arguments, &lib_paths, &game_jar_path);
     Ok(())
+}
+
+fn construct_arguments(arguments: &LaunchArguments, library_paths: &[PathBuf], game_jar_path: &Path) -> Vec<String> {
+    // Vec could be 'with_capacity' if we calculate capacity first.
+    let mut formatted_arguments: Vec<String> = Vec::new();
+
+    for jvm_arg in arguments.jvm.iter() {
+        match jvm_arg {
+            Argument::Arg(flag) => {
+                let sub_arg = substitute_arg(&flag, &library_paths, &game_jar_path);
+                formatted_arguments.push(match sub_arg {
+                    Some(argument) => argument,
+                    None => flag.into(),
+                });
+            },
+            Argument::ConditionalArg { rules, value } =>  {
+                if !rules_match(&rules) {
+                    continue;
+                }
+                for arg in value {
+                    let sub_arg = substitute_arg(&arg, &library_paths, &game_jar_path);
+                    formatted_arguments.push(match sub_arg {
+                        Some(argument) => argument,
+                        None => arg.into(),
+                    });
+                }
+            },
+        }
+    }
+    println!("HERE: {:#?}", formatted_arguments);
+    formatted_arguments
+}
+
+const LAUNCHER_NAME: &str = "Autmc";
+const LAUNCHER_VERSION: &str = "1.0.0";
+
+fn substitute_arg(arg: &str, library_paths: &[PathBuf], game_jar_path: &Path) -> Option<String> {
+    let substr_start = arg.chars().position(|c| c == '$');
+    let substr_end = arg.chars().position(|c| c == '}');
+    let classpath_strs: Vec<&str> = library_paths.into_iter().map(|path| path_to_utf8_str(path)).collect();
+
+    if let (Some(start), Some(end)) = (substr_start, substr_end) {
+        let substr = &arg[start..=end];
+        info!("Substituting {}", &substr);
+        match substr {
+            // JVM arguments
+            "${natives_directory}" => {Some("".into())},
+            "${launcher_name}" => Some(arg.replace(substr, LAUNCHER_NAME)),
+            "${launcher_version}" => Some(arg.replace(substr, LAUNCHER_VERSION)),
+            "${classpath}" => Some(arg.replace(substr, &format!("\"{}\":\"{}\"", classpath_strs.join("\":\""), path_to_utf8_str(game_jar_path)))),
+            // Game arguments
+            "${auth_player_name}" => {Some("".into())},
+            "${version_name}" => {Some("".into())},
+            "${game_directory}" => {Some("".into())},
+            "${assets_root}" => {Some("".into())},
+            "${assets_index_name}" => {Some("".into())},
+            "${auth_uuid}" => {Some("".into())},
+            "${auth_access_token}" => {Some("".into())},
+            "${clientid}" => {Some("".into())},
+            "${auth_xuid}" => {Some("".into())},
+            "${user_type}" => {Some("".into())},
+            "${version_type}" => {Some("".into())},
+            "${resolution_width}" => {Some("".into())},
+            "${resolution_height}" => {Some("".into())},
+            "${path}" => {Some("".into())},
+            _ => {
+                None
+            },
+        }
+    } else {
+        None
+    }
+}
+
+fn path_to_utf8_str(path: &Path) -> &str {
+    match path.to_str() {
+        Some(s) => s,
+        None => {
+            error!("Retrieved invalid utf8 string from path: {}", path.display());
+            "__INVALID_UTF8_STRING__"
+        },
+    }
 }
 
 pub struct ResourceState(pub Arc<Mutex<ResourceManager>>);
@@ -911,14 +997,17 @@ impl ResourceManager {
         // Finally create links 
         for link in links {
             let to = &base_path.join(link.0);
-            // Cant fail since the dirs were made before
-            let dir_path = to.parent().unwrap().join(link.1);
-            let from = dir_path.canonicalize()?;
-            debug!("Creating symlink between {} and {}", from.display(), to.display());
-            // Create link FROM "target" TO "path" 
-            fs::hard_link(from, to)?;
+            if !to.exists() {
+                // Cant fail since the dirs were made before
+                let dir_path = to.parent().unwrap().join(link.1);
+                let from = dir_path.canonicalize()?;
+                debug!("Creating hard link between {} and {}", from.display(), to.display());
+                // Create link FROM "target" TO "path" 
+                fs::hard_link(from, to)?;
+            }
         }
         let java_path = base_path.join("/bin/java");
+        info!("Using java path: {}", java_path.display());
         Ok(java_path)
     }
 
