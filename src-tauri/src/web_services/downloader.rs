@@ -6,8 +6,8 @@ use std::{
 
 use bytes::Bytes;
 use crypto::{digest::Digest, sha1::Sha1};
-use futures::{StreamExt};
-use log::{error, debug};
+use futures::StreamExt;
+use log::{debug, error};
 
 const BUFFER_SIZE: usize = 8;
 
@@ -39,6 +39,7 @@ pub trait Downloadable {
     fn path(&self, base_dir: &Path) -> PathBuf;
 }
 
+#[cfg(test)]
 pub async fn download_all<T>(items: &[T], base_dir: &Path) -> DownloadResult<()>
 where
     T: Downloadable,
@@ -79,8 +80,11 @@ where
 }
 
 // FIXME: Dont bother checking file hash if the file is already downloaded. Assume that the file is valid.
-
-pub async fn download_all_callback<T>(items: &[T], base_dir: &Path, callback: impl Fn(&Bytes, &T) -> DownloadResult<()>) -> DownloadResult<()>
+pub async fn download_all_callback<T>(
+    items: &[T],
+    base_dir: &Path,
+    callback: impl Fn(&Bytes, &T) -> DownloadResult<()>,
+) -> DownloadResult<()>
 where
     T: Downloadable,
 {
@@ -96,7 +100,11 @@ where
     Ok(())
 }
 
-async fn download_single_callback<T>(item: &T, base_dir: &Path, callback: impl Fn(&Bytes, &T) -> DownloadResult<()>) -> DownloadResult<()>
+async fn download_single_callback<T>(
+    item: &T,
+    base_dir: &Path,
+    callback: impl Fn(&Bytes, &T) -> DownloadResult<()>,
+) -> DownloadResult<()>
 where
     T: Downloadable,
 {
