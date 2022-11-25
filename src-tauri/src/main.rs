@@ -3,25 +3,31 @@
     windows_subsystem = "windows"
 )]
 
-mod auth;
-mod downloader;
-mod loader;
+mod commands;
+mod state;
 #[cfg(test)]
 mod tests;
+mod web_services;
 
+use commands::show_microsoft_login_page;
 use log::{error, info, warn};
+use regex::Regex;
 use serde::ser::StdError;
+use state::{account_manager::AccountState, redirect};
 use std::{
     fs::{self},
-    path::{PathBuf, Path},
+    path::{Path, PathBuf},
 };
 use tauri::{
     http::{Request, Response, ResponseBuilder},
     App, AppHandle, Manager, Wry,
 };
-use regex::Regex;
-use auth::{authenticate, show_microsoft_login_page, redirect, validate_account, AccountState, AuthMode};
-use loader::{obtain_manifests, obtain_version, ResourceState};
+use web_services::authentication::{authenticate, validate_account, AuthMode};
+
+use crate::{
+    commands::{obtain_manifests, obtain_version},
+    state::resource_manager::ResourceState,
+};
 
 const MAX_LOGS: usize = 20;
 fn main() {
@@ -34,7 +40,11 @@ fn main() {
             }
             _ => {}
         })
-        .invoke_handler(tauri::generate_handler![show_microsoft_login_page, obtain_manifests, obtain_version])
+        .invoke_handler(tauri::generate_handler![
+            show_microsoft_login_page,
+            obtain_manifests,
+            obtain_version
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
@@ -60,14 +70,18 @@ fn setup(app: &mut App<Wry>) -> Result<(), Box<(dyn StdError + 'static)>> {
     // TODO: Maybe emit event to display a toast telling the user what happened.
     tauri::async_runtime::spawn(async move {
         // Download manifests into the resource manager
-        let resource_state: tauri::State<ResourceState> = app_handle.try_state().expect("`ResourceState` should already be managed.");
+        let resource_state: tauri::State<ResourceState> = app_handle
+            .try_state()
+            .expect("`ResourceState` should already be managed.");
         let mut resource_manager = resource_state.0.lock().await;
         match resource_manager.download_manifests().await {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(error) => error!("Manifest Error: {:#?}", error),
         }
 
-        let account_state: tauri::State<AccountState> = app_handle.try_state().expect("`AccountState` should already be managed.");
+        let account_state: tauri::State<AccountState> = app_handle
+            .try_state()
+            .expect("`AccountState` should already be managed.");
         let mut account_manager = account_state.0.lock().await;
         match account_manager.deserialize_accounts() {
             Ok(_) => {}
@@ -129,7 +143,9 @@ fn autmc_uri_scheme(
         // FIXME: Dont just unwrap, give user any auth errors.
         let account = res.unwrap();
 
-        let account_state: tauri::State<AccountState> = handle.try_state().expect("`AccountState` should already be managed.");
+        let account_state: tauri::State<AccountState> = handle
+            .try_state()
+            .expect("`AccountState` should already be managed.");
         let mut account_manager = account_state.0.lock().await;
 
         // Save account to account manager.
@@ -167,31 +183,29 @@ fn init_logger(log_dir: &PathBuf) -> Result<(), fern::InitError> {
         .level(log::LevelFilter::Debug)
         .chain(std::io::stdout())
         .chain(fern::log_file(log_path.as_os_str())?)
-        .chain(fern::log_file(latest_log_path.as_os_str() )?)
+        .chain(fern::log_file(latest_log_path.as_os_str())?)
         .apply()?;
     Ok(())
 }
 
-/// Removes `old` logs, keeping only the latest MAX_LOGS in the log directory. 
+/// Removes `old` logs, keeping only the latest MAX_LOGS in the log directory.
 fn purge_old_logs(log_dir: &Path) -> Result<(), std::io::Error> {
     let file_paths = fs::read_dir(log_dir)?;
     println!("{:#?}", file_paths);
 
-    // FIXME: Sorted in reverse order.
     let regex = Regex::new("^launcher_log_[0-9]{4}-[0-9]{2}-[0-9]{2}T([0-9]{2}:){2}[0-9]{2}.log$");
     match regex {
         Ok(rexp) => {
             let mut dir_entries = file_paths
-            .filter_map(|path| 
-                path.ok()
-            )
-            .filter_map(|entry| {
-                if rexp.is_match(entry.file_name().to_str().unwrap()) {
-                    Some(entry)
-                } else {
-                    None
-                }
-            }).collect::<Vec<_>>();
+                .filter_map(|path| path.ok())
+                .filter_map(|entry| {
+                    if rexp.is_match(entry.file_name().to_str().unwrap()) {
+                        Some(entry)
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>();
             dir_entries.sort_by_key(|key| key.file_name());
             dir_entries.reverse();
             if dir_entries.len() > MAX_LOGS {
@@ -200,7 +214,7 @@ fn purge_old_logs(log_dir: &Path) -> Result<(), std::io::Error> {
                     fs::remove_file(log_dir.join(entry.file_name()))?;
                 }
             }
-        },
+        }
         Err(err) => warn!("{}", err),
     }
     Ok(())
