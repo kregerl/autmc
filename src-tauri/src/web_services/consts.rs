@@ -16,6 +16,9 @@ pub const VANILLA_MANIFEST_URL: &str = "https://piston-meta.mojang.com/mc/game/v
 pub const VANILLA_ASSET_BASE_URL: &str = "http://resources.download.minecraft.net";
 pub const JAVA_VERSION_MANIFEST: &str = "https://launchermeta.mojang.com/v1/products/java-runtime/2ec0cc96c44e5a76b9c8b7c39df7210883d12871/all.json";
 
+pub const LAUNCHER_NAME: &str = "Autmc";
+pub const LAUNCHER_VERSION: &str = "1.0.0";
+
 pub static XERR_HINTS: phf::Map<&'static str, &'static str> = phf_map! {
     "2148916233" => "2148916233: The account doesn't have an Xbox account. Once they sign up for one (or login through minecraft.net to create one) then they can proceed with the login. This shouldn't happen with accounts that have purchased Minecraft with a Microsoft account, as they would've already gone through that Xbox signup process.",
     "2148916235" => "2148916235: The account is from a country where Xbox Live is not available/banned",
