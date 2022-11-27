@@ -4,6 +4,7 @@
     
     let versions;
     let selected;
+    let instanceName;
     let showSnapshots = false;
 
     onMount(async () => {
@@ -18,7 +19,7 @@
     function next() {
         console.log("Selected: ", selected);
         console.log("Show Snapshots: ", showSnapshots);
-        invoke("obtain_version", { selected: selected })
+        invoke("obtain_version", { selected: selected, instanceName: instanceName })
         .then(payload => {
             console.log(payload);
         })
@@ -28,6 +29,7 @@
 </script>
 
 <input type="checkbox" id="show-snapshots" bind:checked={showSnapshots}>
+<input type="text" bind:value={instanceName}/>
 <label for="show-snapshots">Show Snapshot Versions</label>
 <select id="vanilla-versions" bind:value={selected}>
     {#each versions || [] as v} 

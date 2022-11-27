@@ -8,6 +8,7 @@ mod state;
 #[cfg(test)]
 mod tests;
 mod web_services;
+mod consts;
 
 use commands::show_microsoft_login_page;
 use log::{error, info, warn};

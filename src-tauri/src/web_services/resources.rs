@@ -2,7 +2,7 @@ use std::{
     collections::HashMap,
     env,
     fs::{self, File},
-    io::{Write},
+    io::Write,
     path::{Path, PathBuf},
     time::Instant,
 };
@@ -16,14 +16,15 @@ use serde::{
 use tauri::{AppHandle, Manager, State, Wry};
 
 use crate::{
-    state::resource_manager::{ManifestError, ManifestResult, ResourceState},
-    web_services::{
-        consts::{JAVA_VERSION_MANIFEST, LAUNCHER_NAME, LAUNCHER_VERSION},
-        downloader::{download_all_callback, download_json_object, DownloadError, validate_hash, download_bytes_from_url},
+    consts::{JAVA_VERSION_MANIFEST, LAUNCHER_NAME, LAUNCHER_VERSION, VANILLA_ASSET_BASE_URL},
+    state::{resource_manager::{ManifestError, ManifestResult, ResourceState}, account_manager::{Account, AccountState}},
+    web_services::downloader::{
+        download_all_callback, download_bytes_from_url, download_json_object, validate_hash,
+        DownloadError,
     },
 };
 
-use super::{consts::VANILLA_ASSET_BASE_URL, downloader::{Downloadable, validate_file_hash}};
+use super::downloader::{validate_file_hash, Downloadable};
 
 #[derive(Debug, Deserialize)]
 /// The version metadata returned in the manifest request.
@@ -85,8 +86,8 @@ enum Argument {
     Arg(String),
     ConditionalArg {
         rules: Vec<Rule>,
-        #[serde(deserialize_with = "string_or_strings_as_vec")]
-        value: Vec<String>,
+        #[serde(rename = "value", deserialize_with = "string_or_strings_as_vec")]
+        values: Vec<String>,
     },
 }
 
@@ -463,7 +464,11 @@ where
 /// Returns true when an allow rule matches or a disallow rule does not match.
 fn rule_matches(rule: &Rule) -> bool {
     match &rule.rule_type {
-        RuleType::Features(_feature_rules) => todo!("Implement feature rules for arguments"),
+        RuleType::Features(_feature_rules) => {
+            error!("Implement feature rules for arguments");
+            // FIXME: Currently just skipping these
+            false
+        },
         RuleType::OperatingSystem(os_rules) => {
             // Check if all the rules match the current system.
             let mut rule_matches = false;
@@ -555,30 +560,33 @@ fn determine_key_for_java_manifest<'a>(
 
 fn construct_arguments(
     arguments: &LaunchArguments,
+    active_account: &Account,
     library_paths: &[PathBuf],
     game_jar_path: &Path,
+    instance_path: &Path,
 ) -> Vec<String> {
     // Vec could be 'with_capacity' if we calculate capacity first.
     let mut formatted_arguments: Vec<String> = Vec::new();
+    let chain = arguments.jvm.iter().chain(arguments.game.iter());
 
-    for jvm_arg in arguments.jvm.iter() {
-        match jvm_arg {
-            Argument::Arg(flag) => {
-                let sub_arg = substitute_arg(&flag, &library_paths, &game_jar_path);
+    for arg in chain {
+        match arg {
+            Argument::Arg(value) => {
+                let sub_arg = substitute_arg(&value, &library_paths, &game_jar_path, &instance_path, &active_account);
                 formatted_arguments.push(match sub_arg {
                     Some(argument) => argument,
-                    None => flag.into(),
+                    None => value.into(),
                 });
             }
-            Argument::ConditionalArg { rules, value } => {
+            Argument::ConditionalArg { rules, values: value } => {
                 if !rules_match(&rules) {
                     continue;
                 }
-                for arg in value {
-                    let sub_arg = substitute_arg(&arg, &library_paths, &game_jar_path);
+                for value in value {
+                    let sub_arg = substitute_arg(&value, &library_paths, &game_jar_path, &instance_path, &active_account);
                     formatted_arguments.push(match sub_arg {
                         Some(argument) => argument,
-                        None => arg.into(),
+                        None => value.into(),
                     });
                 }
             }
@@ -588,7 +596,8 @@ fn construct_arguments(
     formatted_arguments
 }
 
-fn substitute_arg(arg: &str, library_paths: &[PathBuf], game_jar_path: &Path) -> Option<String> {
+// TODO: Replace the arguments here with a struct containing the parameters so its a cleaner function.
+fn substitute_arg(arg: &str, library_paths: &[PathBuf], game_jar_path: &Path, instance_path: &Path, active_account: &Account) -> Option<String> {
     let substr_start = arg.chars().position(|c| c == '$');
     let substr_end = arg.chars().position(|c| c == '}');
     let classpath_strs: Vec<&str> = library_paths
@@ -601,7 +610,10 @@ fn substitute_arg(arg: &str, library_paths: &[PathBuf], game_jar_path: &Path) ->
         info!("Substituting {}", &substr);
         match substr {
             // JVM arguments
-            "${natives_directory}" => Some("".into()),
+            "${natives_directory}" => Some(arg.replace(
+                substr, 
+                path_to_utf8_str(&instance_path.join("natives"))
+            )),
             "${launcher_name}" => Some(arg.replace(substr, LAUNCHER_NAME)),
             "${launcher_version}" => Some(arg.replace(substr, LAUNCHER_VERSION)),
             "${classpath}" => Some(arg.replace(
@@ -613,20 +625,20 @@ fn substitute_arg(arg: &str, library_paths: &[PathBuf], game_jar_path: &Path) ->
                 ),
             )),
             // Game arguments
-            "${auth_player_name}" => Some("".into()),
-            "${version_name}" => Some("".into()),
-            "${game_directory}" => Some("".into()),
-            "${assets_root}" => Some("".into()),
-            "${assets_index_name}" => Some("".into()),
-            "${auth_uuid}" => Some("".into()),
-            "${auth_access_token}" => Some("".into()),
-            "${clientid}" => Some("".into()),
-            "${auth_xuid}" => Some("".into()),
-            "${user_type}" => Some("".into()),
-            "${version_type}" => Some("".into()),
-            "${resolution_width}" => Some("".into()),
-            "${resolution_height}" => Some("".into()),
-            "${path}" => Some("".into()),
+            "${auth_player_name}" => Some(arg.replace(substr, &active_account.name)),
+            "${version_name}" => Some("".into()), // TODO: Get from "selected"
+            "${game_directory}" => Some(arg.replace(substr, path_to_utf8_str(&instance_path))), 
+            "${assets_root}" => Some("".into()), // TODO: Get from resource manager
+            "${assets_index_name}" => Some("".into()), // TODO: Get from "selected"
+            "${auth_uuid}" => Some(arg.replace(substr, &active_account.uuid)),
+            "${auth_access_token}" => Some(arg.replace(substr, &active_account.minecraft_access_token)),
+            "${clientid}" => Some("".into()), // TODO: Unknown
+            "${auth_xuid}" => Some("".into()), // TODO: Unknown
+            "${user_type}" => Some(arg.replace(substr, "mojang")), // TODO: Unknown but hardcoded to "mojang" as thats what the gdlauncher example shows
+            "${version_type}" => Some(arg.replace(substr, "release")), // TODO: Get from the selected versions type {release or snapshot}
+            "${resolution_width}" => Some("".into()), // TODO: Unknown
+            "${resolution_height}" => Some("".into()), // TODO: Unknown
+            "${path}" => Some("".into()), // TODO: Logging path
             _ => None,
         }
     } else {
@@ -647,7 +659,10 @@ fn path_to_utf8_str(path: &Path) -> &str {
     }
 }
 
-async fn download_libraries(libraries_dir: &Path, libraries: &[Library]) -> ManifestResult<Vec<PathBuf>> {
+async fn download_libraries(
+    libraries_dir: &Path,
+    libraries: &[Library],
+) -> ManifestResult<Vec<PathBuf>> {
     info!("Downloading {} libraries...", libraries.len());
     if !libraries_dir.exists() {
         fs::create_dir(&libraries_dir)?;
@@ -867,7 +882,7 @@ async fn download_assets(asset_dir: &Path, asset_index: &AssetIndex) -> Manifest
     Ok(())
 }
 
-pub async fn create_instance(selected: String, app_handle: &AppHandle<Wry>) -> ManifestResult<()> {
+pub async fn create_instance(selected: String, instance_name: String, app_handle: &AppHandle<Wry>) -> ManifestResult<()> {
     let resource_state: State<ResourceState> = app_handle
         .try_state()
         .expect("`ResourceState` should already be managed.");
@@ -914,7 +929,11 @@ pub async fn create_instance(selected: String, app_handle: &AppHandle<Wry>) -> M
     )
     .await?;
 
-    download_logging_configurations(&resource_manager.logging_dir(), &version.logging.client.file).await?;
+    download_logging_configurations(
+        &resource_manager.logging_dir(),
+        &version.logging.client.file,
+    )
+    .await?;
 
     download_assets(&resource_manager.assets_dir(), &version.asset_index).await?;
     info!(
@@ -922,7 +941,15 @@ pub async fn create_instance(selected: String, app_handle: &AppHandle<Wry>) -> M
         start.elapsed().as_millis()
     );
 
-    // https://stackoverflow.com/questions/62186871/how-to-correctly-use-peek-in-rust
-    construct_arguments(&version.arguments, &lib_paths, &game_jar_path);
+    let instance_dir = resource_manager.instances_dir().join(instance_name);
+
+    let account_state: State<AccountState> = app_handle
+        .try_state()
+        .expect("`AccountState` should already be managed.");
+    let account_manager = account_state.0.lock().await;
+    // FIXME: Dont unwrap here.
+    let active_account = &account_manager.get_active_account().unwrap();
+
+    construct_arguments(&version.arguments, &active_account, &lib_paths, &game_jar_path, &instance_dir);
     Ok(())
 }

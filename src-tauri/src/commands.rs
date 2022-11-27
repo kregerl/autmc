@@ -1,10 +1,11 @@
 use reqwest::Url;
-use tauri::{Wry, AppHandle, State, Manager};
+use tauri::{AppHandle, Manager, State, Wry};
 
-use crate::{web_services::{
-    authentication::AuthResult,
-    consts::{CLIENT_ID, MICROSOFT_LOGIN_URL}, resources::{create_instance},
-}, state::resource_manager::{ManifestResult, ResourceState}};
+use crate::{
+    consts::{CLIENT_ID, MICROSOFT_LOGIN_URL},
+    state::resource_manager::{ManifestResult, ResourceState},
+    web_services::{authentication::AuthResult, resources::create_instance},
+};
 
 #[tauri::command]
 pub async fn show_microsoft_login_page(app_handle: tauri::AppHandle<Wry>) -> AuthResult<()> {
@@ -52,7 +53,7 @@ pub async fn obtain_manifests(
 }
 
 #[tauri::command]
-pub async fn obtain_version(selected: String, app_handle: AppHandle<Wry>) -> ManifestResult<()> {
-    create_instance(selected, &app_handle).await?;
+pub async fn obtain_version(selected: String, instance_name: String, app_handle: AppHandle<Wry>) -> ManifestResult<()> {
+    create_instance(selected, instance_name, &app_handle).await?;
     Ok(())
 }

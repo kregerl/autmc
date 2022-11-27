@@ -7,13 +7,16 @@ use std::{
 };
 
 use bytes::Bytes;
-use log::{info};
+use log::info;
 use serde::Serialize;
 use tauri::async_runtime::Mutex;
 
-use crate::web_services::{
-    consts::{ VANILLA_MANIFEST_URL},
-    downloader::{ download_bytes_from_url, validate_hash, validate_file_hash}, resources::{VanillaManifest, VanillaVersion},
+use crate::{
+    consts::VANILLA_MANIFEST_URL,
+    web_services::{
+        downloader::{download_bytes_from_url, validate_file_hash, validate_hash},
+        resources::{VanillaManifest, VanillaVersion},
+    },
 };
 
 pub type ManifestResult<T> = Result<T, ManifestError>;
@@ -101,29 +104,34 @@ impl ResourceManager {
         }
     }
 
-    /// Returns the version directory at ${app_dir}/data/versions
+    /// Returns the version directory at ${app_dir}/versions
     pub fn version_dir(&self) -> PathBuf {
-        self.data_dir.join("versions")
+        self.app_dir.join("versions")
     }
 
-    /// Returns the libraries directory at ${app_dir}/data/libraries
+    /// Returns the libraries directory at ${app_dir}/libraries
     pub fn libraries_dir(&self) -> PathBuf {
-        self.data_dir.join("libraries")
+        self.app_dir.join("libraries")
     }
 
-    /// Returns the logging directory at ${app_dir}/data/logging
+    /// Returns the logging directory at ${app_dir}/logging
     pub fn logging_dir(&self) -> PathBuf {
-        self.data_dir.join("logging")
+        self.app_dir.join("logging")
     }
 
-    /// Returns the assets directory at ${app_dir}/data/assets
+    /// Returns the assets directory at ${app_dir}/assets
     pub fn assets_dir(&self) -> PathBuf {
-        self.data_dir.join("assets")
+        self.app_dir.join("assets")
     }
 
     /// Returns the java directory at ${app_dir}/java
     pub fn java_dir(&self) -> PathBuf {
         self.app_dir.join("java")
+    }
+
+    /// Returns the java directory at ${app_dir}/instances
+    pub fn instances_dir(&self) -> PathBuf {
+        self.app_dir.join("instances")
     }
 
     pub async fn download_manifests(&mut self) -> ManifestResult<()> {

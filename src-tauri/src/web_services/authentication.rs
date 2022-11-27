@@ -7,7 +7,7 @@ use serde_json::json;
 
 use crate::state::account_manager::Account;
 
-use super::consts::{
+use crate::consts::{
     CLIENT_ID, MICROSOFT_TOKEN_URL, MINECRAFT_AUTHENTICATE_URL, MINECRAFT_LICENSE_URL,
     MINECRAFT_PROFILE_URL, REDIRECT_URL, SCOPE, XBOX_LIVE_AUTHENTICATE_URL, XERR_HINTS,
     XTXS_AUTHENTICATE_URL,
