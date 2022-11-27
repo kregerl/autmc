@@ -1,7 +1,7 @@
 <script lang="ts">
     import { Router, Route } from "svelte-navigator";
     import Login from './components/Login.svelte';
-    import Home from "./components/Home.svelte";
+    import Home from "./components/HomeMenu/Home.svelte";
     import NewInstance from "./components/NewInstance.svelte";
 
     // const unlisten =  listen("auth_result", (event) => {
@@ -18,8 +18,8 @@
 </script>
 
 <Router>
-    <Route path="/login" component={Login}/>
     <Route path="/" component={Home}/>
+    <Route path="/login" component={Login}/>
     <Route path="/new-instance" component={NewInstance}/>
 </Router>
 

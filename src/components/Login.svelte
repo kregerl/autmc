@@ -2,7 +2,7 @@
     import { listen } from "@tauri-apps/api/event"
     import { invoke } from "@tauri-apps/api/tauri";
     import { link } from "svelte-navigator";
-    import MenuButton from "./MenuButton.svelte";
+    import LoginButton from "./LoginButton.svelte";
 
     function microsoftLogin() {
         invoke("show_microsoft_login_page").catch((err) => console.log(err));
@@ -13,7 +13,7 @@
 <div class="flex">
     <div class="accounts">
         <h1>Switch Accounts</h1>
-        <MenuButton class="menu-button" on:click={microsoftLogin}>Add Account</MenuButton>
+        <LoginButton class="menu-button" on:click={microsoftLogin}>Add Account</LoginButton>
     </div>
 </div>
 

@@ -369,7 +369,7 @@ where
         );
         Ok(None)
     } else {
-        // We know we have atleast one element
+        // We know we have one element, get it
         Ok(runtimes.into_iter().nth(0))
     }
 }

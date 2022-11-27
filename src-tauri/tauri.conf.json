@@ -14,9 +14,6 @@
     "allowlist": {
       "path": {
         "all": true
-      },
-      "fs": {
-        "scope": ["$RESOURCE/*","$RESOURCE/resources/*"]
       }
     },
     "bundle": {
@@ -43,9 +40,7 @@
         "providerShortName": null,
         "signingIdentity": null
       },
-      "resources": [
-        "resources/*"
-      ],
+      "resources": [],
       "shortDescription": "",
       "targets": "all",
       "windows": {
