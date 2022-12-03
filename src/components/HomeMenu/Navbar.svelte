@@ -21,23 +21,17 @@
             tab.style.boxShadow = "";
         }
     }
-    window.addEventListener("load", (event) => {
-        let tabs = document.getElementsByClassName("tab");
-        if (tabs.length > 0) {
-            updateSelection(tabs[0] as HTMLElement,  "#4e4e4e");
-        }
-    });
 
     function tabKeyDown() {
         // TODO: Implement "Enter" updating selection of tabs.
     }
 
-    // onMount(() => {
-    //     let tabs = document.getElementsByClassName("tab");
-    //     if (tabs.length > 0) {
-    //         updateSelection(tabs[0] as HTMLElement,  "#4e4e4e");
-    //     }
-    // });
+    onMount(() => {
+        let tabs = document.getElementsByClassName("tab");
+        if (tabs.length > 0) {
+            updateSelection(tabs[0] as HTMLElement,  "#4e4e4e");
+        }
+    });
 </script>
 
 
@@ -53,7 +47,8 @@
 <style>
     .tab-bar {
         width: 100%; 
-        height: 8vh;
+        height: 100%;
+        z-index: 100;
         background-color: #333;
         box-shadow: 0px 8px 4px -4px rgba(0, 0, 0, 0.65);
     }

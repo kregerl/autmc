@@ -42,16 +42,11 @@
         <MenuButton><span class="dropshadow">Servers</span></MenuButton>
         <MenuButton><span class="dropshadow">Screenshots</span></MenuButton>
     </div>
-
-    <div>
-        <h1>Home</h1>
-        <a href="/new-instance" use:link>Add Instance</a>
-    </div>
 </nav>
 
 <style>
     nav {
-        width: 350px;
+        width: 100%;
         height: 100vh;
         background: #333;
     }
