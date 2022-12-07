@@ -1,8 +1,10 @@
 <script lang="ts">
-    import { navigate } from "svelte-navigator";
+    import NewInstanceModal from "../NewInstanceModal.svelte";
+
+    let showModal = false;
 
     function createNewInstance() {
-        navigate("/new-instance");
+        showModal = true;
     }
 
 
@@ -35,6 +37,10 @@
     <div class="instance"></div>
     <div class="instance"></div>
 </div>
+
+{#if showModal}
+    <NewInstanceModal on:close={() => showModal = false}/>
+{/if}
 
 
 <style> 
@@ -72,6 +78,8 @@
     }
 
     input[type=text] {
+        color: white;
+        font-weight: bold;
         height: calc(100% - 8px);
         margin: 4px;
         margin-left: 8px;

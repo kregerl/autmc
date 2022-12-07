@@ -1,7 +1,6 @@
 <script lang="ts">
     import { getName, getVersion } from "@tauri-apps/api/app";
     import { onMount } from "svelte";
-    import { link } from "svelte-navigator";
     import MenuButton from "./MenuButton.svelte";
 
     let launcherName: string = "Example";

@@ -1,40 +1,36 @@
 <script lang="ts">
     import Menu from "./Menu.svelte";
-    import Navbar from "./Navbar.svelte"
+    import Tab from "../Tabbar/Tab.svelte";
     import Instances from "./Instances.svelte";
+    import Transition from "../Transition.svelte";
+    import TabBar from "../Tabbar/TabBar.svelte";
 
     let selected;
 
-
+    const navTabs = [
+        {text: "Instances", fs: "1.25em", component: Tab},
+        {text: "Logs", fs: "1.25em",component: Tab},
+    ]
 </script>
 
-
-<div class="container">
-    <div class="menu">
-        <Menu/>
-    </div>
-    <div class="header">
-        <Navbar bind:selected></Navbar>
-    </div>
-    <div class="content">
-        {#if selected !== undefined && selected.id === "instances"}
-            <Instances/>
-        {:else if selected !== undefined && selected.id === "log"}
-            <h1>Log</h1>
-        {/if}
-    </div>
-
-</div>
-
-<!-- <div class="flex-row">
-    <Menu></Menu>
-    <div class="flex-column content">
-        <Navbar bind:selected></Navbar>
-        <div id="launcher-body" class="launcher-body">
-            
+<Transition>
+    <div class="container">
+        <div class="menu">
+            <Menu/>
         </div>
+        <div class="header">
+            <TabBar --min-width=180px --font-size=1.25em tabs={navTabs} bind:selected></TabBar>
+        </div>
+        <div class="content">
+            {#if selected !== undefined && selected === "instances"}
+                <Instances/>
+            {:else if selected !== undefined && selected === "logs"}
+                <h1>Log</h1>
+            {/if}
+        </div>
+
     </div>
-</div> -->
+</Transition>
 <main>
 </main>
 

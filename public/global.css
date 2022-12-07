@@ -67,13 +67,11 @@ button:focus {
 .flex-row {
 	display: flex;
 	flex-direction: row;
-	justify-content: start;
 }
 
 .flex-column {
 	display: flex;
 	flex-direction: column;
-	justify-content: start;
 }
 
 .dropshadow {
