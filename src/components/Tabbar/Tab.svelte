@@ -13,6 +13,7 @@
         width: var(--width);
         background-color: #333;
         text-align: center;
+        cursor: pointer;
     }
 
     h3 {

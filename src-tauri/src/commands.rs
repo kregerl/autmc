@@ -1,13 +1,19 @@
+use std::path::PathBuf;
+
 use reqwest::Url;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State, Wry};
 
 use crate::{
     consts::{CLIENT_ID, MICROSOFT_LOGIN_URL},
     state::resource_manager::{ManifestResult, ResourceState},
-    web_services::{authentication::AuthResult, resources::create_instance},
+    web_services::{
+        authentication::AuthResult,
+        resources::{create_instance, VanillaManifestVersion},
+    },
 };
 
-#[tauri::command]
+#[tauri::command(async)]
 pub async fn show_microsoft_login_page(app_handle: tauri::AppHandle<Wry>) -> AuthResult<()> {
     let login_url = Url::parse_with_params(
         MICROSOFT_LOGIN_URL,
@@ -38,22 +44,73 @@ pub async fn show_microsoft_login_page(app_handle: tauri::AppHandle<Wry>) -> Aut
     Ok(())
 }
 
-#[tauri::command]
+#[derive(Deserialize)]
+pub struct VersionFilter {
+    pub id: String,
+    pub name: String,
+    pub checked: bool,
+}
+
+#[derive(Serialize)]
+pub struct VersionEntry {
+    version: String,
+    #[serde(rename = "releasedDate")]
+    released_date: String,
+    #[serde(rename = "versionType")]
+    version_type: String,
+}
+
+impl VersionEntry {
+    pub fn new(version: &str, version_info: &VanillaManifestVersion) -> Self {
+        Self {
+            version: version.into(),
+            released_date: version_info.release_time.clone(),
+            version_type: version_info.version_type.clone(),
+        }
+    }
+}
+
+#[tauri::command(async)]
 pub async fn obtain_manifests(
-    show_snapshots: bool,
+    filters: Vec<VersionFilter>,
     app_handle: AppHandle<Wry>,
-) -> ManifestResult<Vec<String>> {
+) -> ManifestResult<Vec<VersionEntry>> {
     let resource_state: State<ResourceState> = app_handle
         .try_state()
         .expect("`ResourceState` should already be managed.");
     let resource_manager = resource_state.0.lock().await;
 
-    let versions = resource_manager.get_vanilla_version_list(show_snapshots);
+    let versions = resource_manager.get_vanilla_version_list(&filters);
     Ok(versions)
 }
 
-#[tauri::command]
-pub async fn obtain_version(selected: String, instance_name: String, app_handle: AppHandle<Wry>) -> ManifestResult<()> {
+#[tauri::command(async)]
+pub async fn obtain_version(
+    selected: String,
+    instance_name: String,
+    app_handle: AppHandle<Wry>,
+) -> ManifestResult<()> {
     create_instance(selected, instance_name, &app_handle).await?;
     Ok(())
+}
+
+#[tauri::command(async)]
+pub async fn get_instance_path(app_handle: AppHandle<Wry>) -> PathBuf {
+    let resource_state: State<ResourceState> = app_handle
+        .try_state()
+        .expect("`ResourceState` should already be managed.");
+    let resource_manager = resource_state.0.lock().await;
+
+    resource_manager.instances_dir()
+}
+
+#[tauri::command(async)]
+pub async fn save_instance(app_handle: AppHandle<Wry>) {
+    let resource_state: State<ResourceState> = app_handle
+        .try_state()
+        .expect("`ResourceState` should already be managed.");
+    let resource_manager = resource_state.0.lock().await;
+
+
+
 }

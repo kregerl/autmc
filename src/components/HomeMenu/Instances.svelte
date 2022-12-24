@@ -1,5 +1,5 @@
 <script lang="ts">
-    import NewInstanceModal from "../NewInstanceModal.svelte";
+    import NewInstanceModal from "../Modal/NewInstanceModal.svelte";
 
     let showModal = false;
 

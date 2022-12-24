@@ -3,7 +3,7 @@
     import Login from './components/Login.svelte';
     import Home from "./components/HomeMenu/Home.svelte";
     import NewInstance from "./components/NewInstance.svelte";
-    import NewInstanceModal from "./components/NewInstanceModal.svelte";
+    import NewInstanceModal from "./components/Modal/NewInstanceModal.svelte";
 
     // const unlisten =  listen("auth_result", (event) => {
     //     console.log(event);

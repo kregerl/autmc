@@ -16,7 +16,7 @@ use crate::{
     web_services::{
         downloader::{download_bytes_from_url, validate_file_hash, validate_hash},
         resources::{VanillaManifest, VanillaVersion},
-    },
+    }, commands::{VersionFilter, VersionEntry},
 };
 
 pub type ManifestResult<T> = Result<T, ManifestError>;
@@ -145,16 +145,15 @@ impl ResourceManager {
         Ok(())
     }
 
-    /// Gets a list of all vanilla versions, including snapshots and old_beta if show_snapshots is true.
-    pub fn get_vanilla_version_list(&self, show_snapshots: bool) -> Vec<String> {
-        let mut result: Vec<String> = Vec::new();
+    /// Gets a list of all vanilla versions
+    pub fn get_vanilla_version_list(&self, filters: &[VersionFilter]) -> Vec<VersionEntry> {
+        let mut result: Vec<VersionEntry>=  Vec::new();
         if let Some(manifest) = &self.vanilla_manifest {
             for (version, version_info) in &manifest.versions {
-                if !show_snapshots && version_info.version_type == "release" {
-                    result.push(version.clone());
-                } else if show_snapshots {
-                    // old_beta version types are considered snapshots in this context.
-                    result.push(version.clone());
+                for filter in filters {
+                    if filter.checked && version_info.version_type == filter.id {
+                        result.push(VersionEntry::new(version, version_info));
+                    }
                 }
             }
         }

@@ -17,7 +17,10 @@ use tauri::{AppHandle, Manager, State, Wry};
 
 use crate::{
     consts::{JAVA_VERSION_MANIFEST, LAUNCHER_NAME, LAUNCHER_VERSION, VANILLA_ASSET_BASE_URL},
-    state::{resource_manager::{ManifestError, ManifestResult, ResourceState}, account_manager::{Account, AccountState}},
+    state::{
+        account_manager::{Account, AccountState},
+        resource_manager::{ManifestError, ManifestResult, ResourceState},
+    },
     web_services::downloader::{
         download_all_callback, download_bytes_from_url, download_json_object, validate_hash,
         DownloadError,
@@ -35,7 +38,7 @@ pub struct VanillaManifestVersion {
     pub url: String,
     time: String,
     #[serde(rename = "releaseTime")]
-    release_time: String,
+    pub release_time: String,
     pub sha1: String,
     #[serde(rename = "complianceLevel")]
     compliance_level: u32,
@@ -468,7 +471,7 @@ fn rule_matches(rule: &Rule) -> bool {
             error!("Implement feature rules for arguments");
             // FIXME: Currently just skipping these
             false
-        },
+        }
         RuleType::OperatingSystem(os_rules) => {
             // Check if all the rules match the current system.
             let mut rule_matches = false;
@@ -559,31 +562,73 @@ fn determine_key_for_java_manifest<'a>(
 }
 
 fn construct_arguments(
+    java_path: &Path,
+    main_class: String,
+    logging: (String, PathBuf), // (Argument to substitute, Path to substitute with) 
     arguments: &LaunchArguments,
     active_account: &Account,
     library_paths: &[PathBuf],
     game_jar_path: &Path,
     instance_path: &Path,
+    mc_version: &str,
+    asset_dir: &Path,
+    asset_name: &str
 ) -> Vec<String> {
     // Vec could be 'with_capacity' if we calculate capacity first.
     let mut formatted_arguments: Vec<String> = Vec::new();
-    let chain = arguments.jvm.iter().chain(arguments.game.iter());
 
-    for arg in chain {
-        match arg {
+    info!("Args: {:#?}", arguments);
+
+    info!("LOGGING PATH: {:?}", &logging.1);
+
+    formatted_arguments.push(format!("\"{}\"", java_path.to_str().unwrap()));
+    for jvm_arg in arguments.jvm.iter() {
+        match jvm_arg {
+            // For normal arguments, check if it has something that should be replaced and replace it 
             Argument::Arg(value) => {
-                let sub_arg = substitute_arg(&value, &library_paths, &game_jar_path, &instance_path, &active_account);
+                let sub_arg =
+                    substitute_jvm_arg(&value, &library_paths, &instance_path, &game_jar_path);
                 formatted_arguments.push(match sub_arg {
                     Some(argument) => argument,
                     None => value.into(),
                 });
             }
-            Argument::ConditionalArg { rules, values: value } => {
+            // For conditional args, check their rules before adding to formatted_arguments vec
+            Argument::ConditionalArg { rules, values } => {
                 if !rules_match(&rules) {
                     continue;
                 }
-                for value in value {
-                    let sub_arg = substitute_arg(&value, &library_paths, &game_jar_path, &instance_path, &active_account);
+                for value in values {
+                    let sub_arg =
+                        substitute_jvm_arg(&value, &library_paths, &instance_path, &game_jar_path);
+                    formatted_arguments.push(match sub_arg {
+                        Some(argument) => argument,
+                        None => value.into(),
+                    });
+                }
+            }
+        }
+    }
+    if let Some(substr) = get_arg_substring(&logging.0) {
+        formatted_arguments.push(logging.0.replace(substr, path_to_utf8_str(&logging.1)));
+    }
+    formatted_arguments.push(main_class);
+
+    for game_arg in arguments.game.iter() {
+        match game_arg {
+            Argument::Arg(value) => {
+                let sub_arg = substitute_game_arg(&value, &instance_path, &active_account, &mc_version, &asset_dir, asset_name);
+                formatted_arguments.push(match sub_arg {
+                    Some(argument) => argument,
+                    None => value.into(),
+                });
+            }
+            Argument::ConditionalArg { rules, values } => {
+                if !rules_match(&rules) {
+                    continue;
+                }
+                for value in values {
+                    let sub_arg = substitute_game_arg(&value, &instance_path, &active_account, &mc_version, &asset_dir, asset_name);
                     formatted_arguments.push(match sub_arg {
                         Some(argument) => argument,
                         None => value.into(),
@@ -596,23 +641,37 @@ fn construct_arguments(
     formatted_arguments
 }
 
-// TODO: Replace the arguments here with a struct containing the parameters so its a cleaner function.
-fn substitute_arg(arg: &str, library_paths: &[PathBuf], game_jar_path: &Path, instance_path: &Path, active_account: &Account) -> Option<String> {
+// Returns the substring inside the argument if it exists, otherwise None
+fn get_arg_substring(arg: &str) -> Option<&str> {
     let substr_start = arg.chars().position(|c| c == '$');
     let substr_end = arg.chars().position(|c| c == '}');
+
+    if let (Some(start), Some(end)) = (substr_start, substr_end) {
+        Some(&arg[start..=end])
+    } else {
+        None
+    }
+}
+
+// Returns a string with the substituted value in the jvm argument or None if it doesn't apply. 
+fn substitute_jvm_arg(
+    arg: &str,
+    library_paths: &[PathBuf],
+    instance_path: &Path,
+    game_jar_path: &Path,
+) -> Option<String> {
+    let substring = get_arg_substring(arg);
     let classpath_strs: Vec<&str> = library_paths
         .into_iter()
         .map(|path| path_to_utf8_str(path))
         .collect();
 
-    if let (Some(start), Some(end)) = (substr_start, substr_end) {
-        let substr = &arg[start..=end];
+    if let Some(substr) = substring {
         info!("Substituting {}", &substr);
         match substr {
-            // JVM arguments
             "${natives_directory}" => Some(arg.replace(
-                substr, 
-                path_to_utf8_str(&instance_path.join("natives"))
+                substr,
+                &format!("\"{}\"", path_to_utf8_str(&instance_path.join("natives"))),
             )),
             "${launcher_name}" => Some(arg.replace(substr, LAUNCHER_NAME)),
             "${launcher_version}" => Some(arg.replace(substr, LAUNCHER_VERSION)),
@@ -624,21 +683,41 @@ fn substitute_arg(arg: &str, library_paths: &[PathBuf], game_jar_path: &Path, in
                     path_to_utf8_str(game_jar_path)
                 ),
             )),
-            // Game arguments
+            _ => None,
+        }
+    } else {
+        None
+    }
+}
+
+fn substitute_game_arg(
+    arg: &str,
+    instance_path: &Path,
+    active_account: &Account,
+    mc_version: &str,
+    asset_dir: &Path,
+    asset_name: &str
+) -> Option<String> {
+    let substring = get_arg_substring(arg);
+
+    if let Some(substr) = substring {
+        info!("Substituting {}", &substr);
+        match substr {
             "${auth_player_name}" => Some(arg.replace(substr, &active_account.name)),
-            "${version_name}" => Some("".into()), // TODO: Get from "selected"
-            "${game_directory}" => Some(arg.replace(substr, path_to_utf8_str(&instance_path))), 
-            "${assets_root}" => Some("".into()), // TODO: Get from resource manager
-            "${assets_index_name}" => Some("".into()), // TODO: Get from "selected"
+            "${version_name}" => Some(arg.replace(substr, &mc_version)), 
+            "${game_directory}" => Some(arg.replace(substr, &format!("\"{}\"", path_to_utf8_str(&instance_path)))),
+            "${assets_root}" => Some(arg.replace(substr, &format!("\"{}\"", path_to_utf8_str(&asset_dir)))),
+            "${assets_index_name}" => Some(arg.replace(substr, &asset_name)),
             "${auth_uuid}" => Some(arg.replace(substr, &active_account.uuid)),
-            "${auth_access_token}" => Some(arg.replace(substr, &active_account.minecraft_access_token)),
-            "${clientid}" => Some("".into()), // TODO: Unknown
-            "${auth_xuid}" => Some("".into()), // TODO: Unknown
+            "${auth_access_token}" => {
+                Some(arg.replace(substr, &active_account.minecraft_access_token))
+            }
+            "${clientid}" => None,  // FIXME: Unknown
+            "${auth_xuid}" => None, // FIXME: Unknown
             "${user_type}" => Some(arg.replace(substr, "mojang")), // TODO: Unknown but hardcoded to "mojang" as thats what the gdlauncher example shows
             "${version_type}" => Some(arg.replace(substr, "release")), // TODO: Get from the selected versions type {release or snapshot}
-            "${resolution_width}" => Some("".into()), // TODO: Unknown
-            "${resolution_height}" => Some("".into()), // TODO: Unknown
-            "${path}" => Some("".into()), // TODO: Logging path
+            "${resolution_width}" => None,                  // TODO: Unknown
+            "${resolution_height}" => None,                 // TODO: Unknown
             _ => None,
         }
     } else {
@@ -788,8 +867,9 @@ async fn download_java_from_runtime_manifest(
             fs::hard_link(from, to)?;
         }
     }
-    let java_path = base_path.join("/bin/java");
-    info!("Using java path: {}", java_path.display());
+
+    let java_path = base_path.join("bin/java");
+    info!("Using java path: {:?}", java_path);
     Ok(java_path)
 }
 
@@ -833,32 +913,45 @@ async fn download_java_version(
 /// Downloads a logging configureation into ${app_dir}/logging/${logging_configuration.id}
 async fn download_logging_configurations(
     logging_dir: &Path,
-    logging_file: &ClientLoggerFile,
-) -> ManifestResult<()> {
+    logging: &Logging,
+) -> ManifestResult<(String, PathBuf)> {
     fs::create_dir_all(&logging_dir)?;
-    let path = logging_dir.join(format!("{}", &logging_file.id));
-    let valid_hash = &logging_file.metadata.sha1;
+    let path = logging_dir.join(format!("{}", &logging.client.file.id));
+    let valid_hash = &logging.client.file.metadata.sha1;
 
     if !validate_file_hash(&path, valid_hash) {
-        info!("Downloading logging configuration {}", logging_file.id);
-        let bytes = download_bytes_from_url(&logging_file.metadata.url).await?;
+        info!(
+            "Downloading logging configuration {}",
+            logging.client.file.id
+        );
+        let bytes = download_bytes_from_url(&logging.client.file.metadata.url).await?;
         if !validate_hash(&bytes, valid_hash) {
             let err = format!(
                 "Error downloading logging configuration {}, invalid hash.",
-                logging_file.id
+                logging.client.file.id
             );
             error!("{}", err);
             return Err(ManifestError::InvalidFileDownload(err));
         }
-        let mut file = File::create(path)?;
+        let mut file = File::create(&path)?;
         file.write_all(&bytes)?;
     }
-    Ok(())
+    Ok((logging.client.argument.clone(), path))
 }
 
 //TODO: This probably needs to change a little to support "legacy" versions < 1.7
-async fn download_assets(asset_dir: &Path, asset_index: &AssetIndex) -> ManifestResult<()> {
+async fn download_assets(asset_dir: &Path, asset_index: &AssetIndex) -> ManifestResult<String> {
     let asset_object: AssetObject = download_json_object(&asset_index.metadata.url).await?;
+    let asset_index_dir = asset_dir.join("indexes");
+    let index_bytes = download_bytes_from_url(&asset_index.metadata.url).await?;
+    fs::create_dir_all(&asset_index_dir)?;
+
+    info!("Asset Index ID: {:?}", &asset_index);
+
+    let asset_index_name = format!("{}.json", &asset_index.id);
+    let index_path = &asset_index_dir.join(&asset_index_name);
+    let mut index_file = File::create(index_path)?;
+    index_file.write_all(&index_bytes)?;
     info!("Downloading {} assets", &asset_object.objects.len());
 
     let start = Instant::now();
@@ -879,10 +972,14 @@ async fn download_assets(asset_dir: &Path, asset_index: &AssetIndex) -> Manifest
         start.elapsed().as_millis(),
         &x
     );
-    Ok(())
+    Ok(asset_index.id.clone())
 }
 
-pub async fn create_instance(selected: String, instance_name: String, app_handle: &AppHandle<Wry>) -> ManifestResult<()> {
+pub async fn create_instance(
+    selected: String,
+    instance_name: String,
+    app_handle: &AppHandle<Wry>,
+) -> ManifestResult<()> {
     let resource_state: State<ResourceState> = app_handle
         .try_state()
         .expect("`ResourceState` should already be managed.");
@@ -929,19 +1026,19 @@ pub async fn create_instance(selected: String, instance_name: String, app_handle
     )
     .await?;
 
-    download_logging_configurations(
-        &resource_manager.logging_dir(),
-        &version.logging.client.file,
-    )
-    .await?;
+    info!("create_instance JVM PATH: {:?}", &java_path);
 
-    download_assets(&resource_manager.assets_dir(), &version.asset_index).await?;
+    let logging =
+        download_logging_configurations(&resource_manager.logging_dir(), &version.logging).await?;
+
+    let asset_index = download_assets(&resource_manager.assets_dir(), &version.asset_index).await?;
     info!(
         "Finished download instance in {}ms",
         start.elapsed().as_millis()
     );
 
     let instance_dir = resource_manager.instances_dir().join(instance_name);
+    fs::create_dir_all(&instance_dir)?;
 
     let account_state: State<AccountState> = app_handle
         .try_state()
@@ -950,6 +1047,19 @@ pub async fn create_instance(selected: String, instance_name: String, app_handle
     // FIXME: Dont unwrap here.
     let active_account = &account_manager.get_active_account().unwrap();
 
-    construct_arguments(&version.arguments, &active_account, &lib_paths, &game_jar_path, &instance_dir);
+    let x = construct_arguments(
+        &java_path,
+        version.main_class,
+        logging,
+        &version.arguments,
+        &active_account,
+        &lib_paths,
+        &game_jar_path,
+        &instance_dir,
+        &selected,
+        &resource_manager.assets_dir(),
+        &asset_index
+    );
+    info!("{}", x.join(" "));
     Ok(())
 }
