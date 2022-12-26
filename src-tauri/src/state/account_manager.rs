@@ -14,7 +14,8 @@ use tauri::async_runtime::Mutex;
 pub struct Account {
     pub uuid: String,
     pub name: String,
-    // IDEA: Skin url for head?
+    // FIXME: Cache downloaded skins instead of saving url to download everytime.
+    pub skin_url: String,
     pub microsoft_access_token: String,
     pub microsoft_access_token_expiry: i64,
     pub microsoft_refresh_token: String,

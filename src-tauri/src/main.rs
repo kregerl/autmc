@@ -26,7 +26,7 @@ use tauri::{
 use web_services::authentication::{authenticate, validate_account, AuthMode};
 
 use crate::{
-    commands::{obtain_manifests, obtain_version, get_instance_path},
+    commands::{obtain_manifests, obtain_version, get_instance_path, load_instances, launch_instance},
     state::resource_manager::ResourceState,
 };
 
@@ -45,7 +45,9 @@ fn main() {
             show_microsoft_login_page,
             obtain_manifests,
             obtain_version,
-            get_instance_path
+            get_instance_path,
+            load_instances,
+            launch_instance
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

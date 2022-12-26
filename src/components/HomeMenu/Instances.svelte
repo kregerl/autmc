@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { invoke } from "@tauri-apps/api/tauri";
     import NewInstanceModal from "../Modal/NewInstanceModal.svelte";
 
     let showModal = false;
@@ -7,7 +8,14 @@
         showModal = true;
     }
 
+    async function launchInstance() {
+        await invoke("launch_instance", {instanceName: this.id});
+        console.log(this);
+    }
 
+    async function getInstances(): Promise<string[]> {
+        return invoke("load_instances");
+    }
 </script>
 
 <div class="header">
@@ -15,6 +23,16 @@
     <input type="text" placeholder="Search Instances">
 </div>
 <div class="instance-grid">
+    {#await getInstances() then instances}
+        {#each instances as instance}
+            <div id={instance} class="instance" on:click={launchInstance} on:keydown>{instance}</div>
+        {/each}
+    {/await}
+
+    <div class="instance">Test</div>
+    <div class="instance">Test2</div>
+    <div class="instance">Test3</div>
+    <!-- <div class="instance"></div>
     <div class="instance"></div>
     <div class="instance"></div>
     <div class="instance"></div>
@@ -31,11 +49,7 @@
     <div class="instance"></div>
     <div class="instance"></div>
     <div class="instance"></div>
-    <div class="instance"></div>
-    <div class="instance"></div>
-    <div class="instance"></div>
-    <div class="instance"></div>
-    <div class="instance"></div>
+    <div class="instance"></div> -->
 </div>
 
 {#if showModal}

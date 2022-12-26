@@ -1,23 +1,32 @@
 use std::{
+    collections::HashMap,
     fs::{self, File},
     io::{self, BufReader, Write},
     path::{Path, PathBuf},
+    process::Command,
     string::FromUtf8Error,
     sync::Arc,
 };
 
 use bytes::Bytes;
-use log::info;
-use serde::Serialize;
+use log::{debug, error, info, warn};
+use regex::internal::Inst;
+use serde::{Deserialize, Serialize};
 use tauri::async_runtime::Mutex;
 
 use crate::{
+    commands::{VersionEntry, VersionFilter},
     consts::VANILLA_MANIFEST_URL,
     web_services::{
         downloader::{download_bytes_from_url, validate_file_hash, validate_hash},
-        resources::{VanillaManifest, VanillaVersion},
-    }, commands::{VersionFilter, VersionEntry},
+        resources::{
+            substitute_account_specific_arguments, VanillaManifest, VanillaManifestVersion,
+            VanillaVersion,
+        },
+    },
 };
+
+use super::account_manager::Account;
 
 pub type ManifestResult<T> = Result<T, ManifestError>;
 
@@ -79,6 +88,13 @@ impl From<serde_json::Error> for ManifestError {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct InstanceConfiguration {
+    pub instance_name: String,
+    pub jvm_path: PathBuf,
+    pub arguments: Vec<String>,
+}
+
 pub struct ResourceState(pub Arc<Mutex<ResourceManager>>);
 
 impl ResourceState {
@@ -90,8 +106,8 @@ impl ResourceState {
 #[derive(Debug)]
 pub struct ResourceManager {
     app_dir: PathBuf,
-    data_dir: PathBuf,
     vanilla_manifest: Option<VanillaManifest>,
+    instance_map: HashMap<String, InstanceConfiguration>,
     // TODO: Forge and Fabric manifests.
 }
 
@@ -99,8 +115,8 @@ impl ResourceManager {
     pub fn new(app_dir: &Path) -> Self {
         Self {
             app_dir: app_dir.into(),
-            data_dir: app_dir.join("data"),
             vanilla_manifest: None,
+            instance_map: HashMap::new(),
         }
     }
 
@@ -114,14 +130,14 @@ impl ResourceManager {
         self.app_dir.join("libraries")
     }
 
-    /// Returns the logging directory at ${app_dir}/logging
-    pub fn logging_dir(&self) -> PathBuf {
-        self.app_dir.join("logging")
-    }
-
     /// Returns the assets directory at ${app_dir}/assets
     pub fn assets_dir(&self) -> PathBuf {
         self.app_dir.join("assets")
+    }
+
+    /// Returns the objects directory at ${app_dir}/assets/objects
+    pub fn asset_objects_dir(&self) -> PathBuf {
+        self.assets_dir().join("objects")
     }
 
     /// Returns the java directory at ${app_dir}/java
@@ -147,7 +163,7 @@ impl ResourceManager {
 
     /// Gets a list of all vanilla versions
     pub fn get_vanilla_version_list(&self, filters: &[VersionFilter]) -> Vec<VersionEntry> {
-        let mut result: Vec<VersionEntry>=  Vec::new();
+        let mut result: Vec<VersionEntry> = Vec::new();
         if let Some(manifest) = &self.vanilla_manifest {
             for (version, version_info) in &manifest.versions {
                 for filter in filters {
@@ -158,6 +174,91 @@ impl ResourceManager {
             }
         }
         result
+    }
+
+    /// Get the vanilla manifest for a given mc_version. Returns None if mc_version is invalid.
+    pub fn get_vanilla_manifest_from_version(
+        &self,
+        mc_version: &str,
+    ) -> Option<&VanillaManifestVersion> {
+        if let Some(manifest) = &self.vanilla_manifest {
+            manifest.versions.get(mc_version)
+        } else {
+            None
+        }
+    }
+
+    /// Add the config.json to an instance folder. Used to relaunch the instance again.
+    pub fn add_instance(&self, config: InstanceConfiguration) -> Result<(), io::Error> {
+        let path = self
+            .instances_dir()
+            .join(&config.instance_name)
+            .join("config.json");
+        let mut file = File::create(path)?;
+        let json = serde_json::to_string(&config)?;
+        file.write_all(json.as_bytes())?;
+        Ok(())
+    }
+
+    pub fn deserialize_instances(&mut self) {
+        let paths = fs::read_dir(self.instances_dir());
+        if let Err(e) = paths {
+            error!("Error loading instances from disk: {}", e);
+            return;
+        }
+        for path in paths.unwrap().filter_map(|path| path.ok()) {
+            let instance_path = path.path().join("config.json");
+            let file = File::open(&instance_path);
+            if let Err(e) = file {
+                warn!("Error with instance at {}: {}", instance_path.display(), e);
+                continue;
+            }
+            let reader = BufReader::new(file.unwrap());
+            let instance =
+                serde_json::from_reader::<BufReader<File>, InstanceConfiguration>(reader);
+            if let Err(e) = instance {
+                warn!(
+                    "Error loading `config.json` for instance at {}: {}",
+                    instance_path.display(),
+                    e
+                );
+                continue;
+            }
+            let conf = instance.unwrap();
+            self.instance_map.insert(conf.instance_name.clone(), conf);
+        }
+    }
+
+    pub fn get_instance_names(&self) -> Vec<String> {
+        self.instance_map
+            .iter()
+            .map(|(instance_name, _)| instance_name.into())
+            .collect()
+    }
+
+    pub fn launch_instance(&self, instance_name: &str, active_account: &Account) {
+        debug!("Instance Name: {}", instance_name);
+        let instance_config = self.instance_map.get(instance_name);
+        match instance_config {
+            Some(instance) => {
+                let working_dir = self.instances_dir().join(instance_name);
+                let mut args: Vec<String> = Vec::new();
+                for argument in &instance.arguments {
+                    args.push(
+                        match substitute_account_specific_arguments(argument, active_account) {
+                            Some(arg) => arg,
+                            None => argument.into(),
+                        },
+                    );
+                }
+                Command::new(&instance.jvm_path)
+                    .current_dir(working_dir)
+                    .args(args)
+                    .spawn()
+                    .expect("Could not spawn instance.");
+            }
+            None => error!("Unknown instance name: {}", instance_name),
+        }
     }
 
     pub async fn download_vanilla_version(

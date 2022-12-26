@@ -111,6 +111,20 @@ pub struct MinecraftProfileSuccess {
     // TODO: Missing capes, dont know what the response would look like.
 }
 
+impl MinecraftProfileSuccess {
+    /// It is assumed that at least one of the skins will have state "ACTIVE"
+    /// If it is possible, we default to the first skin in the list if there is no active skin. 
+    pub fn active_skin(&self) -> &MinecraftProfileSkin {
+        for skin in &self.skins {
+            if skin.state == "ACTIVE" {
+                return &skin;
+            }
+        }
+        // FIXME: Not sure if possible, but probably shouldnt unwrap here
+        self.skins.get(0).unwrap()
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum MinecraftProfileResponse {
@@ -307,11 +321,13 @@ pub async fn authenticate(auth_mode: AuthMode) -> AuthResult<Account> {
     // let _ = check_license(&minecraft_auth_response.access_token).await?;
 
     let minecraft_profile = obtain_minecraft_profile(&minecraft_auth_response.access_token).await?;
+    let active_skin = &minecraft_profile.active_skin();
     debug!("minecraft_profile {:#?}", minecraft_profile);
     Ok(Account {
-        uuid: minecraft_profile.id,
-        name: minecraft_profile.name,
+        uuid: minecraft_profile.id.clone(),
+        name: minecraft_profile.name.clone(),
         // IDEA: Skin url for head?
+        skin_url: active_skin.url.clone(),
         microsoft_access_token: microsoft_token.0,
         microsoft_access_token_expiry: microsoft_token.2,
         microsoft_refresh_token: microsoft_token.1,
@@ -528,6 +544,7 @@ async fn obtain_minecraft_profile(access_token: &str) -> AuthResult<MinecraftPro
         .await?;
 
     if response.status().is_success() {
+        debug!("obtain_minecraft_profile Response: {:#?}", response);
         let profile_response = response.json::<MinecraftProfileResponse>().await?;
         match profile_response {
             MinecraftProfileResponse::Success(success) => Ok(success),

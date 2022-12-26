@@ -6,7 +6,7 @@ use tauri::{AppHandle, Manager, State, Wry};
 
 use crate::{
     consts::{CLIENT_ID, MICROSOFT_LOGIN_URL},
-    state::resource_manager::{ManifestResult, ResourceState},
+    state::{resource_manager::{ManifestResult, ResourceState}, account_manager::AccountState},
     web_services::{
         authentication::AuthResult,
         resources::{create_instance, VanillaManifestVersion},
@@ -105,12 +105,41 @@ pub async fn get_instance_path(app_handle: AppHandle<Wry>) -> PathBuf {
 }
 
 #[tauri::command(async)]
-pub async fn save_instance(app_handle: AppHandle<Wry>) {
+pub async fn get_account_skin(app_handle: AppHandle<Wry>) -> String {
+    let account_state: State<AccountState> = app_handle
+        .try_state()
+        .expect("`AccountState` should already be managed.");
+    let account_manager = account_state.0.lock().await;
+
+    // FIXME: Unwraping. 
+    let account = account_manager.get_active_account().unwrap();
+    account.skin_url.clone()
+}
+
+#[tauri::command(async)]
+pub async fn load_instances(app_handle: AppHandle<Wry>) -> Vec<String> {
+    let resource_state: State<ResourceState> = app_handle
+        .try_state()
+        .expect("`ResourceState` should already be managed.");
+    let mut resource_manager = resource_state.0.lock().await;
+
+    resource_manager.deserialize_instances();
+    resource_manager.get_instance_names()
+}
+
+#[tauri::command(async)]
+pub async fn launch_instance(instance_name: String, app_handle: AppHandle<Wry>) {
     let resource_state: State<ResourceState> = app_handle
         .try_state()
         .expect("`ResourceState` should already be managed.");
     let resource_manager = resource_state.0.lock().await;
 
+    let account_state: State<AccountState> = app_handle
+        .try_state()
+        .expect("`AccountState` should already be managed.");
 
+    let account_manager = account_state.0.lock().await;
 
+    // Assumed there is an active account. 
+    resource_manager.launch_instance(&instance_name, account_manager.get_active_account().unwrap());
 }
