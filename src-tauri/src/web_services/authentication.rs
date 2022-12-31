@@ -94,7 +94,7 @@ pub struct MinecraftTokenResponse {
 
 #[allow(unused)]
 #[derive(Debug, Serialize, Deserialize)]
-struct MinecraftProfileSkin {
+pub struct MinecraftProfileSkin {
     id: String,
     state: String,
     url: String,
