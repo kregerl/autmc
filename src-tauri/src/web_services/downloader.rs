@@ -40,48 +40,8 @@ pub trait Downloadable {
     fn path(&self, base_dir: &Path) -> PathBuf;
 }
 
-// #[cfg(test)]
-// pub async fn download_all<T>(items: &[T], base_dir: &Path) -> DownloadResult<()>
-// where
-//     T: Downloadable,
-// {
-//     let mut futures = Vec::new();
-//     for item in items {
-//         futures.push(download_single(item, &base_dir));
-//     }
-//     let x = futures::stream::iter(futures)
-//         .buffer_unordered(BUFFER_SIZE)
-//         .collect::<Vec<DownloadResult<()>>>();
-
-//     x.await;
-//     Ok(())
-// }
-
-// async fn download_single<T>(item: &T, base_dir: &Path) -> DownloadResult<()>
-// where
-//     T: Downloadable,
-// {
-//     let path = &item.path(base_dir);
-//     let valid_hash = &item.hash();
-//     if !path.exists() {
-//         debug!("Downloading file {}", item.name());
-//         let dir_path = path.parent().unwrap();
-//         fs::create_dir_all(dir_path)?;
-
-//         let bytes = download_bytes_from_url(&item.url()).await?;
-//         if !validate_hash(&bytes, &valid_hash) {
-//             let err = format!("Error downloading {}, invalid hash.", &item.url());
-//             error!("{}", err);
-//             return Err(DownloadError::InvalidFileHashError(err));
-//         }
-//         let mut file = File::create(path)?;
-//         file.write_all(&bytes)?;
-//     }
-//     Ok(())
-// }
-
 // FIXME: Dont bother checking file hash if the file is already downloaded. Assume that the file is valid.
-pub async fn download_all_callback<T>(
+pub async fn buffered_stream_download<T>(
     items: &[T],
     base_dir: &Path,
     callback: impl Fn(&Bytes, &T) -> DownloadResult<()>,
