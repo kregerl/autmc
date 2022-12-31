@@ -1,10 +1,17 @@
-use std::{collections::HashMap, path::{Path, PathBuf}};
+use std::{
+    collections::HashMap,
+    env,
+    path::{Path, PathBuf},
+};
 
 use indexmap::IndexMap;
-use log::warn;
-use serde::{Deserialize, Deserializer, Serialize, de::{Visitor, Error, SeqAccess}};
+use log::{debug, warn};
+use serde::{
+    de::{Error, SeqAccess, Visitor},
+    Deserialize, Deserializer,
+};
 
-use crate::{web_services::downloader::Downloadable, consts::VANILLA_ASSET_BASE_URL};
+use crate::{consts::VANILLA_ASSET_BASE_URL, web_services::downloader::Downloadable};
 
 #[derive(Debug, Deserialize)]
 /// The version metadata returned in the manifest request.
@@ -45,7 +52,7 @@ where
     Ok(map)
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize)]
 pub enum RuleType {
     #[serde(rename = "features")]
     Features(HashMap<String, bool>),
@@ -53,14 +60,14 @@ pub enum RuleType {
     OperatingSystem(HashMap<String, String>),
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize)]
 pub struct Rule {
     pub action: String,
     #[serde(flatten)]
-    pub rule_type: RuleType,
+    pub rule_type: Option<RuleType>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize)]
 #[serde(untagged)]
 pub enum Argument {
     Arg(String),
@@ -106,13 +113,13 @@ where
     deserializer.deserialize_any(StringVisitor)
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize)]
 pub struct LaunchArguments {
     pub game: Vec<Argument>,
     pub jvm: Vec<Argument>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct DownloadMetadata {
     sha1: String,
     size: u32,
@@ -131,7 +138,7 @@ impl DownloadMetadata {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize)]
 pub struct Asset {
     path: String,
     hash: String,
@@ -162,7 +169,7 @@ impl Downloadable for Asset {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize)]
 pub struct AssetObject {
     #[serde(deserialize_with = "to_asset_vec")]
     pub objects: Vec<Asset>,
@@ -190,7 +197,7 @@ where
     Ok(result)
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize)]
 pub struct AssetIndex {
     pub id: String,
     #[serde(flatten)]
@@ -199,38 +206,127 @@ pub struct AssetIndex {
     total_size: u32,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize)]
 pub struct GameDownloads {
     pub client: DownloadMetadata,
-    pub client_mappings: DownloadMetadata,
+    pub client_mappings: Option<DownloadMetadata>,
     pub server: DownloadMetadata,
-    pub server_mappings: DownloadMetadata,
+    pub server_mappings: Option<DownloadMetadata>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize)]
 pub struct JavaVersion {
     pub component: String,
     #[serde(rename = "majorVersion")]
     pub major_version: u32,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-struct Artifact {
+#[derive(Debug, Clone, Deserialize)]
+pub struct Artifact {
     path: String,
     #[serde(flatten)]
     metadata: DownloadMetadata,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-struct LibraryDownloads {
-    artifact: Artifact,
+impl Downloadable for Artifact {
+    fn name(&self) -> &str {
+        &self.path
+    }
+
+    fn url(&self) -> String {
+        self.metadata.url().into()
+    }
+
+    fn hash(&self) -> &str {
+        &self.metadata.sha1
+    }
+
+    fn path(&self, base_dir: &Path) -> PathBuf {
+        base_dir.join(&self.path)
+    }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug)]
+pub struct DownloadableClassifier {
+    pub classifier: Artifact,
+    pub extraction_rule: Option<LibraryExtraction>,
+}
+
+impl Downloadable for DownloadableClassifier {
+    fn name(&self) -> &str {
+        self.classifier.name()
+    }
+
+    fn url(&self) -> String {
+        self.classifier.url()
+    }
+
+    fn hash(&self) -> &str {
+        self.classifier.hash()
+    }
+
+    fn path(&self, base_dir: &Path) -> PathBuf {
+        self.classifier.path(base_dir)
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct LibraryDownloads {
+    artifact: Artifact,
+    classifiers: Option<HashMap<String, Artifact>>,
+}
+
+// TODO: Possible there is an "include" too.
+#[derive(Debug, Clone, Deserialize)]
+pub struct LibraryExtraction {
+    pub exclude: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct Library {
     downloads: LibraryDownloads,
     name: String,
     pub rules: Option<Vec<Rule>>,
+    extract: Option<LibraryExtraction>,
+    natives: Option<HashMap<String, String>>,
+}
+
+impl Library {
+    pub fn determine_key_for_classifiers(&self) -> Option<String> {
+        if let Some(map) = &self.natives {
+            debug!("Has Some Natives: {:#?}", map);
+            let os = env::consts::OS;
+            Some(
+                map.get(match os {
+                    "linux" => "linux",
+                    "macos" => "osx",
+                    "windows" => "windows",
+                    _ => unreachable!("Unknown os key for classifiers: {}", os),
+                })?
+                .into(),
+            )
+        } else {
+            None
+        }
+    }
+
+    pub fn get_classifier(&self, key: &str) -> Option<DownloadableClassifier> {
+        if self.downloads.classifiers.is_none() {
+            return None;
+        }
+        let classifiers = self.downloads.classifiers.as_ref().unwrap();
+        if classifiers.contains_key(key) {
+            Some(DownloadableClassifier {
+                classifier: classifiers.get(key).unwrap().clone(),
+                extraction_rule: match &self.extract {
+                    Some(rule) => Some(rule.clone()),
+                    None => None,
+                },
+            })
+        } else {
+            None
+        }
+    }
 }
 
 impl Downloadable for Library {
@@ -239,26 +335,26 @@ impl Downloadable for Library {
     }
 
     fn url(&self) -> String {
-        self.downloads.artifact.metadata.url.to_owned()
+        self.downloads.artifact.url()
     }
 
     fn hash(&self) -> &str {
-        &self.downloads.artifact.metadata.sha1
+        &self.downloads.artifact.hash()
     }
 
     fn path(&self, base_dir: &Path) -> PathBuf {
-        base_dir.join(&self.downloads.artifact.path)
+        self.downloads.artifact.path(base_dir)
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize)]
 struct ClientLoggerFile {
     id: String,
     #[serde(flatten)]
     metadata: DownloadMetadata,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize)]
 pub struct ClientLogger {
     pub argument: String,
     file: ClientLoggerFile,
@@ -280,13 +376,13 @@ impl ClientLogger {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize)]
 // TODO: What about server logging?
 pub struct Logging {
     pub client: ClientLogger,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize)]
 /// The launch arguments and metadata for a given vanilla version.
 // REVIEW: I believe this response is different for older versions of the game. versions < 1.13
 pub struct VanillaVersion {
@@ -391,7 +487,7 @@ struct JavaRuntimeDownload {
 pub struct JavaRuntimeFile {
     path: String,
     downloads: JavaRuntimeDownload,
-    executable: bool,
+    pub executable: bool,
 }
 
 impl Downloadable for JavaRuntimeFile {
