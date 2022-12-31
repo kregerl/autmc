@@ -1,16 +1,15 @@
 use std::{
     collections::HashMap,
     fs::{self, File},
-    io::{self, BufReader, Write},
+    io::{self, BufReader, Write, BufRead},
     path::{Path, PathBuf},
-    process::Command,
+    process::{Command, Stdio},
     string::FromUtf8Error,
     sync::Arc,
 };
 
 use bytes::Bytes;
 use log::{debug, error, info, warn};
-use regex::internal::Inst;
 use serde::{Deserialize, Serialize};
 use tauri::async_runtime::Mutex;
 
@@ -20,9 +19,8 @@ use crate::{
     web_services::{
         downloader::{download_bytes_from_url, validate_file_hash, validate_hash},
         resources::{
-            substitute_account_specific_arguments, VanillaManifest, VanillaManifestVersion,
-            VanillaVersion,
-        },
+            substitute_account_specific_arguments
+        }, manifest::vanilla::{VanillaManifest, VanillaManifestVersion, VanillaVersion},
     },
 };
 
@@ -236,6 +234,7 @@ impl ResourceManager {
             .collect()
     }
 
+    // IDEA: Move to an `InstanceManager`?
     pub fn launch_instance(&self, instance_name: &str, active_account: &Account) {
         debug!("Instance Name: {}", instance_name);
         let instance_config = self.instance_map.get(instance_name);
@@ -251,11 +250,15 @@ impl ResourceManager {
                         },
                     );
                 }
-                Command::new(&instance.jvm_path)
-                    .current_dir(working_dir)
-                    .args(args)
-                    .spawn()
-                    .expect("Could not spawn instance.");
+                let mut command = Command::new(&instance.jvm_path);
+                command.current_dir(working_dir).args(args).stdout(Stdio::piped());
+                debug!("Command: {:#?}", command);
+                let child = command.spawn().expect("Could not spawn instance.");
+                
+                // let reader = BufReader::new(child.stdout.unwrap());
+                // for line in reader.lines() {
+                //     debug!("Mc Log: {:#?}", line);
+                // }
             }
             None => error!("Unknown instance name: {}", instance_name),
         }

@@ -1,5 +1,6 @@
 <script lang="ts">
     import { getName, getVersion } from "@tauri-apps/api/app";
+    import { invoke } from "@tauri-apps/api/tauri";
     import { onMount } from "svelte";
     import MenuButton from "./MenuButton.svelte";
 
@@ -10,7 +11,8 @@
     onMount(async () => {
         launcherName = await getName();
         launcherVersion = await getVersion();
-    })
+        let skin = await invoke("get_account_skin");
+    });
 
 </script>
 

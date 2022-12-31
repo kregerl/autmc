@@ -26,7 +26,7 @@ use tauri::{
 use web_services::authentication::{authenticate, validate_account, AuthMode};
 
 use crate::{
-    commands::{obtain_manifests, obtain_version, get_instance_path, load_instances, launch_instance},
+    commands::{obtain_manifests, obtain_version, get_instance_path, load_instances, launch_instance, get_account_skin},
     state::resource_manager::ResourceState,
 };
 
@@ -47,6 +47,7 @@ fn main() {
             obtain_version,
             get_instance_path,
             load_instances,
+            get_account_skin,
             launch_instance
         ])
         .run(tauri::generate_context!())
@@ -173,6 +174,9 @@ fn init_logger(log_dir: &PathBuf) -> Result<(), fern::InitError> {
     purge_old_logs(&log_dir)?;
     let log_path = log_dir.join(format!("launcher_log_{}.log", datetime));
     let latest_log_path = log_dir.join("latest.log");
+    if latest_log_path.exists() {
+        fs::remove_file(&latest_log_path)?;
+    }
     fern::Dispatch::new()
         .format(|out, message, record| {
             out.finish(format_args!(

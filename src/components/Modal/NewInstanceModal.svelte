@@ -49,6 +49,7 @@
                 element.classList.remove("selected");
         }
         this.classList.add("selected");
+        selectedVersion = this.id;
     }
 
     function handleKeyDown(event: KeyboardEvent) {
@@ -79,6 +80,7 @@
 
     function finish() {
         invoke("obtain_version", { selected: selectedVersion, instanceName: instanceName });
+        close();
     }
 
     // TODO: Do filtering on web side since itll be faster to just filter out ones that arent selected than to await a promise from rust. 

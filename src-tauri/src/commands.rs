@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use log::debug;
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State, Wry};
@@ -9,7 +10,7 @@ use crate::{
     state::{resource_manager::{ManifestResult, ResourceState}, account_manager::AccountState},
     web_services::{
         authentication::AuthResult,
-        resources::{create_instance, VanillaManifestVersion},
+        resources::{create_instance}, manifest::vanilla::VanillaManifestVersion,
     },
 };
 
@@ -113,6 +114,7 @@ pub async fn get_account_skin(app_handle: AppHandle<Wry>) -> String {
 
     // FIXME: Unwraping. 
     let account = account_manager.get_active_account().unwrap();
+    debug!("Skin URL: {}", account.skin_url);
     account.skin_url.clone()
 }
 

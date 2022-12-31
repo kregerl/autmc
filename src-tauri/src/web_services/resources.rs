@@ -4,465 +4,459 @@ use std::{
     fs::{self, File},
     io::Write,
     path::{Path, PathBuf},
-    time::Instant,
-};
+    time::Instant, os::unix::prelude::PermissionsExt};
 
-use indexmap::IndexMap;
 use log::{debug, error, info, warn};
-use serde::{
-    de::{Error, SeqAccess, Visitor},
-    Deserialize, Deserializer, Serialize,
-};
 use tauri::{AppHandle, Manager, State, Wry};
 
 use crate::{
-    consts::{JAVA_VERSION_MANIFEST, LAUNCHER_NAME, LAUNCHER_VERSION, VANILLA_ASSET_BASE_URL},
+    consts::{JAVA_VERSION_MANIFEST, LAUNCHER_NAME, LAUNCHER_VERSION},
     state::{
-        account_manager::{Account, AccountState},
+        account_manager::{Account},
         resource_manager::{InstanceConfiguration, ManifestError, ManifestResult, ResourceState},
     },
-    web_services::downloader::{
+    web_services::{downloader::{
         download_all_callback, download_bytes_from_url, download_json_object, validate_hash,
-        DownloadError,
-    },
+        DownloadError, Downloadable,
+    }, manifest::vanilla::{Argument, JavaRuntimeManifest, JavaRuntimeType, JavaRuntimeFile, AssetObject, VanillaVersion}},
 };
 
-use super::downloader::{validate_file_hash, Downloadable};
+use super::{downloader::{validate_file_hash}, manifest::vanilla::{Rule, RuleType, JavaManifest, VanillaManifestVersion, LaunchArguments, Library, JarType, DownloadMetadata, JavaRuntime, Logging, AssetIndex}};
 
-#[derive(Debug, Deserialize)]
-/// The version metadata returned in the manifest request.
-pub struct VanillaManifestVersion {
-    id: String,
-    #[serde(rename = "type")]
-    pub version_type: String,
-    pub url: String,
-    time: String,
-    #[serde(rename = "releaseTime")]
-    pub release_time: String,
-    pub sha1: String,
-    #[serde(rename = "complianceLevel")]
-    compliance_level: u32,
-}
+// #[derive(Debug, Deserialize)]
+// /// The version metadata returned in the manifest request.
+// pub struct VanillaManifestVersion {
+//     id: String,
+//     #[serde(rename = "type")]
+//     pub version_type: String,
+//     pub url: String,
+//     time: String,
+//     #[serde(rename = "releaseTime")]
+//     pub release_time: String,
+//     pub sha1: String,
+//     #[serde(rename = "complianceLevel")]
+//     compliance_level: u32,
+// }
 
-#[derive(Debug, Deserialize)]
-/// Struct holding everything returned in the vanilla manifest json.
-pub struct VanillaManifest {
-    // latest: VanillaLatest,
-    #[serde(deserialize_with = "as_version_map")]
-    pub versions: IndexMap<String, VanillaManifestVersion>,
-}
+// #[derive(Debug, Deserialize)]
+// /// Struct holding everything returned in the vanilla manifest json.
+// pub struct VanillaManifest {
+//     // latest: VanillaLatest,
+//     #[serde(deserialize_with = "as_version_map")]
+//     pub versions: IndexMap<String, VanillaManifestVersion>,
+// }
 
-fn as_version_map<'de, D>(
-    deserializer: D,
-) -> Result<IndexMap<String, VanillaManifestVersion>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let vanilla_versions: Vec<VanillaManifestVersion> = Deserialize::deserialize(deserializer)?;
-    // IndexMap keeps insertion order. Important here when deserializing the json since the
-    // vanilla manifest is in the correct order already.
-    let mut map: IndexMap<String, VanillaManifestVersion> = IndexMap::new();
-    for version in vanilla_versions {
-        map.insert(version.id.clone(), version);
-    }
-    Ok(map)
-}
+// fn as_version_map<'de, D>(
+//     deserializer: D,
+// ) -> Result<IndexMap<String, VanillaManifestVersion>, D::Error>
+// where
+//     D: Deserializer<'de>,
+// {
+//     let vanilla_versions: Vec<VanillaManifestVersion> = Deserialize::deserialize(deserializer)?;
+//     // IndexMap keeps insertion order. Important here when deserializing the json since the
+//     // vanilla manifest is in the correct order already.
+//     let mut map: IndexMap<String, VanillaManifestVersion> = IndexMap::new();
+//     for version in vanilla_versions {
+//         map.insert(version.id.clone(), version);
+//     }
+//     Ok(map)
+// }
 
-#[derive(Debug, Deserialize, Serialize)]
-enum RuleType {
-    #[serde(rename = "features")]
-    Features(HashMap<String, bool>),
-    #[serde(rename = "os")]
-    OperatingSystem(HashMap<String, String>),
-}
+// #[derive(Debug, Deserialize, Serialize)]
+// enum RuleType {
+//     #[serde(rename = "features")]
+//     Features(HashMap<String, bool>),
+//     #[serde(rename = "os")]
+//     OperatingSystem(HashMap<String, String>),
+// }
 
-#[derive(Debug, Deserialize, Serialize)]
-struct Rule {
-    pub action: String,
-    #[serde(flatten)]
-    pub rule_type: RuleType,
-}
+// #[derive(Debug, Deserialize, Serialize)]
+// struct Rule {
+//     pub action: String,
+//     #[serde(flatten)]
+//     pub rule_type: RuleType,
+// }
 
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(untagged)]
-enum Argument {
-    Arg(String),
-    ConditionalArg {
-        rules: Vec<Rule>,
-        #[serde(rename = "value", deserialize_with = "string_or_strings_as_vec")]
-        values: Vec<String>,
-    },
-}
+// #[derive(Debug, Deserialize, Serialize)]
+// #[serde(untagged)]
+// enum Argument {
+//     Arg(String),
+//     ConditionalArg {
+//         rules: Vec<Rule>,
+//         #[serde(rename = "value", deserialize_with = "string_or_strings_as_vec")]
+//         values: Vec<String>,
+//     },
+// }
 
-fn string_or_strings_as_vec<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    struct StringVisitor;
+// fn string_or_strings_as_vec<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+// where
+//     D: Deserializer<'de>,
+// {
+//     struct StringVisitor;
 
-    impl<'de> Visitor<'de> for StringVisitor {
-        type Value = Vec<String>;
+//     impl<'de> Visitor<'de> for StringVisitor {
+//         type Value = Vec<String>;
 
-        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-            formatter.write_str("a string or array of strings.")
-        }
+//         fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+//             formatter.write_str("a string or array of strings.")
+//         }
 
-        fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-        where
-            E: Error,
-        {
-            Ok(vec![v.into()])
-        }
+//         fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+//         where
+//             E: Error,
+//         {
+//             Ok(vec![v.into()])
+//         }
 
-        fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
-        where
-            A: SeqAccess<'de>,
-        {
-            let mut vec: Vec<String> = Vec::new();
+//         fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+//         where
+//             A: SeqAccess<'de>,
+//         {
+//             let mut vec: Vec<String> = Vec::new();
 
-            while let Some(elem) = seq.next_element::<String>()? {
-                vec.push(elem);
-            }
-            Ok(vec)
-        }
-    }
-    deserializer.deserialize_any(StringVisitor)
-}
+//             while let Some(elem) = seq.next_element::<String>()? {
+//                 vec.push(elem);
+//             }
+//             Ok(vec)
+//         }
+//     }
+//     deserializer.deserialize_any(StringVisitor)
+// }
 
-#[derive(Debug, Deserialize, Serialize)]
-struct LaunchArguments {
-    game: Vec<Argument>,
-    jvm: Vec<Argument>,
-}
+// #[derive(Debug, Deserialize, Serialize)]
+// struct LaunchArguments {
+//     game: Vec<Argument>,
+//     jvm: Vec<Argument>,
+// }
 
-#[derive(Debug, Deserialize, Serialize)]
-struct DownloadMetadata {
-    sha1: String,
-    size: u32,
-    url: String,
-}
+// #[derive(Debug, Deserialize, Serialize)]
+// struct DownloadMetadata {
+//     sha1: String,
+//     size: u32,
+//     url: String,
+// }
 
-#[derive(Debug, Deserialize, Serialize)]
-struct Asset {
-    path: String,
-    hash: String,
-    size: u32,
-}
+// #[derive(Debug, Deserialize, Serialize)]
+// struct Asset {
+//     path: String,
+//     hash: String,
+//     size: u32,
+// }
 
-impl Downloadable for Asset {
-    fn name(&self) -> &str {
-        &self.path
-    }
+// impl Downloadable for Asset {
+//     fn name(&self) -> &str {
+//         &self.path
+//     }
 
-    fn url(&self) -> String {
-        let first_two_chars = &self.hash.split_at(2);
-        let url = format!(
-            "{}/{}/{}",
-            VANILLA_ASSET_BASE_URL, &first_two_chars.0, &self.hash
-        );
-        url
-    }
+//     fn url(&self) -> String {
+//         let first_two_chars = &self.hash.split_at(2);
+//         let url = format!(
+//             "{}/{}/{}",
+//             VANILLA_ASSET_BASE_URL, &first_two_chars.0, &self.hash
+//         );
+//         url
+//     }
 
-    fn hash(&self) -> &str {
-        &self.hash
-    }
+//     fn hash(&self) -> &str {
+//         &self.hash
+//     }
 
-    fn path(&self, base_dir: &Path) -> PathBuf {
-        let first_two_chars = &self.hash.split_at(2);
-        base_dir.join(format!("{}/{}", &first_two_chars.0, &self.hash))
-    }
-}
+//     fn path(&self, base_dir: &Path) -> PathBuf {
+//         let first_two_chars = &self.hash.split_at(2);
+//         base_dir.join(format!("{}/{}", &first_two_chars.0, &self.hash))
+//     }
+// }
 
-#[derive(Debug, Deserialize, Serialize)]
-struct AssetObject {
-    #[serde(deserialize_with = "to_asset_vec")]
-    objects: Vec<Asset>,
-}
+// #[derive(Debug, Deserialize, Serialize)]
+// struct AssetObject {
+//     #[serde(deserialize_with = "to_asset_vec")]
+//     objects: Vec<Asset>,
+// }
 
-fn to_asset_vec<'de, D>(deserializer: D) -> Result<Vec<Asset>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    #[derive(Debug, Deserialize)]
-    struct TmpAsset {
-        hash: String,
-        size: u32,
-    }
+// fn to_asset_vec<'de, D>(deserializer: D) -> Result<Vec<Asset>, D::Error>
+// where
+//     D: Deserializer<'de>,
+// {
+//     #[derive(Debug, Deserialize)]
+//     struct TmpAsset {
+//         hash: String,
+//         size: u32,
+//     }
 
-    let asset_map: HashMap<String, TmpAsset> = Deserialize::deserialize(deserializer)?;
-    let mut result = Vec::with_capacity(asset_map.len());
-    for (path, tmp_asset) in asset_map {
-        result.push(Asset {
-            path,
-            hash: tmp_asset.hash,
-            size: tmp_asset.size,
-        });
-    }
-    Ok(result)
-}
+//     let asset_map: HashMap<String, TmpAsset> = Deserialize::deserialize(deserializer)?;
+//     let mut result = Vec::with_capacity(asset_map.len());
+//     for (path, tmp_asset) in asset_map {
+//         result.push(Asset {
+//             path,
+//             hash: tmp_asset.hash,
+//             size: tmp_asset.size,
+//         });
+//     }
+//     Ok(result)
+// }
 
-#[derive(Debug, Deserialize, Serialize)]
-struct AssetIndex {
-    id: String,
-    #[serde(flatten)]
-    metadata: DownloadMetadata,
-    #[serde(rename = "totalSize")]
-    total_size: u32,
-}
+// #[derive(Debug, Deserialize, Serialize)]
+// struct AssetIndex {
+//     id: String,
+//     #[serde(flatten)]
+//     metadata: DownloadMetadata,
+//     #[serde(rename = "totalSize")]
+//     total_size: u32,
+// }
 
-#[derive(Debug, Deserialize, Serialize)]
-struct GameDownloads {
-    client: DownloadMetadata,
-    client_mappings: DownloadMetadata,
-    server: DownloadMetadata,
-    server_mappings: DownloadMetadata,
-}
+// #[derive(Debug, Deserialize, Serialize)]
+// struct GameDownloads {
+//     client: DownloadMetadata,
+//     client_mappings: DownloadMetadata,
+//     server: DownloadMetadata,
+//     server_mappings: DownloadMetadata,
+// }
 
-#[derive(Debug, Deserialize, Serialize)]
-struct JavaVersion {
-    component: String,
-    #[serde(rename = "majorVersion")]
-    major_version: u32,
-}
+// #[derive(Debug, Deserialize, Serialize)]
+// struct JavaVersion {
+//     component: String,
+//     #[serde(rename = "majorVersion")]
+//     major_version: u32,
+// }
 
-#[derive(Debug, Deserialize, Serialize)]
-struct Artifact {
-    path: String,
-    #[serde(flatten)]
-    metadata: DownloadMetadata,
-}
+// #[derive(Debug, Deserialize, Serialize)]
+// struct Artifact {
+//     path: String,
+//     #[serde(flatten)]
+//     metadata: DownloadMetadata,
+// }
 
-#[derive(Debug, Deserialize, Serialize)]
-struct LibraryDownloads {
-    artifact: Artifact,
-}
+// #[derive(Debug, Deserialize, Serialize)]
+// struct LibraryDownloads {
+//     artifact: Artifact,
+// }
 
-#[derive(Debug, Deserialize, Serialize)]
-struct Library {
-    downloads: LibraryDownloads,
-    name: String,
-    rules: Option<Vec<Rule>>,
-}
+// #[derive(Debug, Deserialize, Serialize)]
+// struct Library {
+//     downloads: LibraryDownloads,
+//     name: String,
+//     rules: Option<Vec<Rule>>,
+// }
 
-impl Downloadable for Library {
-    fn name(&self) -> &str {
-        &self.name
-    }
+// impl Downloadable for Library {
+//     fn name(&self) -> &str {
+//         &self.name
+//     }
 
-    fn url(&self) -> String {
-        self.downloads.artifact.metadata.url.to_owned()
-    }
+//     fn url(&self) -> String {
+//         self.downloads.artifact.metadata.url.to_owned()
+//     }
 
-    fn hash(&self) -> &str {
-        &self.downloads.artifact.metadata.sha1
-    }
+//     fn hash(&self) -> &str {
+//         &self.downloads.artifact.metadata.sha1
+//     }
 
-    fn path(&self, base_dir: &Path) -> PathBuf {
-        base_dir.join(&self.downloads.artifact.path)
-    }
-}
+//     fn path(&self, base_dir: &Path) -> PathBuf {
+//         base_dir.join(&self.downloads.artifact.path)
+//     }
+// }
 
-#[derive(Debug, Deserialize, Serialize)]
-struct ClientLoggerFile {
-    id: String,
-    #[serde(flatten)]
-    metadata: DownloadMetadata,
-}
+// #[derive(Debug, Deserialize, Serialize)]
+// struct ClientLoggerFile {
+//     id: String,
+//     #[serde(flatten)]
+//     metadata: DownloadMetadata,
+// }
 
-#[derive(Debug, Deserialize, Serialize)]
-struct ClientLogger {
-    argument: String,
-    file: ClientLoggerFile,
-    #[serde(rename = "type")]
-    logger_type: String,
-}
+// #[derive(Debug, Deserialize, Serialize)]
+// struct ClientLogger {
+//     argument: String,
+//     file: ClientLoggerFile,
+//     #[serde(rename = "type")]
+//     logger_type: String,
+// }
 
-#[derive(Debug, Deserialize, Serialize)]
-// TODO: What about server logging?
-struct Logging {
-    client: ClientLogger,
-}
+// #[derive(Debug, Deserialize, Serialize)]
+// // TODO: What about server logging?
+// struct Logging {
+//     client: ClientLogger,
+// }
 
-#[derive(Debug, Deserialize, Serialize)]
-/// The launch arguments and metadata for a given vanilla version.
-// REVIEW: I believe this response is different for older versions of the game. versions < 1.13
-pub struct VanillaVersion {
-    arguments: LaunchArguments,
-    #[serde(rename = "assetIndex")]
-    asset_index: AssetIndex,
-    assets: String,
-    #[serde(rename = "complianceLevel")]
-    compliance_level: u32,
-    downloads: GameDownloads,
-    id: String,
-    #[serde(rename = "javaVersion")]
-    java_version: JavaVersion,
-    libraries: Vec<Library>,
-    logging: Logging,
-    #[serde(rename = "mainClass")]
-    main_class: String,
-    #[serde(rename = "minimumLauncherVersion")]
-    min_launcher_version: u32,
-    #[serde(rename = "releaseTime")]
-    release_time: String,
-    time: String,
-    #[serde(rename = "type")]
-    version_type: String,
-}
+// #[derive(Debug, Deserialize, Serialize)]
+// /// The launch arguments and metadata for a given vanilla version.
+// // REVIEW: I believe this response is different for older versions of the game. versions < 1.13
+// pub struct VanillaVersion {
+//     arguments: LaunchArguments,
+//     #[serde(rename = "assetIndex")]
+//     asset_index: AssetIndex,
+//     assets: String,
+//     #[serde(rename = "complianceLevel")]
+//     compliance_level: u32,
+//     downloads: GameDownloads,
+//     id: String,
+//     #[serde(rename = "javaVersion")]
+//     java_version: JavaVersion,
+//     libraries: Vec<Library>,
+//     logging: Logging,
+//     #[serde(rename = "mainClass")]
+//     main_class: String,
+//     #[serde(rename = "minimumLauncherVersion")]
+//     min_launcher_version: u32,
+//     #[serde(rename = "releaseTime")]
+//     release_time: String,
+//     time: String,
+//     #[serde(rename = "type")]
+//     version_type: String,
+// }
 
-#[derive(Debug)]
-pub enum JarType {
-    Client,
-    Server,
-}
+// #[derive(Debug)]
+// pub enum JarType {
+//     Client,
+//     Server,
+// }
 
-#[derive(Debug, Deserialize)]
-struct JavaRuntimeAvailability {
-    group: u32,
-    progress: u32,
-}
+// #[derive(Debug, Deserialize)]
+// struct JavaRuntimeAvailability {
+//     group: u32,
+//     progress: u32,
+// }
 
-#[derive(Debug, Deserialize)]
-struct JavaRuntimeVesion {
-    name: String,
-    released: String,
-}
+// #[derive(Debug, Deserialize)]
+// struct JavaRuntimeVesion {
+//     name: String,
+//     released: String,
+// }
 
-#[derive(Debug, Deserialize)]
-struct JavaRuntime {
-    availability: JavaRuntimeAvailability,
-    manifest: DownloadMetadata,
-    version: JavaRuntimeVesion,
-}
+// #[derive(Debug, Deserialize)]
+// struct JavaRuntime {
+//     availability: JavaRuntimeAvailability,
+//     manifest: DownloadMetadata,
+//     version: JavaRuntimeVesion,
+// }
 
-#[derive(Debug, Deserialize)]
-struct JavaManifest {
-    #[serde(
-        rename = "java-runtime-alpha",
-        deserialize_with = "deserialize_java_runtime"
-    )]
-    java_runtime_alpha: Option<JavaRuntime>,
-    #[serde(
-        rename = "java-runtime-beta",
-        deserialize_with = "deserialize_java_runtime"
-    )]
-    java_runtime_beta: Option<JavaRuntime>,
-    #[serde(
-        rename = "java-runtime-gamma",
-        deserialize_with = "deserialize_java_runtime"
-    )]
-    java_runtime_gamma: Option<JavaRuntime>,
-    #[serde(rename = "jre-legacy", deserialize_with = "deserialize_java_runtime")]
-    jre_legacy: Option<JavaRuntime>,
-    #[serde(
-        rename = "minecraft-java-exe",
-        deserialize_with = "deserialize_java_runtime"
-    )]
-    minecraft_java_exe: Option<JavaRuntime>,
-}
+// #[derive(Debug, Deserialize)]
+// struct JavaManifest {
+//     #[serde(
+//         rename = "java-runtime-alpha",
+//         deserialize_with = "deserialize_java_runtime"
+//     )]
+//     java_runtime_alpha: Option<JavaRuntime>,
+//     #[serde(
+//         rename = "java-runtime-beta",
+//         deserialize_with = "deserialize_java_runtime"
+//     )]
+//     java_runtime_beta: Option<JavaRuntime>,
+//     #[serde(
+//         rename = "java-runtime-gamma",
+//         deserialize_with = "deserialize_java_runtime"
+//     )]
+//     java_runtime_gamma: Option<JavaRuntime>,
+//     #[serde(rename = "jre-legacy", deserialize_with = "deserialize_java_runtime")]
+//     jre_legacy: Option<JavaRuntime>,
+//     #[serde(
+//         rename = "minecraft-java-exe",
+//         deserialize_with = "deserialize_java_runtime"
+//     )]
+//     minecraft_java_exe: Option<JavaRuntime>,
+// }
 
-fn deserialize_java_runtime<'de, D>(deserializer: D) -> Result<Option<JavaRuntime>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let runtimes: Vec<JavaRuntime> = Deserialize::deserialize(deserializer)?;
-    if runtimes.len() > 1 {
-        warn!(
-            "Got more java runtimes than expected. Expected 1 but got {}",
-            runtimes.len()
-        );
-        Ok(None)
-    } else {
-        // We know we have one element, get it
-        Ok(runtimes.into_iter().nth(0))
-    }
-}
+// fn deserialize_java_runtime<'de, D>(deserializer: D) -> Result<Option<JavaRuntime>, D::Error>
+// where
+//     D: Deserializer<'de>,
+// {
+//     let runtimes: Vec<JavaRuntime> = Deserialize::deserialize(deserializer)?;
+//     if runtimes.len() > 1 {
+//         warn!(
+//             "Got more java runtimes than expected. Expected 1 but got {}",
+//             runtimes.len()
+//         );
+//         Ok(None)
+//     } else {
+//         // We know we have one element, get it
+//         Ok(runtimes.into_iter().nth(0))
+//     }
+// }
 
-#[derive(Debug, Deserialize)]
-struct JavaRuntimeDownload {
-    lzma: Option<DownloadMetadata>,
-    raw: DownloadMetadata,
-}
+// #[derive(Debug, Deserialize)]
+// struct JavaRuntimeDownload {
+//     lzma: Option<DownloadMetadata>,
+//     raw: DownloadMetadata,
+// }
 
-#[derive(Debug, Deserialize)]
-struct JavaRuntimeFile {
-    path: String,
-    downloads: JavaRuntimeDownload,
-    executable: bool,
-}
+// #[derive(Debug, Deserialize)]
+// struct JavaRuntimeFile {
+//     path: String,
+//     downloads: JavaRuntimeDownload,
+//     executable: bool,
+// }
 
-impl Downloadable for JavaRuntimeFile {
-    fn name(&self) -> &str {
-        &self.path
-    }
+// impl Downloadable for JavaRuntimeFile {
+//     fn name(&self) -> &str {
+//         &self.path
+//     }
 
-    // TODO: Would be better to use lzma download instead.
-    fn url(&self) -> String {
-        self.downloads.raw.url.to_owned()
-    }
+//     // TODO: Would be better to use lzma download instead.
+//     fn url(&self) -> String {
+//         self.downloads.raw.url.to_owned()
+//     }
 
-    fn hash(&self) -> &str {
-        &self.downloads.raw.sha1
-    }
+//     fn hash(&self) -> &str {
+//         &self.downloads.raw.sha1
+//     }
 
-    fn path(&self, base_dir: &Path) -> PathBuf {
-        base_dir.join(&self.path)
-    }
-}
+//     fn path(&self, base_dir: &Path) -> PathBuf {
+//         base_dir.join(&self.path)
+//     }
+// }
 
-#[derive(Debug, Deserialize)]
-#[serde(tag = "type")]
-enum JavaRuntimeType {
-    #[serde(rename = "file")]
-    File(JavaRuntimeFile),
-    #[serde(rename = "directory")]
-    Directory(String),
-    #[serde(rename = "link")]
-    Link { path: String, target: String },
-}
+// #[derive(Debug, Deserialize)]
+// #[serde(tag = "type")]
+// enum JavaRuntimeType {
+//     #[serde(rename = "file")]
+//     File(JavaRuntimeFile),
+//     #[serde(rename = "directory")]
+//     Directory(String),
+//     #[serde(rename = "link")]
+//     Link { path: String, target: String },
+// }
 
-#[derive(Debug, Deserialize)]
-struct JavaRuntimeManifest {
-    #[serde(deserialize_with = "to_java_runtime_vec")]
-    files: Vec<JavaRuntimeType>,
-}
+// #[derive(Debug, Deserialize)]
+// struct JavaRuntimeManifest {
+//     #[serde(deserialize_with = "to_java_runtime_vec")]
+//     files: Vec<JavaRuntimeType>,
+// }
 
-fn to_java_runtime_vec<'de, D>(deserializer: D) -> Result<Vec<JavaRuntimeType>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    #[derive(Debug, Deserialize)]
-    #[serde(tag = "type")]
-    enum TmpJavaRuntimeType {
-        #[serde(rename = "file")]
-        File {
-            downloads: JavaRuntimeDownload,
-            executable: bool,
-        },
-        #[serde(rename = "directory")]
-        Directory,
-        #[serde(rename = "link")]
-        Link { target: String },
-    }
-    let jrt_map: HashMap<String, TmpJavaRuntimeType> = Deserialize::deserialize(deserializer)?;
-    println!("HERE: {:#?}", jrt_map);
-    let mut result = Vec::with_capacity(jrt_map.len());
-    for (path, tmp_jrt) in jrt_map {
-        result.push(match tmp_jrt {
-            TmpJavaRuntimeType::File {
-                downloads,
-                executable,
-            } => JavaRuntimeType::File(JavaRuntimeFile {
-                path,
-                downloads,
-                executable,
-            }),
-            TmpJavaRuntimeType::Directory => JavaRuntimeType::Directory(path),
-            TmpJavaRuntimeType::Link { target } => JavaRuntimeType::Link { path, target },
-        });
-    }
-    Ok(result)
-}
+// fn to_java_runtime_vec<'de, D>(deserializer: D) -> Result<Vec<JavaRuntimeType>, D::Error>
+// where
+//     D: Deserializer<'de>,
+// {
+//     #[derive(Debug, Deserialize)]
+//     #[serde(tag = "type")]
+//     enum TmpJavaRuntimeType {
+//         #[serde(rename = "file")]
+//         File {
+//             downloads: JavaRuntimeDownload,
+//             executable: bool,
+//         },
+//         #[serde(rename = "directory")]
+//         Directory,
+//         #[serde(rename = "link")]
+//         Link { target: String },
+//     }
+//     let jrt_map: HashMap<String, TmpJavaRuntimeType> = Deserialize::deserialize(deserializer)?;
+//     println!("HERE: {:#?}", jrt_map);
+//     let mut result = Vec::with_capacity(jrt_map.len());
+//     for (path, tmp_jrt) in jrt_map {
+//         result.push(match tmp_jrt {
+//             TmpJavaRuntimeType::File {
+//                 downloads,
+//                 executable,
+//             } => JavaRuntimeType::File(JavaRuntimeFile {
+//                 path,
+//                 downloads,
+//                 executable,
+//             }),
+//             TmpJavaRuntimeType::Directory => JavaRuntimeType::Directory(path),
+//             TmpJavaRuntimeType::Link { target } => JavaRuntimeType::Link { path, target },
+//         });
+//     }
+//     Ok(result)
+// }
 
 /// Checks if a single rule matches every case.
 /// Returns true when an allow rule matches or a disallow rule does not match.
@@ -679,7 +673,7 @@ fn substitute_jvm_arguments(arg: &str, argument_paths: &LaunchArgumentPaths) -> 
             "${natives_directory}" => Some(arg.replace(
                 substr,
                 &format!(
-                    "\"{}\"",
+                    "{}",
                     path_to_utf8_str(&argument_paths.instance_path.join("natives"))
                 ),
             )),
@@ -720,11 +714,11 @@ fn substitute_game_arguments(
             "${version_name}" => Some(arg.replace(substr, &mc_version.id)),
             "${game_directory}" => Some(arg.replace(
                 substr,
-                &format!("\"{}\"", path_to_utf8_str(&argument_paths.instance_path)),
+                &format!("{}", path_to_utf8_str(&argument_paths.instance_path)),
             )),
             "${assets_root}" => Some(arg.replace(
                 substr,
-                &format!("\"{}\"", path_to_utf8_str(&argument_paths.asset_dir_path)),
+                &format!("{}", path_to_utf8_str(&argument_paths.asset_dir_path)),
             )),
             "${assets_index_name}" => Some(arg.replace(substr, &asset_index)),
             "${user_type}" => Some(arg.replace(substr, "mojang")), // TODO: Unknown but hardcoded to "mojang" as thats what the gdlauncher example shows
@@ -819,11 +813,11 @@ async fn download_game_jar(
     fs::create_dir_all(dir_path)?;
 
     let path = dir_path.join(format!("{}.jar", &jar_str));
-    let valid_hash = &download.sha1;
+    let valid_hash = download.hash();
     // Check if the file exists and the hash matches the download's sha1.
     if !validate_file_hash(&path, valid_hash) {
         info!("Downloading {} {} jar", version_id, jar_str);
-        let bytes = download_bytes_from_url(&download.url).await?;
+        let bytes = download_bytes_from_url(download.url()).await?;
         if !validate_hash(&bytes, valid_hash) {
             let err = format!(
                 "Error downloading {} {} jar, invalid hash.",
@@ -846,7 +840,7 @@ async fn download_java_from_runtime_manifest(
 ) -> ManifestResult<PathBuf> {
     info!("Downloading java runtime manifset");
     let version_manifest: JavaRuntimeManifest =
-        download_json_object(&manifest.manifest.url).await?;
+        download_json_object(&manifest.manifest.url()).await?;
     let base_path = &java_dir.join(&manifest.version.name);
 
     let mut files: Vec<JavaRuntimeFile> = Vec::new();
@@ -876,6 +870,11 @@ async fn download_java_from_runtime_manifest(
         }
         let path = jrt.path(&base_path);
         let mut file = File::create(&path)?;
+        #[cfg(target_os = "linux")]
+        {
+            let mut permissions = file.metadata()?.permissions();
+            permissions.set_mode(0o775);
+        }
         file.write_all(&bytes)?;
         // TODO: Ignoring file permissions currently, theres an "exetutable" field thats unused.
         Ok(())
@@ -947,23 +946,24 @@ async fn download_logging_configurations(
     asset_objects_dir: &Path,
     logging: &Logging,
 ) -> ManifestResult<(String, PathBuf)> {
-    let first_two_chars = logging.client.file.metadata.sha1.split_at(2);
+    let client_logger = &logging.client;
+    let first_two_chars = client_logger.file_hash().split_at(2);
     let objects_dir = &asset_objects_dir.join(first_two_chars.0);
     fs::create_dir_all(&objects_dir)?;
 
-    let path = objects_dir.join(format!("{}", &logging.client.file.id));
-    let valid_hash = &logging.client.file.metadata.sha1;
+    let path = objects_dir.join(format!("{}", &client_logger.file_id()));
+    let valid_hash = &client_logger.file_hash();
 
     if !validate_file_hash(&path, valid_hash) {
         info!(
             "Downloading logging configuration {}",
-            logging.client.file.id
+            client_logger.file_id()
         );
-        let bytes = download_bytes_from_url(&logging.client.file.metadata.url).await?;
+        let bytes = download_bytes_from_url(&client_logger.file_url()).await?;
         if !validate_hash(&bytes, valid_hash) {
             let err = format!(
                 "Error downloading logging configuration {}, invalid hash.",
-                logging.client.file.id
+                client_logger.file_id()
             );
             error!("{}", err);
             return Err(ManifestError::InvalidFileDownload(err));
@@ -971,7 +971,7 @@ async fn download_logging_configurations(
         let mut file = File::create(&path)?;
         file.write_all(&bytes)?;
     }
-    Ok((logging.client.argument.clone(), path))
+    Ok((client_logger.argument.clone(), path))
 }
 
 //TODO: This probably needs to change a little to support "legacy" versions < 1.7
@@ -980,14 +980,15 @@ async fn download_assets(
     asset_objects_dir: &Path,
     asset_index: &AssetIndex,
 ) -> ManifestResult<String> {
-    let asset_object: AssetObject = download_json_object(&asset_index.metadata.url).await?;
+    let metadata = &asset_index.metadata;
+    let asset_object: AssetObject = download_json_object(metadata.url()).await?;
     let asset_index_dir = asset_dir.join("indexes");
-    let index_bytes = download_bytes_from_url(&asset_index.metadata.url).await?;
+    let index_bytes = download_bytes_from_url(metadata.url()).await?;
     fs::create_dir_all(&asset_index_dir)?;
 
     info!("Asset Index ID: {:?}", &asset_index);
 
-    let asset_index_name = format!("{}.json", &asset_index.id);
+    let asset_index_name = format!("{}.json", asset_index.id);
     let index_path = &asset_index_dir.join(&asset_index_name);
     let mut index_file = File::create(index_path)?;
     index_file.write_all(&index_bytes)?;
@@ -1033,7 +1034,7 @@ pub async fn create_instance(
     let resource_manager = resource_state.0.lock().await;
     let start = Instant::now();
 
-    let version = resource_manager.download_vanilla_version(&selected).await?;
+    let version: VanillaVersion = resource_manager.download_vanilla_version(&selected).await?;
 
     let libraries: Vec<Library> = version
         .libraries
