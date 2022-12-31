@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     fs::{self, File},
-    io::{self, BufReader, Write, BufRead},
+    io::{self, BufReader, Write},
     path::{Path, PathBuf},
     process::{Command, Stdio},
     string::FromUtf8Error,
@@ -12,15 +12,15 @@ use bytes::Bytes;
 use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
 use tauri::async_runtime::Mutex;
+use zip::result::ZipError;
 
 use crate::{
     commands::{VersionEntry, VersionFilter},
     consts::VANILLA_MANIFEST_URL,
     web_services::{
-        downloader::{download_bytes_from_url, validate_file_hash, validate_hash},
-        resources::{
-            substitute_account_specific_arguments
-        }, manifest::vanilla::{VanillaManifest, VanillaManifestVersion, VanillaVersion},
+        downloader::{download_bytes_from_url, validate_file_hash, validate_hash, DownloadError},
+        manifest::vanilla::{VanillaManifest, VanillaManifestVersion, VanillaVersion},
+        resources::substitute_account_specific_arguments,
     },
 };
 
@@ -37,6 +37,7 @@ pub enum ManifestError {
     VersionRetrievalError(String),
     ResourceError(String),
     InvalidFileDownload(String),
+    FileExtractionError(ZipError),
 }
 
 impl Serialize for ManifestError {
@@ -58,6 +59,9 @@ impl Serialize for ManifestError {
             ManifestError::VersionRetrievalError(error) => serializer.serialize_str(&error),
             ManifestError::ResourceError(error) => serializer.serialize_str(&error),
             ManifestError::InvalidFileDownload(error) => serializer.serialize_str(&error),
+            ManifestError::FileExtractionError(error) => {
+                serializer.serialize_str(&error.to_string())
+            }
         }
     }
 }
@@ -83,6 +87,22 @@ impl From<FromUtf8Error> for ManifestError {
 impl From<serde_json::Error> for ManifestError {
     fn from(error: serde_json::Error) -> Self {
         ManifestError::JsonSerializationError(error)
+    }
+}
+
+impl From<DownloadError> for ManifestError {
+    fn from(error: DownloadError) -> Self {
+        match error {
+            DownloadError::RequestError(e) => ManifestError::HttpError(e),
+            DownloadError::FileWriteError(e) => ManifestError::SerializationFilesystemError(e),
+            DownloadError::InvalidFileHashError(e) => ManifestError::InvalidFileDownload(e),
+        }
+    }
+}
+
+impl From<ZipError> for ManifestError {
+    fn from(error: ZipError) -> Self {
+        ManifestError::FileExtractionError(error)
     }
 }
 
@@ -251,10 +271,13 @@ impl ResourceManager {
                     );
                 }
                 let mut command = Command::new(&instance.jvm_path);
-                command.current_dir(working_dir).args(args).stdout(Stdio::piped());
+                command
+                    .current_dir(working_dir)
+                    .args(args)
+                    .stdout(Stdio::piped());
                 debug!("Command: {:#?}", command);
                 let child = command.spawn().expect("Could not spawn instance.");
-                
+
                 // let reader = BufReader::new(child.stdout.unwrap());
                 // for line in reader.lines() {
                 //     debug!("Mc Log: {:#?}", line);
