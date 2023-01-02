@@ -16,10 +16,10 @@ use zip::result::ZipError;
 
 use crate::{
     commands::{VersionEntry, VersionFilter},
-    consts::VANILLA_MANIFEST_URL,
+    consts::{VANILLA_MANIFEST_URL, FORGE_MANIFEST_URL},
     web_services::{
         downloader::{download_bytes_from_url, validate_file_hash, validate_hash, DownloadError},
-        manifest::vanilla::{VanillaManifest, VanillaManifestVersion, VanillaVersion},
+        manifest::{vanilla::{VanillaManifest, VanillaManifestVersion, VanillaVersion}, forge::ForgeManifest},
         resources::substitute_account_specific_arguments,
     },
 };
@@ -125,6 +125,7 @@ impl ResourceState {
 pub struct ResourceManager {
     app_dir: PathBuf,
     vanilla_manifest: Option<VanillaManifest>,
+    forge_manifest: Option<ForgeManifest>,
     instance_map: HashMap<String, InstanceConfiguration>,
     // TODO: Forge and Fabric manifests.
 }
@@ -134,6 +135,7 @@ impl ResourceManager {
         Self {
             app_dir: app_dir.into(),
             vanilla_manifest: None,
+            forge_manifest: None,
             instance_map: HashMap::new(),
         }
     }
@@ -171,11 +173,14 @@ impl ResourceManager {
     pub async fn download_manifests(&mut self) -> ManifestResult<()> {
         info!("Downloading manifests");
         let client = reqwest::Client::new();
-        let response = client.get(VANILLA_MANIFEST_URL).send().await?;
+        let vanilla_response = client.get(VANILLA_MANIFEST_URL).send().await?;
+        let vanilla_manifest = vanilla_response.json::<VanillaManifest>().await?;
+        self.vanilla_manifest = Some(vanilla_manifest);
 
-        let manifest = response.json::<VanillaManifest>().await?;
+        let forge_response = client.get(FORGE_MANIFEST_URL).send().await?;
+        let forge_manifest = forge_response.json::<ForgeManifest>().await?;
+        self.forge_manifest = Some(forge_manifest);
 
-        self.vanilla_manifest = Some(manifest);
         Ok(())
     }
 
@@ -193,6 +198,9 @@ impl ResourceManager {
         }
         result
     }
+
+    // TODO: Add filters if they apply.
+    // pub fn get_forge_version_list(&self)
 
     /// Get the vanilla manifest for a given mc_version. Returns None if mc_version is invalid.
     pub fn get_vanilla_manifest_from_version(

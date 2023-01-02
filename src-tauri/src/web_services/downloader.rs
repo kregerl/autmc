@@ -41,7 +41,7 @@ pub trait Downloadable {
 }
 
 // FIXME: Dont bother checking file hash if the file is already downloaded. Assume that the file is valid.
-pub async fn buffered_stream_download<T>(
+pub async fn buffered_download_stream<T>(
     items: &[T],
     base_dir: &Path,
     callback: impl Fn(&Bytes, &T) -> DownloadResult<()>,
@@ -51,7 +51,7 @@ where
 {
     let mut futures = Vec::new();
     for item in items {
-        futures.push(download_single_callback(item, &base_dir, &callback));
+        futures.push(download_single(item, &base_dir, &callback));
     }
     let x = futures::stream::iter(futures)
         .buffer_unordered(BUFFER_SIZE)
@@ -61,7 +61,7 @@ where
     Ok(())
 }
 
-async fn download_single_callback<T>(
+async fn download_single<T>(
     item: &T,
     base_dir: &Path,
     callback: impl Fn(&Bytes, &T) -> DownloadResult<()>,

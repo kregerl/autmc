@@ -19,12 +19,12 @@ use crate::{
     },
     web_services::{
         downloader::{
-            buffered_stream_download, download_bytes_from_url, download_json_object, validate_hash,
+            buffered_download_stream, download_bytes_from_url, download_json_object, validate_hash,
             DownloadError, Downloadable,
         },
         manifest::vanilla::{
-            Argument, AssetObject, DownloadableClassifier, JavaRuntimeFile, JavaRuntimeManifest,
-            JavaRuntimeType, VanillaVersion,
+            Argument, Artifact, AssetObject, DownloadableClassifier, JavaRuntimeFile,
+            JavaRuntimeManifest, JavaRuntimeType, VanillaVersion,
         },
     },
 };
@@ -32,8 +32,8 @@ use crate::{
 use super::{
     downloader::validate_file_hash,
     manifest::vanilla::{
-        AssetIndex, DownloadMetadata, JarType, JavaManifest, JavaRuntime, LaunchArguments, Library,
-        Logging, Rule, RuleType, VanillaManifestVersion,
+        AssetIndex, DownloadMetadata, JarType, JavaManifest, JavaRuntime, LaunchArguments,
+        LaunchArguments113, Library, Logging, Rule, RuleType, VanillaManifestVersion,
     },
 };
 
@@ -150,17 +150,13 @@ struct LaunchArgumentPaths {
     asset_dir_path: PathBuf,
 }
 
-fn construct_arguments(
-    main_class: String,
-    arguments: &LaunchArguments,
-    mc_version: &VanillaManifestVersion,
-    asset_index: &str,
-    argument_paths: LaunchArgumentPaths,
+// TODO: Add -Xmx and -Xms arguments for memory
+fn construct_jvm_arguments113(
+    arguments: &LaunchArguments113,
+    argument_paths: &LaunchArgumentPaths,
 ) -> Vec<String> {
-    // Vec could be 'with_capacity' if we calculate capacity first.
-    let mut formatted_arguments: Vec<String> = Vec::new();
+    let mut formatted_arguments = Vec::new();
 
-    // Substitute values in for placeholders in the jvm arguments.
     for jvm_arg in arguments.jvm.iter() {
         match jvm_arg {
             // For normal arguments, check if it has something that should be replaced and replace it
@@ -186,6 +182,54 @@ fn construct_arguments(
             }
         }
     }
+    formatted_arguments
+}
+
+// TODO: Add -Xmx and -Xms arguments for memory
+fn construct_jvm_arguments112(argument_paths: &LaunchArgumentPaths) -> Vec<String> {
+    let mut formatted_arguments = Vec::new();
+
+    formatted_arguments.push(
+        substitute_jvm_arguments("-Djava.library.path=${natives_directory}", &argument_paths)
+            .unwrap(),
+    );
+    formatted_arguments.push("-cp".into());
+    formatted_arguments.push(substitute_jvm_arguments("${classpath}", &argument_paths).unwrap());
+
+    formatted_arguments
+}
+
+fn construct_arguments(
+    main_class: String,
+    arguments: &LaunchArguments,
+    mc_version: &VanillaManifestVersion,
+    asset_index: &str,
+    argument_paths: LaunchArgumentPaths,
+) -> Vec<String> {
+    // IDEA: Vec could be 'with_capacity' if we calculate capacity first.
+    let mut formatted_arguments: Vec<String> = Vec::new();
+    let mut game_args: Vec<Argument> = Vec::new();
+
+    // Create game arguments from the launch arguments.
+    game_args.append(&mut match arguments {
+        // Substitute values in for placeholders in the jvm arguments.
+
+        // Versions <= 1.12  use a string of game arguments and do not provide any jvm arguments.
+        LaunchArguments::LaunchArguments112(game_args) => {
+            formatted_arguments.append(&mut construct_jvm_arguments112(&argument_paths));
+            // Split game arg string on whitespace to get individual args
+            game_args
+                .split_ascii_whitespace()
+                .map(|split| Argument::Arg(split.into()))
+                .collect::<Vec<Argument>>()
+        }
+        // Versions >= 1.13 provide the game and jvm arguments.
+        LaunchArguments::LaunchArguments113(arguments) => {
+            formatted_arguments.append(&mut construct_jvm_arguments113(arguments, &argument_paths));
+            arguments.game.iter().map(|arg| arg.clone()).collect()
+        }
+    });
+
     // Construct the logging configuration argument
     if let Some(substr) = get_arg_substring(&argument_paths.logging.0) {
         formatted_arguments.push(
@@ -199,7 +243,7 @@ fn construct_arguments(
     formatted_arguments.push(main_class);
 
     // Substitute values in for placeholders in the game arguments, skipping account-specific arguments.
-    for game_arg in arguments.game.iter() {
+    for game_arg in game_args.iter() {
         match game_arg {
             // For normal arguments, check if it has something that should be replaced and replace it
             Argument::Arg(value) => {
@@ -255,7 +299,7 @@ fn substitute_jvm_arguments(arg: &str, argument_paths: &LaunchArgumentPaths) -> 
         .collect();
 
     if let Some(substr) = substring {
-        info!("Substituting {}", &substr);
+        info!("Substituting {} for jvm arguments", &substr);
         match substr {
             "${natives_directory}" => Some(arg.replace(
                 substr,
@@ -295,7 +339,7 @@ fn substitute_game_arguments(
     let substring = get_arg_substring(arg);
 
     if let Some(substr) = substring {
-        info!("Substituting {}", &substr);
+        info!("Substituting {} for game arguments", &substr);
         match substr {
             "${version_name}" => Some(arg.replace(substr, &mc_version.id)),
             "${game_directory}" => Some(arg.replace(
@@ -311,6 +355,10 @@ fn substitute_game_arguments(
             "${version_type}" => Some(arg.replace(substr, &mc_version.version_type)),
             "${resolution_width}" => None, // TODO: Launcher option specific
             "${resolution_height}" => None, // TODO: Launcher option specific
+            "${user_properties}" => {
+                debug!("Substituting user_properties at substr: {}", substr);
+                Some(arg.replace(substr, "{}"))
+            }
             _ => None,
         }
     } else {
@@ -367,16 +415,42 @@ async fn download_libraries(
     if !libraries_dir.exists() {
         fs::create_dir(&libraries_dir)?;
     }
+    // Since libraries can have one artifact but no classifiers, or no artifact but (one or many) classifiers, or an artifact AND classifiers
+    // we extract all the downloadable artifacts into a vec and perform a single buffered download with them.
+
+    let mut downloadables: Vec<Artifact> = Vec::new();
+    let mut classifiers: Vec<DownloadableClassifier> = Vec::new();
+
+    for library in libraries {
+        let downloads = &library.downloads;
+        // Push the artifact if library has one.
+        if let Some(artifact) = &downloads.artifact {
+            downloadables.push(artifact.to_owned());
+        }
+        // If there is a natives json entry with an applicable (os dependent) classifier, get and append it 
+        let key = library.determine_key_for_classifiers();
+        if let Some(classifier_key) = key {
+            // Classifiers could be "missing" if the wrong key is used. An error is logged and downloads continue
+            let classifier = match library.get_classifier(&classifier_key) {
+                Some(classifier) => classifier,
+                None => continue,
+            };
+            classifiers.push(classifier.clone());
+            downloadables.push(classifier.classifier);
+        }
+    }
 
     let start = Instant::now();
-    buffered_stream_download(&libraries, &libraries_dir, |bytes, lib| {
+    // Perform one buffered download for all libraries, including classifiers
+    buffered_download_stream(&downloadables, &libraries_dir, |bytes, artifact| {
         // FIXME: Removing file hashing makes the downloads MUCH faster. Only because of a couple slow hashes, upwards of 1s each
-        if !validate_hash(&bytes, &lib.hash()) {
-            let err = format!("Error downloading {}, invalid hash.", &lib.url());
+        if !validate_hash(&bytes, &artifact.hash()) {
+            let err = format!("Error downloading {}, invalid hash.", &artifact.url());
             error!("{}", err);
             return Err(DownloadError::InvalidFileHashError(err));
         }
-        let path = lib.path(&libraries_dir);
+        debug!("Downloading library: {}", artifact.name());
+        let path = artifact.path(&libraries_dir);
         let mut file = File::create(&path)?;
         file.write_all(&bytes)?;
         Ok(())
@@ -387,46 +461,10 @@ async fn download_libraries(
         start.elapsed().as_millis()
     );
     let mut file_paths: Vec<PathBuf> = Vec::with_capacity(libraries.len());
-
-    let mut classifiers: Vec<DownloadableClassifier> = Vec::new();
-    for lib in libraries {
-        // If there is some key for classifiers, then add them to the classifier list
-        let key = lib.determine_key_for_classifiers();
-        debug!("Got classifier key: {:#?}", key);
-        if let Some(classifier_key) = key {
-            // Add classifier to download list.
-            match lib.get_classifier(&classifier_key) {
-                Some(classifier) => classifiers.push(classifier),
-                None => error!(
-                    "Unknown classifier key {} for library {}",
-                    classifier_key,
-                    lib.name()
-                ),
-            }
-        }
-        // Append files paths to result list
-        file_paths.push(lib.path(&libraries_dir));
+    for artifact in downloadables {
+        file_paths.push(artifact.path(&libraries_dir));
     }
 
-    debug!(
-        "Downloading {} classifiers: {:#?}",
-        classifiers.len(),
-        classifiers
-    );
-
-    // Download additional native libraries from "classifiers"
-    buffered_stream_download(&classifiers, &libraries_dir, |bytes, classifier| {
-        if !validate_hash(&bytes, &classifier.hash()) {
-            let err = format!("Error downloading {}, invalid hash.", &classifier.url());
-            error!("{}", err);
-            return Err(DownloadError::InvalidFileHashError(err));
-        }
-        let path = classifier.path(&libraries_dir);
-        let mut file = File::create(&path)?;
-        file.write_all(&bytes)?;
-        Ok(())
-    })
-    .await?;
     Ok(LibraryData {
         library_paths: file_paths,
         classifiers,
@@ -497,7 +535,7 @@ async fn download_java_from_runtime_manifest(
     // FIXME: Currently downloading `raw` files, switch to lzma and decompress locally.
     info!("Downloading all java files.");
     let start = Instant::now();
-    buffered_stream_download(&files, &base_path, |bytes, jrt| {
+    buffered_download_stream(&files, &base_path, |bytes, jrt| {
         if !validate_hash(&bytes, &jrt.hash()) {
             let err = format!("Error downloading {}, invalid hash.", &jrt.url());
             error!("{}", err);
@@ -505,10 +543,12 @@ async fn download_java_from_runtime_manifest(
         }
         let path = jrt.path(&base_path);
         let mut file = File::create(&path)?;
+        // TODO: Change from target_os ="linux" to unix 
         #[cfg(target_os = "linux")]
         {
             use std::os::unix::prelude::PermissionsExt;
 
+            // Markt the file as executable on unix os's
             if jrt.executable {
                 let mut permissions = file.metadata()?.permissions();
                 permissions.set_mode(0o775);
@@ -653,7 +693,7 @@ async fn download_assets(
 
     fs::create_dir_all(&asset_objects_dir)?;
 
-    let x = buffered_stream_download(&asset_object.objects, &asset_objects_dir, |bytes, asset| {
+    let x = buffered_download_stream(&asset_object.objects, &asset_objects_dir, |bytes, asset| {
         if !validate_hash(&bytes, &asset.hash()) {
             let err = format!("Error downloading asset {}, invalid hash.", &asset.name());
             error!("{}", err);
@@ -688,11 +728,14 @@ fn extract_natives(
         debug!("Classifier: {:#?}", classifier);
         let classifier_path = classifier.path(libraries_dir);
         let natives_path = instance_dir.join("natives");
-        let jar_file = File::open(classifier_path)?;
-        let mut archive = ZipArchive::new(jar_file)?;
+        let jar_file = File::open(&classifier_path);
+        debug!("Jar File: {:#?} at {}", jar_file, classifier_path.display());
+        let mut archive = ZipArchive::new(jar_file.unwrap())?;
 
         'zip: for i in 0..archive.len() {
+            debug!("In loop");
             if let Ok(mut file) = archive.by_index(i) {
+                debug!("File is ok");
                 if file.is_dir() {
                     continue;
                 }
