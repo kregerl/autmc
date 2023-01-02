@@ -5,7 +5,7 @@ use std::{
 };
 
 use indexmap::IndexMap;
-use log::{debug, warn};
+use log::{debug, warn, error};
 use serde::{
     de::{Error, SeqAccess, Visitor},
     Deserialize, Deserializer,
@@ -52,7 +52,7 @@ where
     Ok(map)
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub enum RuleType {
     #[serde(rename = "features")]
     Features(HashMap<String, bool>),
@@ -60,14 +60,14 @@ pub enum RuleType {
     OperatingSystem(HashMap<String, String>),
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct Rule {
     pub action: String,
     #[serde(flatten)]
     pub rule_type: Option<RuleType>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
 pub enum Argument {
     Arg(String),
@@ -114,9 +114,16 @@ where
 }
 
 #[derive(Debug, Deserialize)]
-pub struct LaunchArguments {
+pub struct LaunchArguments113 {
     pub game: Vec<Argument>,
     pub jvm: Vec<Argument>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+pub enum LaunchArguments {
+    LaunchArguments112(String),
+    LaunchArguments113(LaunchArguments113),
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -246,7 +253,7 @@ impl Downloadable for Artifact {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DownloadableClassifier {
     pub classifier: Artifact,
     pub extraction_rule: Option<LibraryExtraction>,
@@ -271,9 +278,9 @@ impl Downloadable for DownloadableClassifier {
 }
 
 #[derive(Debug, Deserialize)]
-struct LibraryDownloads {
-    artifact: Artifact,
-    classifiers: Option<HashMap<String, Artifact>>,
+pub struct LibraryDownloads {
+    pub artifact: Option<Artifact>,
+    pub classifiers: Option<HashMap<String, Artifact>>,
 }
 
 // TODO: Possible there is an "include" too.
@@ -284,7 +291,7 @@ pub struct LibraryExtraction {
 
 #[derive(Debug, Deserialize)]
 pub struct Library {
-    downloads: LibraryDownloads,
+    pub downloads: LibraryDownloads,
     name: String,
     pub rules: Option<Vec<Rule>>,
     extract: Option<LibraryExtraction>,
@@ -324,26 +331,13 @@ impl Library {
                 },
             })
         } else {
+            error!(
+                "Unknown classifier key {} for library {}",
+                key,
+                self.name
+            );
             None
         }
-    }
-}
-
-impl Downloadable for Library {
-    fn name(&self) -> &str {
-        &self.name
-    }
-
-    fn url(&self) -> String {
-        self.downloads.artifact.url()
-    }
-
-    fn hash(&self) -> &str {
-        &self.downloads.artifact.hash()
-    }
-
-    fn path(&self, base_dir: &Path) -> PathBuf {
-        self.downloads.artifact.path(base_dir)
     }
 }
 
@@ -386,6 +380,7 @@ pub struct Logging {
 /// The launch arguments and metadata for a given vanilla version.
 // REVIEW: I believe this response is different for older versions of the game. versions < 1.13
 pub struct VanillaVersion {
+    #[serde(alias = "minecraftArguments")]
     pub arguments: LaunchArguments,
     #[serde(rename = "assetIndex")]
     pub asset_index: AssetIndex,

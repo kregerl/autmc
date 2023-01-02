@@ -1,14 +1,17 @@
 use std::{
     collections::HashMap,
     env,
+    fmt::Display,
     fs::{self, File},
     io::{self, Write},
     path::{Path, PathBuf},
     time::Instant,
 };
 
+use bytes::Bytes;
 use log::{debug, error, info, warn};
 use tauri::{AppHandle, Manager, State, Wry};
+use xmltree::{Element, XMLNode};
 use zip::ZipArchive;
 
 use crate::{
@@ -30,7 +33,7 @@ use crate::{
 };
 
 use super::{
-    downloader::validate_file_hash,
+    downloader::{hash_bytes, validate_file_hash},
     manifest::vanilla::{
         AssetIndex, DownloadMetadata, JarType, JavaManifest, JavaRuntime, LaunchArguments,
         LaunchArguments113, Library, Logging, Rule, RuleType, VanillaManifestVersion,
@@ -427,7 +430,7 @@ async fn download_libraries(
         if let Some(artifact) = &downloads.artifact {
             downloadables.push(artifact.to_owned());
         }
-        // If there is a natives json entry with an applicable (os dependent) classifier, get and append it 
+        // If there is a natives json entry with an applicable (os dependent) classifier, get and append it
         let key = library.determine_key_for_classifiers();
         if let Some(classifier_key) = key {
             // Classifiers could be "missing" if the wrong key is used. An error is logged and downloads continue
@@ -543,7 +546,7 @@ async fn download_java_from_runtime_manifest(
         }
         let path = jrt.path(&base_path);
         let mut file = File::create(&path)?;
-        // TODO: Change from target_os ="linux" to unix 
+        // TODO: Change from target_os ="linux" to unix
         #[cfg(target_os = "linux")]
         {
             use std::os::unix::prelude::PermissionsExt;
@@ -636,36 +639,84 @@ async fn download_java_version(
     }
 }
 
-/// Downloads a logging configureation into ${app_dir}/assets/objects/<first two hash chars>/${logging_configuration.id}
+type PatchingResult<T> = Result<T, PatchingError>;
+
+#[derive(Debug)]
+enum PatchingError {
+    XmlParseError(xmltree::ParseError),
+    XmlWriteError(xmltree::Error),
+    XmlElementAccessError(String),
+}
+
+impl From<xmltree::ParseError> for PatchingError {
+    fn from(error: xmltree::ParseError) -> Self {
+        PatchingError::XmlParseError(error)
+    }
+}
+
+impl From<xmltree::Error> for PatchingError {
+    fn from(error: xmltree::Error) -> Self {
+        PatchingError::XmlWriteError(error)
+    }
+}
+
+/// Patch the logging configurations to replace LegacyXMLLayout with PatternLayout
+fn patch_logging_configuration(bytes: &Bytes) -> PatchingResult<Bytes> {
+    info!("Patching logging configuration");
+    let mut root = Element::parse(&*bytes.to_vec())?;
+
+    let pattern_layout = root
+        .get_child("Appenders")
+        .and_then(|element| element.get_child("RollingRandomAccessFile"))
+        .and_then(|element| element.get_child("PatternLayout"))
+        .ok_or(PatchingError::XmlElementAccessError(
+            "Error trying to access PatternLayout in logging configuration".into(),
+        ))?
+        .clone();
+
+    let console = root
+        .get_mut_child("Appenders")
+        .and_then(|element| element.get_mut_child("Console"))
+        .ok_or(PatchingError::XmlElementAccessError(
+            "Error trying to access Console in logging configuration".into(),
+        ))?;
+
+    console.children.clear();
+    console.children.push(XMLNode::Element(pattern_layout));
+
+    let mut result: Vec<u8> = Vec::new();
+    root.write(&mut result)?;
+
+    Ok(Bytes::from(result))
+}
+
+/// Downloads a logging configureation into ${app_dir}/assets/objects/**first two hash chars**/${logging_configuration.id}
 async fn download_logging_configurations(
     asset_objects_dir: &Path,
     logging: &Logging,
 ) -> ManifestResult<(String, PathBuf)> {
     let client_logger = &logging.client;
-    let first_two_chars = client_logger.file_hash().split_at(2);
+    info!(
+        "Downloading logging configuration {}",
+        client_logger.file_id()
+    );
+    let original_bytes = download_bytes_from_url(&client_logger.file_url()).await?;
+
+    let patched_bytes = match patch_logging_configuration(&original_bytes) {
+        Ok(b) => b,
+        Err(e) => {
+            warn!("{:#?}", e);
+            original_bytes
+        }
+    };
+    let hash = hash_bytes(&patched_bytes);
+    let first_two_chars = hash.split_at(2);
     let objects_dir = &asset_objects_dir.join(first_two_chars.0);
     fs::create_dir_all(&objects_dir)?;
 
     let path = objects_dir.join(format!("{}", &client_logger.file_id()));
-    let valid_hash = &client_logger.file_hash();
-
-    if !validate_file_hash(&path, valid_hash) {
-        info!(
-            "Downloading logging configuration {}",
-            client_logger.file_id()
-        );
-        let bytes = download_bytes_from_url(&client_logger.file_url()).await?;
-        if !validate_hash(&bytes, valid_hash) {
-            let err = format!(
-                "Error downloading logging configuration {}, invalid hash.",
-                client_logger.file_id()
-            );
-            error!("{}", err);
-            return Err(ManifestError::InvalidFileDownload(err));
-        }
-        let mut file = File::create(&path)?;
-        file.write_all(&bytes)?;
-    }
+    let mut file = File::create(&path)?;
+    file.write_all(&patched_bytes)?;
     Ok((client_logger.argument.clone(), path))
 }
 

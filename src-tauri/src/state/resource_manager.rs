@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     fs::{self, File},
-    io::{self, BufReader, Write},
+    io::{self, BufReader, Write, BufRead},
     path::{Path, PathBuf},
     process::{Command, Stdio},
     string::FromUtf8Error,
@@ -286,10 +286,10 @@ impl ResourceManager {
                 debug!("Command: {:#?}", command);
                 let child = command.spawn().expect("Could not spawn instance.");
 
-                // let reader = BufReader::new(child.stdout.unwrap());
-                // for line in reader.lines() {
-                //     debug!("Mc Log: {:#?}", line);
-                // }
+                let reader = BufReader::new(child.stdout.unwrap());
+                for line in reader.lines() {
+                    debug!("Mc Log: {:#?}", line);
+                }
             }
             None => error!("Unknown instance name: {}", instance_name),
         }
