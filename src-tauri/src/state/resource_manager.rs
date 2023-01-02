@@ -1,16 +1,14 @@
 use std::{
-    collections::HashMap,
     fs::{self, File},
-    io::{self, BufReader, Write, BufRead},
+    io::{self, BufReader, Write},
     path::{Path, PathBuf},
-    process::{Command, Stdio},
     string::FromUtf8Error,
     sync::Arc,
 };
 
 use bytes::Bytes;
-use log::{debug, error, info, warn};
-use serde::{Deserialize, Serialize};
+use log::{info};
+use serde::Serialize;
 use tauri::async_runtime::Mutex;
 use zip::result::ZipError;
 
@@ -20,11 +18,8 @@ use crate::{
     web_services::{
         downloader::{download_bytes_from_url, validate_file_hash, validate_hash, DownloadError},
         manifest::{vanilla::{VanillaManifest, VanillaManifestVersion, VanillaVersion}, forge::ForgeManifest},
-        resources::substitute_account_specific_arguments,
     },
 };
-
-use super::account_manager::Account;
 
 pub type ManifestResult<T> = Result<T, ManifestError>;
 
@@ -106,13 +101,6 @@ impl From<ZipError> for ManifestError {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct InstanceConfiguration {
-    pub instance_name: String,
-    pub jvm_path: PathBuf,
-    pub arguments: Vec<String>,
-}
-
 pub struct ResourceState(pub Arc<Mutex<ResourceManager>>);
 
 impl ResourceState {
@@ -126,7 +114,6 @@ pub struct ResourceManager {
     app_dir: PathBuf,
     vanilla_manifest: Option<VanillaManifest>,
     forge_manifest: Option<ForgeManifest>,
-    instance_map: HashMap<String, InstanceConfiguration>,
     // TODO: Forge and Fabric manifests.
 }
 
@@ -136,7 +123,6 @@ impl ResourceManager {
             app_dir: app_dir.into(),
             vanilla_manifest: None,
             forge_manifest: None,
-            instance_map: HashMap::new(),
         }
     }
 
@@ -211,87 +197,6 @@ impl ResourceManager {
             manifest.versions.get(mc_version)
         } else {
             None
-        }
-    }
-
-    /// Add the config.json to an instance folder. Used to relaunch the instance again.
-    pub fn add_instance(&self, config: InstanceConfiguration) -> Result<(), io::Error> {
-        let path = self
-            .instances_dir()
-            .join(&config.instance_name)
-            .join("config.json");
-        let mut file = File::create(path)?;
-        let json = serde_json::to_string(&config)?;
-        file.write_all(json.as_bytes())?;
-        Ok(())
-    }
-
-    pub fn deserialize_instances(&mut self) {
-        let paths = fs::read_dir(self.instances_dir());
-        if let Err(e) = paths {
-            error!("Error loading instances from disk: {}", e);
-            return;
-        }
-        for path in paths.unwrap().filter_map(|path| path.ok()) {
-            let instance_path = path.path().join("config.json");
-            let file = File::open(&instance_path);
-            if let Err(e) = file {
-                warn!("Error with instance at {}: {}", instance_path.display(), e);
-                continue;
-            }
-            let reader = BufReader::new(file.unwrap());
-            let instance =
-                serde_json::from_reader::<BufReader<File>, InstanceConfiguration>(reader);
-            if let Err(e) = instance {
-                warn!(
-                    "Error loading `config.json` for instance at {}: {}",
-                    instance_path.display(),
-                    e
-                );
-                continue;
-            }
-            let conf = instance.unwrap();
-            self.instance_map.insert(conf.instance_name.clone(), conf);
-        }
-    }
-
-    pub fn get_instance_names(&self) -> Vec<String> {
-        self.instance_map
-            .iter()
-            .map(|(instance_name, _)| instance_name.into())
-            .collect()
-    }
-
-    // IDEA: Move to an `InstanceManager`?
-    pub fn launch_instance(&self, instance_name: &str, active_account: &Account) {
-        debug!("Instance Name: {}", instance_name);
-        let instance_config = self.instance_map.get(instance_name);
-        match instance_config {
-            Some(instance) => {
-                let working_dir = self.instances_dir().join(instance_name);
-                let mut args: Vec<String> = Vec::new();
-                for argument in &instance.arguments {
-                    args.push(
-                        match substitute_account_specific_arguments(argument, active_account) {
-                            Some(arg) => arg,
-                            None => argument.into(),
-                        },
-                    );
-                }
-                let mut command = Command::new(&instance.jvm_path);
-                command
-                    .current_dir(working_dir)
-                    .args(args)
-                    .stdout(Stdio::piped());
-                debug!("Command: {:#?}", command);
-                let child = command.spawn().expect("Could not spawn instance.");
-
-                let reader = BufReader::new(child.stdout.unwrap());
-                for line in reader.lines() {
-                    debug!("Mc Log: {:#?}", line);
-                }
-            }
-            None => error!("Unknown instance name: {}", instance_name),
         }
     }
 

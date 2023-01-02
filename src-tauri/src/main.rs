@@ -4,20 +4,20 @@
 )]
 
 mod commands;
+mod consts;
 mod state;
 #[cfg(test)]
 mod tests;
 mod web_services;
-mod consts;
 
 use commands::show_microsoft_login_page;
-use log::{error, info, warn};
+use log::{error, info, warn, debug};
 use regex::Regex;
 use serde::ser::StdError;
 use state::{account_manager::AccountState, redirect};
 use std::{
     fs::{self},
-    path::{Path, PathBuf},
+    path::{Path, PathBuf}, io::{BufReader, BufRead},
 };
 use tauri::{
     http::{Request, Response, ResponseBuilder},
@@ -26,8 +26,11 @@ use tauri::{
 use web_services::authentication::{authenticate, validate_account, AuthMode};
 
 use crate::{
-    commands::{obtain_manifests, obtain_version, get_instance_path, load_instances, launch_instance, get_account_skin},
-    state::resource_manager::ResourceState,
+    commands::{
+        get_account_skin, get_instance_path, launch_instance, load_instances, obtain_manifests,
+        obtain_version,
+    },
+    state::{instance_manager::InstanceState, resource_manager::ResourceState},
 };
 
 const MAX_LOGS: usize = 20;
@@ -69,6 +72,7 @@ fn setup(app: &mut App<Wry>) -> Result<(), Box<(dyn StdError + 'static)>> {
     // Attach the account manager to the app using 'AccountState'
     app.manage(AccountState::new(&app_dir));
     app.manage(ResourceState::new(&app_dir));
+    app.manage(InstanceState::new(&app_dir));
     let app_handle = app.handle();
 
     // Spawn an async thread and use the app_handle to refresh active account.

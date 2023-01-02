@@ -386,11 +386,12 @@ pub struct VanillaVersion {
     pub asset_index: AssetIndex,
     assets: String,
     #[serde(rename = "complianceLevel")]
-    compliance_level: u32,
+    compliance_level: Option<u32>,
     pub downloads: GameDownloads,
     pub id: String,
     #[serde(rename = "javaVersion")]
-    pub java_version: JavaVersion,
+    // FIXME: 1.6.4 and older do not provide a java version.. set to java 8 if not provided.
+    pub java_version: Option<JavaVersion>,
     pub libraries: Vec<Library>,
     pub logging: Logging,
     #[serde(rename = "mainClass")]

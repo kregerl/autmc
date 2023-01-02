@@ -1,7 +1,6 @@
 use std::{
     collections::HashMap,
     env,
-    fmt::Display,
     fs::{self, File},
     io::{self, Write},
     path::{Path, PathBuf},
@@ -18,7 +17,7 @@ use crate::{
     consts::{JAVA_VERSION_MANIFEST, LAUNCHER_NAME, LAUNCHER_VERSION},
     state::{
         account_manager::Account,
-        resource_manager::{InstanceConfiguration, ManifestError, ManifestResult, ResourceState},
+        resource_manager::{ManifestError, ManifestResult, ResourceState}, instance_manager::{InstanceConfiguration, InstanceState},
     },
     web_services::{
         downloader::{
@@ -36,7 +35,7 @@ use super::{
     downloader::{hash_bytes, validate_file_hash},
     manifest::vanilla::{
         AssetIndex, DownloadMetadata, JarType, JavaManifest, JavaRuntime, LaunchArguments,
-        LaunchArguments113, Library, Logging, Rule, RuleType, VanillaManifestVersion,
+        LaunchArguments113, Library, Logging, Rule, RuleType, VanillaManifestVersion, JavaVersion,
     },
 };
 
@@ -604,8 +603,7 @@ async fn download_java_from_runtime_manifest(
 
 async fn download_java_version(
     java_dir: &Path,
-    java_component: &str,
-    _java_version: u32,
+    java: JavaVersion,
 ) -> ManifestResult<PathBuf> {
     info!("Downloading java version manifest");
     let java_version_manifest: HashMap<String, JavaManifest> =
@@ -613,7 +611,7 @@ async fn download_java_version(
     let manifest_key = determine_key_for_java_manifest(&java_version_manifest);
 
     let java_manifest = &java_version_manifest.get(manifest_key).unwrap();
-    let runtime_opt = match java_component {
+    let runtime_opt = match java.component.as_str() {
         "java-runtime-alpha" => &java_manifest.java_runtime_alpha,
         "java-runtime-beta" => &java_manifest.java_runtime_beta,
         "java-runtime-gamma" => &java_manifest.java_runtime_gamma,
@@ -621,7 +619,7 @@ async fn download_java_version(
         "minecraft-java-exe" => &java_manifest.minecraft_java_exe,
         _ => unreachable!(
             "No such runtime found for java component: {}",
-            &java_component
+            &java.component
         ),
     };
     info!("Downloading runtime: {:#?}", runtime_opt);
@@ -631,7 +629,7 @@ async fn download_java_version(
             Ok(download_java_from_runtime_manifest(&java_dir, &runtime).await?)
         }
         None => {
-            let s = format!("Java runtime is empty for component {}", &java_component);
+            let s = format!("Java runtime is empty for component {}", &java.component);
             error!("{}", s);
             //TODO: New error type?
             return Err(ManifestError::VersionRetrievalError(s));
@@ -864,10 +862,15 @@ pub async fn create_instance(
     )
     .await?;
 
+    // java versions is optional for versions 1.6.4 and older. We select java 8 for them by default. 
+    let java_version = match version.java_version {
+        Some(version) => version,
+        None => JavaVersion { component: "jre-legacy".into(), major_version: 8 },
+    };
+
     let java_path = download_java_version(
         &resource_manager.java_dir(),
-        &version.java_version.component,
-        version.java_version.major_version,
+        java_version
     )
     .await?;
 
@@ -911,7 +914,12 @@ pub async fn create_instance(
     );
     debug!("Persistent Arguments: {}", &persitent_arguments.join(" "));
 
-    resource_manager.add_instance(InstanceConfiguration {
+    let instance_state: State<InstanceState> = app_handle
+        .try_state()
+        .expect("`ResourceState` should already be managed.");
+    let instance_manager = instance_state.0.lock().await;
+
+    instance_manager.add_instance(InstanceConfiguration {
         instance_name: instance_name.into(),
         jvm_path: java_path,
         arguments: persitent_arguments,

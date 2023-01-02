@@ -3,6 +3,7 @@ use tauri::{Manager, Wry};
 
 pub mod account_manager;
 pub mod resource_manager;
+pub mod instance_manager;
 
 /// Attempts to redirect the main window to the specified endpoint
 /// Specify endpoint without a leading `/`.  

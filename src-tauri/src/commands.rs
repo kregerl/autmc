@@ -1,4 +1,8 @@
-use std::path::PathBuf;
+use std::{
+    io::{BufRead, BufReader},
+    path::PathBuf,
+    process::Child,
+};
 
 use log::debug;
 use reqwest::Url;
@@ -7,10 +11,14 @@ use tauri::{AppHandle, Manager, State, Wry};
 
 use crate::{
     consts::{CLIENT_ID, MICROSOFT_LOGIN_URL},
-    state::{resource_manager::{ManifestResult, ResourceState}, account_manager::AccountState},
+    state::{
+        account_manager::AccountState,
+        instance_manager::InstanceState,
+        resource_manager::{ManifestResult, ResourceState},
+    },
     web_services::{
-        authentication::AuthResult,
-        resources::{create_instance}, manifest::vanilla::VanillaManifestVersion,
+        authentication::AuthResult, manifest::vanilla::VanillaManifestVersion,
+        resources::create_instance,
     },
 };
 
@@ -112,7 +120,7 @@ pub async fn get_account_skin(app_handle: AppHandle<Wry>) -> String {
         .expect("`AccountState` should already be managed.");
     let account_manager = account_state.0.lock().await;
 
-    // FIXME: Unwraping. 
+    // FIXME: Unwraping here causes an error sometimes since the async thread (in main) isnt finished yet and there is no active account loaded.
     let account = account_manager.get_active_account().unwrap();
     debug!("Skin URL: {}", account.skin_url);
     account.skin_url.clone()
@@ -120,21 +128,21 @@ pub async fn get_account_skin(app_handle: AppHandle<Wry>) -> String {
 
 #[tauri::command(async)]
 pub async fn load_instances(app_handle: AppHandle<Wry>) -> Vec<String> {
-    let resource_state: State<ResourceState> = app_handle
+    let instance_state: State<InstanceState> = app_handle
         .try_state()
-        .expect("`ResourceState` should already be managed.");
-    let mut resource_manager = resource_state.0.lock().await;
+        .expect("`InstanceState` should already be managed.");
+    let mut instance_manager = instance_state.0.lock().await;
 
-    resource_manager.deserialize_instances();
-    resource_manager.get_instance_names()
+    instance_manager.deserialize_instances();
+    instance_manager.get_instance_names()
 }
 
 #[tauri::command(async)]
 pub async fn launch_instance(instance_name: String, app_handle: AppHandle<Wry>) {
-    let resource_state: State<ResourceState> = app_handle
+    let instance_state: State<InstanceState> = app_handle
         .try_state()
-        .expect("`ResourceState` should already be managed.");
-    let resource_manager = resource_state.0.lock().await;
+        .expect("`InstanceState` should already be managed.");
+    let mut instance_manager = instance_state.0.lock().await;
 
     let account_state: State<AccountState> = app_handle
         .try_state()
@@ -142,6 +150,9 @@ pub async fn launch_instance(instance_name: String, app_handle: AppHandle<Wry>) 
 
     let account_manager = account_state.0.lock().await;
 
-    // Assumed there is an active account. 
-    resource_manager.launch_instance(&instance_name, account_manager.get_active_account().unwrap());
+    // Assumed there is an active account.
+    instance_manager.launch_instance(
+        &instance_name,
+        account_manager.get_active_account().unwrap(),
+    );
 }
