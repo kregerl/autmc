@@ -103,10 +103,14 @@ pub async fn download_bytes_from_url(url: &str) -> reqwest::Result<Bytes> {
 
 /// Validates that the hash of `bytes` matches the `valid_hash`
 pub fn validate_hash(bytes: &Bytes, valid_hash: &str) -> bool {
+    hash_bytes(bytes) == valid_hash
+}
+
+/// Hashes the `bytes` and returns the hex string
+pub fn hash_bytes(bytes: &Bytes) -> String {
     let mut hasher = Sha1::new();
     hasher.input(bytes);
-    let result = hasher.result_str();
-    result == valid_hash
+    hasher.result_str()
 }
 
 /// Validates that the `path` exists and that the hash of it matches `valid_hash`
