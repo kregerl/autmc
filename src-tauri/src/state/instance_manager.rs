@@ -1,12 +1,15 @@
-use log::{error, warn, debug};
+use log::{debug, error, warn};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
-    io::{self, BufReader, BufRead, Write},
+    fs::{self, File},
+    io::{self, BufRead, BufReader, Write},
     path::{Path, PathBuf},
-    sync::Arc, fs::{File, self}, process::{Command, Stdio, Child},
+    process::{Child, Command, Stdio},
+    sync::{Arc, Mutex},
+    thread,
 };
-use tauri::async_runtime::Mutex;
+use tauri::{async_runtime::Mutex as AsyncMutex, AppHandle, Manager, Wry};
 
 use crate::web_services::resources::substitute_account_specific_arguments;
 
@@ -19,11 +22,11 @@ pub struct InstanceConfiguration {
     pub arguments: Vec<String>,
 }
 
-pub struct InstanceState(pub Arc<Mutex<InstanceManager>>);
+pub struct InstanceState(pub Arc<AsyncMutex<InstanceManager>>);
 
 impl InstanceState {
     pub fn new(app_dir: &PathBuf) -> Self {
-        Self(Arc::new(Mutex::new(InstanceManager::new(app_dir))))
+        Self(Arc::new(AsyncMutex::new(InstanceManager::new(app_dir))))
     }
 }
 
@@ -31,7 +34,7 @@ pub struct InstanceManager {
     app_dir: PathBuf,
     instance_map: HashMap<String, InstanceConfiguration>,
     // <Instance name, child process>
-    children: HashMap<String, Child>,
+    children: HashMap<String, Arc<Mutex<Child>>>,
 }
 
 impl InstanceManager {
@@ -39,20 +42,12 @@ impl InstanceManager {
         Self {
             app_dir: app_dir.into(),
             instance_map: HashMap::new(),
-            children: HashMap::new()
+            children: HashMap::new(),
         }
     }
 
     pub fn instances_dir(&self) -> PathBuf {
         self.app_dir.join("instances")
-    }
-
-    // FIXME: This is just getting a random running instance sine we only really support 1 running instance currently.
-    pub fn get_running_instance(&self) -> Option<&Child> {
-        match self.children.iter().next() {
-            Some(entry) => Some(entry.1),
-            None => None,
-        }
     }
 
     /// Add the config.json to an instance folder. Used to relaunch the instance again.
@@ -125,13 +120,40 @@ impl InstanceManager {
                     .stdout(Stdio::piped());
                 debug!("Command: {:#?}", command);
                 let child = command.spawn().expect("Could not spawn instance.");
-                self.children.insert(instance_name.into(), child);
-                // let reader = BufReader::new(child.stdout.unwrap());
-                // for line in reader.lines() {
-                //     debug!("Mc Log: {:#?}", line);
-                // }
+                self.children.insert(instance_name.into(), Arc::new(Mutex::new(child)));
             }
             None => error!("Unknown instance name: {}", instance_name),
+        }
+    }
+
+    pub fn emit_logs_for_running_instance(&self, app_handle: AppHandle<Wry>) {
+        if let Some(instance) = self.get_running_instance() {
+
+            // FIXME: Save thread handle in a map and when and instance is exited, 'join' the thread handle to get its status.
+            // https://doc.rust-lang.org/std/thread/
+            // To learn when a thread completes, it is necessary to capture the JoinHandle object that is 
+            // returned by the call to spawn, which provides a join method that allows the caller to 
+            // wait for the completion of the spawned thread:
+            thread::spawn(move || {
+                if let Ok(mut child) = instance.lock() {
+                    let stdout= child.stdout.as_mut().unwrap();
+                    let reader = BufReader::new(stdout);
+                    for line in reader.lines() {
+                        match line {
+                            Ok(l) => app_handle.emit_all("instance-logging", l).unwrap(),
+                            Err(error) => error!("Error reading child process's stdout: {}", error),
+                        }
+                    }
+                } 
+            });
+        }
+    }
+
+    // FIXME: This is just getting a random running instance sine we only really support 1 running instance currently.
+    fn get_running_instance(&self) -> Option<Arc<Mutex<Child>>> {
+        match self.children.iter().next() {
+            Some(entry) => Some(entry.1.clone()),
+            None => None,
         }
     }
 }

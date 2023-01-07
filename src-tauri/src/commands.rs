@@ -155,4 +155,5 @@ pub async fn launch_instance(instance_name: String, app_handle: AppHandle<Wry>) 
         &instance_name,
         account_manager.get_active_account().unwrap(),
     );
+    instance_manager.emit_logs_for_running_instance(app_handle.clone());
 }
