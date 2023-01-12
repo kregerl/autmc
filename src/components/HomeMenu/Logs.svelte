@@ -1,4 +1,5 @@
 <script lang="ts">
+    // TODO: Color warning and error logs different colors.
     import { afterUpdate } from "svelte";
 
     export let lines = [];
@@ -15,7 +16,6 @@
 
     function scrollToBottom() {
         element.scroll({ top: element.scrollHeight, behavior: "smooth" });
-        
     }
 </script>
 
