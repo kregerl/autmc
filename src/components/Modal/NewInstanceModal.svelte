@@ -11,6 +11,11 @@
         releasedDate: string,
         versionType: string,
     }
+    interface VersionManifest {
+        vanilla_versions: VersionEntry[],
+        fabric_versions: string[]
+    }
+
     let tabs = [
         {text: "Vanilla", component: Tab},
         {text: "Forge", component: Tab},
@@ -18,7 +23,8 @@
         {text: "Curseforge", component: Tab}
     ];
 
-    let versions: {[key: string]: VersionEntry};
+    let vanillaVersions: {[key: string]: VersionEntry};
+    let fabricVersions: string[];
     let selectedVersion: string;
     $: instanceName = "Minecraft " + selectedVersion;
 
@@ -42,8 +48,8 @@
     }
 
     function setActive() {
-        for (let i = 0; i < Object.keys(versions).length; i++) {
-            let versionId = Object.values(versions)[i].version;
+        for (let i = 0; i < Object.keys(vanillaVersions).length; i++) {
+            let versionId = Object.values(vanillaVersions)[i].version;
             let element = document.getElementById(versionId) as HTMLElement;
             if (element.classList.contains("selected"))
                 element.classList.remove("selected");
@@ -83,7 +89,7 @@
         close();
     }
 
-    // TODO: Do filtering on web side since itll be faster to just filter out ones that arent selected than to await a promise from rust. 
+    // TODO: Do filtering on web side since itll be faster to just filter out ones that arent selected then to await a promise from rust. 
     $: promise = getVersions(filters);
     
     async function getInstancePath() {
@@ -91,11 +97,14 @@
         return instancePath + '/' + instanceName;
     }
 
+    //FIXME: Make this work with forge and fabric. Move to onMount and do filtering on frontend instead of rust
     async function getVersions(filters) {
-        let entries: VersionEntry[] = await invoke("obtain_manifests", { filters: filters });
-        versions = Object.fromEntries(entries.map(x => [x.version, x]));
+        let manifest: VersionManifest = await invoke("obtain_manifests", { filters: filters });
+        let entries: VersionEntry[] = manifest.vanilla_versions;
+        vanillaVersions = Object.fromEntries(entries.map(x => [x.version, x]));
+        fabricVersions = manifest.fabric_versions;
         selectedVersion = entries[0].version;
-        return versions; 
+        return vanillaVersions; 
     }
 </script>
 
@@ -107,30 +116,50 @@
     <input type="image" src="PlusSign.svg" alt="Close Instance Creation" on:click={close}>
     <h1 class="modal-header">New Instance</h1>
     <div class="version-options">
-        <table>
-            <thead>
-                <tr>
-                    <th>Version</th>
-                    <th>Type</th>
-                    <th>Released</th>
-                </tr>
-            </thead>
-            <tbody>
-                {#await promise} 
-                    <h1>Loading...</h1>
-                {:then versions}
-                    {#each Object.entries(versions) as version}
-                        <tr id={version[0]} class={selectedVersion === version[0] ? "selected" : ""} on:click={setActive}>
-                            <td>{version[0]}</td>
-                            <td class="version-type">{version[1].versionType}</td>
-                            <td class="release-date">{version[1].releasedDate}</td>
+        {#if selected !== undefined && selected === "vanilla"}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Version</th>
+                        <th>Type</th>
+                        <th>Released</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {#await promise} 
+                        <h1>Loading...</h1>
+                    {:then versions}
+                        {#each Object.entries(versions) as version}
+                            <tr id={version[0]} class={selectedVersion === version[0] ? "selected" : ""} on:click={setActive}>
+                                <td>{version[0]}</td>
+                                <td class="version-type">{version[1].versionType}</td>
+                                <td class="release-date">{version[1].releasedDate}</td>
+                            </tr>
+                        {/each}
+                    {:catch error}
+                        <h1>Error: {error}</h1>
+                    {/await}
+                </tbody>
+            </table>
+        {:else if selected !== undefined && selected === "fabric"}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Version</th>
+                        <th>Type</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {#each fabricVersions as fabricVersion}
+                    <!-- Fabric versions here is the same as ingame version. -->
+                        <tr id={fabricVersion}}>
+                            <td>{fabricVersion}</td>
+                            <td>Empty</td>
                         </tr>
                     {/each}
-                {:catch error}
-                    <h1>Error: {error}</h1>
-                {/await}
-            </tbody>
-        </table>
+                </tbody>
+            </table>    
+        {/if}
     </div>
    
     <div class="instance-name">

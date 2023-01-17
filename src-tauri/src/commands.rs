@@ -79,18 +79,29 @@ impl VersionEntry {
     }
 }
 
+#[derive(Serialize)]
+pub struct VersionManifest {
+    vanilla_versions: Vec<VersionEntry>,
+    fabric_versions: Vec<String>,
+}
+
 #[tauri::command(async)]
 pub async fn obtain_manifests(
     filters: Vec<VersionFilter>,
     app_handle: AppHandle<Wry>,
-) -> ManifestResult<Vec<VersionEntry>> {
+) -> ManifestResult<VersionManifest> {
     let resource_state: State<ResourceState> = app_handle
         .try_state()
         .expect("`ResourceState` should already be managed.");
     let resource_manager = resource_state.0.lock().await;
 
-    let versions = resource_manager.get_vanilla_version_list(&filters);
-    Ok(versions)
+    let vanilla_versions = resource_manager.get_vanilla_version_list(&filters);
+    let fabric_versions = resource_manager.get_fabric_version_list();
+    
+    Ok(VersionManifest {
+        vanilla_versions,
+        fabric_versions
+    })
 }
 
 #[tauri::command(async)]

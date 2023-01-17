@@ -7,17 +7,17 @@ use std::{
 };
 
 use bytes::Bytes;
-use log::{info};
+use log::{info, debug};
 use serde::Serialize;
 use tauri::async_runtime::Mutex;
 use zip::result::ZipError;
 
 use crate::{
     commands::{VersionEntry, VersionFilter},
-    consts::{VANILLA_MANIFEST_URL, FORGE_MANIFEST_URL},
+    consts::{VANILLA_MANIFEST_URL, FORGE_MANIFEST_URL, FABRIC_BASE_URL},
     web_services::{
         downloader::{download_bytes_from_url, validate_file_hash, validate_hash, DownloadError},
-        manifest::{vanilla::{VanillaManifest, VanillaManifestVersion, VanillaVersion}, forge::ForgeManifest},
+        manifest::{vanilla::{VanillaManifest, VanillaManifestVersion, VanillaVersion}, forge::ForgeManifest, fabric::{FabricLoaderManifest}},
     },
 };
 
@@ -112,9 +112,10 @@ impl ResourceState {
 #[derive(Debug)]
 pub struct ResourceManager {
     app_dir: PathBuf,
+    // FIXME: On instantiation of the resource manager, get all manifests so theres no options.
     vanilla_manifest: Option<VanillaManifest>,
     forge_manifest: Option<ForgeManifest>,
-    // TODO: Forge and Fabric manifests.
+    fabric_manifest: Option<FabricLoaderManifest>
 }
 
 impl ResourceManager {
@@ -123,6 +124,7 @@ impl ResourceManager {
             app_dir: app_dir.into(),
             vanilla_manifest: None,
             forge_manifest: None,
+            fabric_manifest: None,
         }
     }
 
@@ -167,6 +169,11 @@ impl ResourceManager {
         let forge_manifest = forge_response.json::<ForgeManifest>().await?;
         self.forge_manifest = Some(forge_manifest);
 
+        let fabric_manifest_url = format!("{}/{}", FABRIC_BASE_URL, "versions/loader");
+        let fabric_response = client.get(fabric_manifest_url).send().await?;
+        let fabric_manifest = fabric_response.json::<FabricLoaderManifest>().await?;
+        self.fabric_manifest = Some(fabric_manifest);
+
         Ok(())
     }
 
@@ -180,6 +187,17 @@ impl ResourceManager {
                         result.push(VersionEntry::new(version, version_info));
                     }
                 }
+            }
+        }
+        result
+    }
+    
+    pub fn get_fabric_version_list(&self) -> Vec<String> {
+        let mut result = Vec::new();
+        if let Some(manifest) = &self.fabric_manifest {
+            let FabricLoaderManifest(vec) = manifest;
+            for entry in vec {
+                result.push(entry.version.clone());
             }
         }
         result
