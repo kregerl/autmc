@@ -235,6 +235,18 @@ pub struct Artifact {
     metadata: DownloadMetadata,
 }
 
+impl Artifact {
+    #[cfg(target_family = "windows")]
+    fn get_os_specific_path(&self) -> String {
+        str::replace(&self.path, "/", "\\")
+    }
+
+    #[cfg(target_family = "unix")]
+    fn get_os_specific_path(&self) -> String {
+        self.path
+    }
+}
+
 impl Downloadable for Artifact {
     fn name(&self) -> &str {
         &self.path
@@ -249,7 +261,7 @@ impl Downloadable for Artifact {
     }
 
     fn path(&self, base_dir: &Path) -> PathBuf {
-        base_dir.join(&self.path)
+        base_dir.join(self.get_os_specific_path())
     }
 }
 

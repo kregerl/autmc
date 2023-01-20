@@ -292,6 +292,16 @@ fn get_arg_substring(arg: &str) -> Option<&str> {
     }
 }
 
+#[cfg(target_family = "unix")]
+fn get_classpath_separator() -> String {
+   ":".into() 
+}
+
+#[cfg(target_family = "windows")]
+fn get_classpath_separator() -> String {
+   ";".into() 
+}
+
 // Returns a string with the substituted value in the jvm argument or None if it doesn't apply.
 fn substitute_jvm_arguments(arg: &str, argument_paths: &LaunchArgumentPaths) -> Option<String> {
     let substring = get_arg_substring(arg);
@@ -315,7 +325,7 @@ fn substitute_jvm_arguments(arg: &str, argument_paths: &LaunchArgumentPaths) -> 
             // FIXME: Linux and Windows use different classpath serperators. Windows uses ';' and Linux uses ':'
             "${classpath}" => {
                 debug!("Vec: {:#?}", classpath_strs);
-                debug!("Classpath: {} ", classpath_strs.join(":"));
+                debug!("Classpath: {} ", classpath_strs.join(&get_classpath_separator()));
                 Some(arg.replace(
                     substr,
                     &format!(
@@ -451,7 +461,9 @@ async fn download_libraries(
             error!("{}", err);
             return Err(DownloadError::InvalidFileHashError(err));
         }
+        debug!("Artifact: {:#?}", &artifact);
         debug!("Downloading library: {}", artifact.name());
+        let artifact_path = str::replace(artifact.name(), "/", "\\");
         let path = artifact.path(&libraries_dir);
         let mut file = File::create(&path)?;
         file.write_all(&bytes)?;
@@ -596,7 +608,7 @@ async fn download_java_from_runtime_manifest(
         }
     }
 
-    let java_path = base_path.join("bin/java");
+    let java_path = base_path.join("bin").join("java");
     info!("Using java path: {:?}", java_path);
     Ok(java_path)
 }

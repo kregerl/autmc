@@ -22,6 +22,25 @@ use crate::{
     },
 };
 
+#[cfg(target_family = "unix")]
+fn get_init_script_for_os() -> String {
+    r#"
+        if (window.location.href.startsWith("https://login.microsoftonline.com/common/oauth2/nativeclient")) {
+            window.location.replace(`autmc://auth${window.location.search}`);
+        }
+    "#.into()
+}
+
+#[cfg(target_family = "windows")]
+fn get_init_script_for_os() -> String {
+    r#"
+        if (window.location.href.startsWith("https://login.microsoftonline.com/common/oauth2/nativeclient")) {
+            window.location.replace(`https://autmc.auth${window.location.search}`);
+        }
+    "#.into()
+}
+
+
 #[tauri::command(async)]
 pub async fn show_microsoft_login_page(app_handle: tauri::AppHandle<Wry>) -> AuthResult<()> {
     let login_url = Url::parse_with_params(
@@ -39,16 +58,14 @@ pub async fn show_microsoft_login_page(app_handle: tauri::AppHandle<Wry>) -> Aut
         ],
     )?;
 
+
+    debug!("Init script injected");
+    let init_script = get_init_script_for_os();
     // Redirects to the custom protocol 'autmc://auth', preserving the query parameters.
-    const INIT_SCRIPT: &str = r#"
-        if (window.location.href.startsWith("https://login.microsoftonline.com/common/oauth2/nativeclient")) {
-            window.location.replace(`autmc://auth${window.location.search}`);
-        }
-    "#;
     let window_url = tauri::WindowUrl::App(login_url.to_string().parse().unwrap());
     // Start window with init script
     let _login_window = tauri::WindowBuilder::new(&app_handle, "login", window_url)
-        .initialization_script(INIT_SCRIPT)
+        .initialization_script(&init_script)
         .build()?;
     Ok(())
 }

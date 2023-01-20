@@ -6,3 +6,7 @@
 .tmp/*
 .tmp
 callgrind*
+
+# Added by cargo
+
+/target
