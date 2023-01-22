@@ -1,21 +1,15 @@
 <script lang="ts">
     import {listen } from '@tauri-apps/api/event'
-    import Menu from "./Menu.svelte";
-    import Tab from "../Tabbar/Tab.svelte";
-    import Instances from "./Instances.svelte";
-    import TabBar from "../Tabbar/TabBar.svelte";
+    import Menu from "./Menu/Menu.svelte";
+    import Instances, {ID as INSTANCE_ID} from "./Instances.svelte";
+    import Logs, {ID as LOGS_ID} from './Logs.svelte';
     import { onMount } from 'svelte';
-    import Logs from './Logs.svelte';
+    import type { VersionManifest } from '../../manifest';
 
     let selected;
     // Logs
     let lines;
     let element;
-
-    const navTabs = [
-        {text: "Instances", fs: "1.25em", component: Tab},
-        {text: "Logs", fs: "1.25em",component: Tab},
-    ];
 
     // FIXME: Lines are always appended, if an instance is closed the logs should be cleared here.
     onMount(async () => {
@@ -28,15 +22,12 @@
 
 <div class="container">
     <div class="menu">
-        <Menu/>
-    </div>
-    <div class="header">
-        <TabBar --min-width=180px --font-size=1.25em tabs={navTabs} bind:selected></TabBar>
+        <Menu bind:selectedTab={selected}/>
     </div>
     <div class="content" bind:this={element}>
-        {#if selected !== undefined && selected === "instances"}
+        {#if selected === INSTANCE_ID}
             <Instances/>
-        {:else if selected !== undefined && selected === "logs"}
+        {:else if selected === LOGS_ID}
             {#if lines !== undefined && lines.length === 0}
             <div class="flex-row">
                 <h1>No Logs</h1>
@@ -51,11 +42,10 @@
 <style>
     .container {
         display: grid; 
-        grid-template-columns: 350px auto; 
-        grid-template-rows: 80px calc(100vh - 80px); 
+        grid-template-columns: 0.4fr 1.6fr; 
         gap: 0px 0px;
         grid-template-areas: 
-        "menu header"
+        "menu content"
         "menu content"; 
     }
 
@@ -63,14 +53,10 @@
         grid-area: menu;
     }
 
-    .header {
-        grid-area: header;
-    }
-
     .content {
         grid-area: content;
         overflow-y: scroll;
-        background-color: #444;
+        background-color: #333;
     }
 
     .content:has(div.flex-row) {

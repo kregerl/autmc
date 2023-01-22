@@ -7,17 +7,21 @@ use std::{
 };
 
 use bytes::Bytes;
-use log::{info, debug};
+use log::{debug, info};
 use serde::Serialize;
 use tauri::async_runtime::Mutex;
 use zip::result::ZipError;
 
 use crate::{
     commands::{VersionEntry, VersionFilter},
-    consts::{VANILLA_MANIFEST_URL, FORGE_MANIFEST_URL, FABRIC_BASE_URL},
+    consts::{FABRIC_BASE_URL, FORGE_MANIFEST_URL, VANILLA_MANIFEST_URL},
     web_services::{
         downloader::{download_bytes_from_url, validate_file_hash, validate_hash, DownloadError},
-        manifest::{vanilla::{VanillaManifest, VanillaManifestVersion, VanillaVersion}, forge::ForgeManifest, fabric::{FabricLoaderManifest}},
+        manifest::{
+            fabric::FabricLoaderManifest,
+            forge::ForgeManifest,
+            vanilla::{VanillaManifest, VanillaManifestVersion, VanillaVersion},
+        },
     },
 };
 
@@ -115,7 +119,7 @@ pub struct ResourceManager {
     // FIXME: On instantiation of the resource manager, get all manifests so theres no options.
     vanilla_manifest: Option<VanillaManifest>,
     forge_manifest: Option<ForgeManifest>,
-    fabric_manifest: Option<FabricLoaderManifest>
+    fabric_manifest: Option<FabricLoaderManifest>,
 }
 
 impl ResourceManager {
@@ -178,20 +182,16 @@ impl ResourceManager {
     }
 
     /// Gets a list of all vanilla versions
-    pub fn get_vanilla_version_list(&self, filters: &[VersionFilter]) -> Vec<VersionEntry> {
+    pub fn get_vanilla_version_list(&self) -> Vec<VersionEntry> {
         let mut result: Vec<VersionEntry> = Vec::new();
         if let Some(manifest) = &self.vanilla_manifest {
             for (version, version_info) in &manifest.versions {
-                for filter in filters {
-                    if filter.checked && version_info.version_type == filter.id {
-                        result.push(VersionEntry::new(version, version_info));
-                    }
-                }
+                result.push(VersionEntry::new(version, version_info));
             }
         }
         result
     }
-    
+
     pub fn get_fabric_version_list(&self) -> Vec<String> {
         let mut result = Vec::new();
         if let Some(manifest) = &self.fabric_manifest {

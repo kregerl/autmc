@@ -104,7 +104,6 @@ pub struct VersionManifest {
 
 #[tauri::command(async)]
 pub async fn obtain_manifests(
-    filters: Vec<VersionFilter>,
     app_handle: AppHandle<Wry>,
 ) -> ManifestResult<VersionManifest> {
     let resource_state: State<ResourceState> = app_handle
@@ -112,7 +111,7 @@ pub async fn obtain_manifests(
         .expect("`ResourceState` should already be managed.");
     let resource_manager = resource_state.0.lock().await;
 
-    let vanilla_versions = resource_manager.get_vanilla_version_list(&filters);
+    let vanilla_versions = resource_manager.get_vanilla_version_list();
     let fabric_versions = resource_manager.get_fabric_version_list();
     
     Ok(VersionManifest {

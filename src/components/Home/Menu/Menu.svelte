@@ -2,11 +2,19 @@
     import { getName, getVersion } from "@tauri-apps/api/app";
     import { invoke } from "@tauri-apps/api/tauri";
     import { onMount } from "svelte";
-    import MenuButton from "./MenuButton.svelte";
+    import MenuNavbar from "./MenuNavbar.svelte";
 
+    export let selectedTab: string;
     let launcherName: string = "Example";
     let launcherVersion: string = "1.0.0";
     let username: string = "AreUThreateningMe";
+
+    const buttons = [
+        "Instances",
+        "Servers",
+        "Screenshots",
+        "Logs"
+    ];
 
     onMount(async () => {
         launcherName = await getName();
@@ -19,29 +27,27 @@
 <nav>
     <div class="launcher-header">
         <div class="title">
-            <h1 class="dropshadow">{launcherName}</h1>
-            <p>v{launcherVersion}</p>
+            <h1 class="header dropshadow">{launcherName}</h1>
+            <span>v{launcherVersion}</span>
         </div>
     
         <div class="image-content">
             <img src="https://i.pinimg.com/originals/85/78/bf/8578bfd439ef6ee41e103ae82b561986.png" alt="Skin Head"/>
-            <h3 class="dropshadow">{username}</h3>
+            <h3 class="header dropshadow">{username}</h3>
         </div>
     
         <div class="image-content-small">
             <img src="SwitchUser.svg" alt="Switch User">
-            <h3 class="dropshadow">Switch User</h3>
+            <h3 class="header dropshadow">Switch User</h3>
         </div>
     
         <div class="image-content-small">
             <img src="Settings.svg" alt="Switch User">
-            <h3 class="dropshadow">Launcher Settings</h3>
+            <h3 class="header dropshadow">Launcher Settings</h3>
         </div>
     </div>
     <div class="menu-buttons">
-        <MenuButton><span class="dropshadow">Instances</span></MenuButton>
-        <MenuButton><span class="dropshadow">Servers</span></MenuButton>
-        <MenuButton><span class="dropshadow">Screenshots</span></MenuButton>
+        <MenuNavbar buttons={buttons} bind:selected={selectedTab}></MenuNavbar>
     </div>
 </nav>
 
@@ -55,19 +61,17 @@
     .launcher-header {
         padding-top: 8px;
         padding-bottom: 4px;
-        margin-bottom: 4px;
         background-color: #4E4E4E;
-        box-shadow: 0px 6px 6px #111;
     }
 
     .image-content {
-        width: 350px;
+        width: 100%;
         overflow: hidden;
     }
 
     .image-content img {
         float: left;
-        width: 40px;
+        width: 2.5vw;
         border-radius: 8px;
         margin-left: 24px;
         margin-right: 8px;
@@ -75,11 +79,11 @@
 
     .image-content h3 {
         color: white;
-        font-size: 1.25em;
+        font-size: 1vw;
     }
 
     .image-content-small {
-        width: 350px;
+        width: 100%;
         overflow: hidden;
         margin-bottom: 8px;
     }
@@ -103,7 +107,7 @@
     }
 
     .title {
-        width: 350px;
+        width: 100%;
         overflow: hidden;
         text-align: center;
         margin-bottom: 16px
@@ -115,15 +119,18 @@
         margin: 0px;
     }
 
-    .title p {
-        font-size: 0.75em;
-        color: rgb(26, 26, 26);
-    }
-
-    .title h1 {
-        font-size: 3em;
+    .title > h1 {
+        font-size: 2vw;
         margin-right: 4px;
         color: white;
     }
 
+    .title span {
+        font-size: 0.75vw;
+        color: rgb(26, 26, 26);
+    }
+
+    .dropshadow {
+        color: white;
+    }
 </style>

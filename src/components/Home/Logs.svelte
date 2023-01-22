@@ -1,3 +1,7 @@
+<script context="module" lang="ts">
+    export const ID = "Logs";
+</script>
+
 <script lang="ts">
     // TODO: Color warning and error logs different colors.
     import { afterUpdate } from "svelte";

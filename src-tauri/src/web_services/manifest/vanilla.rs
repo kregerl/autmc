@@ -243,7 +243,7 @@ impl Artifact {
 
     #[cfg(target_family = "unix")]
     fn get_os_specific_path(&self) -> String {
-        self.path
+        self.path.clone()
     }
 }
 
