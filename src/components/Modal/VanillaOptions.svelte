@@ -19,7 +19,10 @@
 
     const buttons = ["None", "Fabric", "Forge"];
 
-    let selectedModloader: string = "None";
+    export let selectedModloader: string = "None";
+
+    export let selectedVanillaVersion;
+    export let selectedModloaderVersion;
 
     $: modloaderFilters = getModloaderFilters(selectedModloader);
 
@@ -35,12 +38,17 @@
     function updateModloaderSelection() {
         selectedModloader = updateSelectionClasses(this.id, buttons);
     }
+
+
 </script>
 
 <div class="outer">
     <div class="vanilla-version">
         {#await getManifest() then manifest}
-            <VanillaVersionTable versionEntries={manifest.vanilla_versions} />
+            <VanillaVersionTable
+                versionEntries={manifest.vanilla_versions}
+                bind:selected={selectedVanillaVersion}
+            />
         {/await}
     </div>
 
@@ -58,15 +66,19 @@
             {/each}
         </div>
         {#if selectedModloader !== "None"}
-        <!-- FIXME: Wrap in a div so the overflow can work correctly.  -->
-            {#await getManifest() then manifest}
-                <VersionTable
-                    --header-height="4vh"
-                    --font-size="2vh"
-                    headers={["Version"]}
-                    body={manifest.fabric_versions}
-                />
-            {/await}
+            <div class="modloader-manifest-wrapper">
+                {#await getManifest() then manifest}
+                    <VersionTable
+                        --header-height="2vw"
+                        --font-size="1vw"
+                        headers={["Version"]}
+                        body={selectedModloader === "Fabric"
+                            ? manifest.fabric_versions
+                            : []}
+                        bind:selected={selectedModloaderVersion}
+                    />
+                {/await}
+            </div>
         {:else}
             <h3>No Modloader Selected</h3>
         {/if}
@@ -86,7 +98,9 @@
                 {filter.name}
             </label>
         {/each}
-        <h4>{selectedModloader} Filters</h4>
+        {#if selectedModloader !== "None"}
+            <h4>{selectedModloader} Filters</h4>
+        {/if}
         {#each modloaderFilters as filter}
             <label class="dropshadow checkbox-label" for={filter.name}>
                 <input
@@ -100,7 +114,6 @@
         {/each}
     </div>
 </div>
-<button class="next-button dropshadow" on:click={close}>Next</button>
 
 <style>
     .outer {
@@ -116,15 +129,13 @@
         grid-area: vanilla-version;
         margin-right: 2px;
         max-height: 58vh;
-        overflow: scroll;
+        overflow-y: scroll;
     }
 
     .modloader-version {
         grid-area: modloader-version;
         margin-left: 2px;
         margin-right: 2px;
-        max-height: 58vh;
-        overflow: scroll;
     }
 
     .modloader-version > h3 {
@@ -147,12 +158,18 @@
     .tab {
         text-align: center;
         vertical-align: center;
+        cursor: pointer;
     }
 
     .tab > h3 {
         margin-bottom: 0px;
         margin-top: 6px;
         font-size: 2vh;
+    }
+
+    .modloader-manifest-wrapper {
+        max-height: 54vh;
+        overflow-y: scroll;
     }
 
     .filters {
@@ -178,19 +195,5 @@
         margin-left: 8px;
     }
 
-    .next-button {
-        position: absolute;
-        bottom: 0;
-        right: 0;
-        margin: 12px;
-        width: 8vw;
-        height: 6vh;
-        font-size: 1vw;
-        border-radius: 8px;
-        text-align: center;
-        vertical-align: middle;
-        color: white;
-        background-color: #4e4e4e;
-        border: none;
-    }
+   
 </style>

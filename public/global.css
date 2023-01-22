@@ -82,6 +82,10 @@ button:focus {
 	background-color: #8c6ec9 !important;
 }
 
+tr.selected {
+	background-color: #8c6ec9 !important;
+}
+
 .buttons > button.selected {
 	box-shadow: 0px 4px 0px 0px #8c6ec9 !important;
 }

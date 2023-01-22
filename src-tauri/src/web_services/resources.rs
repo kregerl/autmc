@@ -831,7 +831,9 @@ fn extract_natives(
 }
 
 pub async fn create_instance(
-    selected: String,
+    vanilla_version: String,
+    modloader_type: String,
+    modloader_version: String,
     instance_name: String,
     app_handle: &AppHandle<Wry>,
 ) -> ManifestResult<()> {
@@ -841,7 +843,7 @@ pub async fn create_instance(
     let resource_manager = resource_state.0.lock().await;
     let start = Instant::now();
 
-    let version: VanillaVersion = resource_manager.download_vanilla_version(&selected).await?;
+    let version: VanillaVersion = resource_manager.download_vanilla_version(&vanilla_version).await?;
 
     let libraries: Vec<Library> = version
         .libraries
@@ -904,11 +906,11 @@ pub async fn create_instance(
     let instance_dir = resource_manager.instances_dir().join(&instance_name);
     fs::create_dir_all(&instance_dir)?;
 
-    let mc_version_manifest = resource_manager.get_vanilla_manifest_from_version(&selected);
+    let mc_version_manifest = resource_manager.get_vanilla_manifest_from_version(&vanilla_version);
     if mc_version_manifest.is_none() {
         warn!(
             "Could not retrieve manifest for unknown version: {}.",
-            &selected
+            &vanilla_version
         );
     }
     let persitent_arguments = construct_arguments(

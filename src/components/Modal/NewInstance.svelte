@@ -2,11 +2,18 @@
     import { updateSelectionClasses } from "../../selectable";
     import { createEventDispatcher } from "svelte";
     import VanillaOptions from "./VanillaOptions.svelte";
+    import { invoke } from "@tauri-apps/api";
 
     let modal;
     const dispatch = createEventDispatcher();
     const buttons = ["Vanilla", "Curseforge", "Modrinth", "Import Zip"];
     let selectedInstanceType: string = buttons.at(0);
+
+    let selectedVanillaVersion;
+    let selectedModloaderVersion;
+    let selectedModloader;
+
+    $: instanceName = "Minecraft " + selectedVanillaVersion;
 
     function close() {
         dispatch("close");
@@ -39,8 +46,18 @@
     function tabKeyDown() {
         // TODO: Implement "Enter" updating selection of tabs.
     }
+    
     function updateSelections() {
         selectedInstanceType = updateSelectionClasses(this.id, buttons);
+    }
+
+    function next() {
+        // TODO: Make this go to another modal that has some jvm options. 
+        console.log("Vanilla:", selectedVanillaVersion);
+        console.log("Modloader Type:", selectedModloader);
+        console.log("Modloader:", selectedModloaderVersion);
+        invoke("obtain_version", { vanillaVersion: selectedVanillaVersion, modloaderType: selectedModloader, modloaderVersion: selectedModloaderVersion ?? "", instanceName: instanceName });
+        close();
     }
 </script>
 
@@ -69,13 +86,15 @@
             {/each}
         </div>
         <div class="instance-name flex-column">
-            <input type="text" />
-            <p>Testing</p>
+            <input type="text" placeholder="Instance Name" bind:value={instanceName}/>
+            {#await invoke("get_instance_path", {name: instanceName}) then path}
+                <p>{path}</p>
+            {/await}
         </div>
     </div>
     <div class="modal-content flex-column">
         {#if selectedInstanceType === "Vanilla"}
-            <VanillaOptions />
+            <VanillaOptions bind:selectedModloader bind:selectedModloaderVersion bind:selectedVanillaVersion/>
         {:else if selectedInstanceType === "Curseforge"}
             <h1>TODO</h1>
         {:else if selectedInstanceType === "Modrinth"}
@@ -84,6 +103,7 @@
             <h1>TODO</h1>
         {/if}
     </div>
+    <button class="next-button dropshadow" on:click={next}>Next</button>
 </div>
 
 <style>
@@ -180,5 +200,30 @@
         color: white;
         border-radius: 0;
         background-color: #4e4e4e;
+        cursor: pointer;
+    }
+
+    .next-button {
+        position: absolute;
+        bottom: 0;
+        right: 0;
+        margin: 12px;
+        width: 8vw;
+        height: 6vh;
+        font-size: 1vw;
+        border-radius: 8px;
+        text-align: center;
+        vertical-align: middle;
+        color: white;
+        background-color: #4e4e4e;
+        border: none;
+    }
+
+    .next-button:hover {
+        background-color: #5E5E5E;
+    }
+
+    .next-button:active {
+        background-color: #6E6E6E;
     }
 </style>

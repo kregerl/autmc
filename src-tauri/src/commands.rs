@@ -1,7 +1,5 @@
 use std::{
-    io::{BufRead, BufReader},
     path::PathBuf,
-    process::Child,
 };
 
 use log::debug;
@@ -40,7 +38,6 @@ fn get_init_script_for_os() -> String {
     "#.into()
 }
 
-
 #[tauri::command(async)]
 pub async fn show_microsoft_login_page(app_handle: tauri::AppHandle<Wry>) -> AuthResult<()> {
     let login_url = Url::parse_with_params(
@@ -57,7 +54,6 @@ pub async fn show_microsoft_login_page(app_handle: tauri::AppHandle<Wry>) -> Aut
             ),
         ],
     )?;
-
 
     debug!("Init script injected");
     let init_script = get_init_script_for_os();
@@ -103,9 +99,7 @@ pub struct VersionManifest {
 }
 
 #[tauri::command(async)]
-pub async fn obtain_manifests(
-    app_handle: AppHandle<Wry>,
-) -> ManifestResult<VersionManifest> {
+pub async fn obtain_manifests(app_handle: AppHandle<Wry>) -> ManifestResult<VersionManifest> {
     let resource_state: State<ResourceState> = app_handle
         .try_state()
         .expect("`ResourceState` should already be managed.");
@@ -113,31 +107,42 @@ pub async fn obtain_manifests(
 
     let vanilla_versions = resource_manager.get_vanilla_version_list();
     let fabric_versions = resource_manager.get_fabric_version_list();
-    
+
     Ok(VersionManifest {
         vanilla_versions,
-        fabric_versions
+        fabric_versions,
     })
 }
 
 #[tauri::command(async)]
 pub async fn obtain_version(
-    selected: String,
+    vanilla_version: String,
+    modloader_type: String,
+    modloader_version: String,
     instance_name: String,
     app_handle: AppHandle<Wry>,
 ) -> ManifestResult<()> {
-    create_instance(selected, instance_name, &app_handle).await?;
+    debug!("Creating instance {} from mc:{} ml:{} mlv:{}", instance_name, vanilla_version, modloader_type, modloader_version);
+    create_instance(
+        vanilla_version,
+        modloader_type,
+        modloader_version,
+        instance_name,
+        &app_handle,
+    )
+    .await?;
     Ok(())
 }
 
 #[tauri::command(async)]
-pub async fn get_instance_path(app_handle: AppHandle<Wry>) -> PathBuf {
+pub async fn get_instance_path(name: String, app_handle: AppHandle<Wry>) -> PathBuf {
+    debug!("Name: {}", name);
     let resource_state: State<ResourceState> = app_handle
         .try_state()
         .expect("`ResourceState` should already be managed.");
     let resource_manager = resource_state.0.lock().await;
 
-    resource_manager.instances_dir()
+    resource_manager.instances_dir().join(name)
 }
 
 #[tauri::command(async)]
