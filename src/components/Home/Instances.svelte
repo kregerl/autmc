@@ -5,7 +5,6 @@
 <script lang="ts">
     import { invoke } from "@tauri-apps/api/tauri";
     import NewInstance from "../Modal/NewInstance.svelte";
-    import NewInstanceModal from "../Modal/NewInstanceModal.svelte";
 
 
     let showModal = false;
