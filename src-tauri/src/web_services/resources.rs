@@ -17,16 +17,20 @@ use crate::{
     consts::{JAVA_VERSION_MANIFEST, LAUNCHER_NAME, LAUNCHER_VERSION},
     state::{
         account_manager::Account,
-        resource_manager::{ManifestError, ManifestResult, ResourceState}, instance_manager::{InstanceConfiguration, InstanceState},
+        instance_manager::{InstanceConfiguration, InstanceState},
+        resource_manager::{ManifestError, ManifestResult, ResourceState},
     },
     web_services::{
         downloader::{
-            buffered_download_stream, download_bytes_from_url, download_json_object, validate_hash,
-            DownloadError, Downloadable,
+            boxed_buffered_download_stream, buffered_download_stream, download_bytes_from_url,
+            download_json_object, validate_hash, DownloadError, Downloadable,
         },
-        manifest::vanilla::{
-            Argument, Artifact, AssetObject, DownloadableClassifier, JavaRuntimeFile,
-            JavaRuntimeManifest, JavaRuntimeType, VanillaVersion,
+        manifest::{
+            fabric::{download_fabric_profile, FabricLibrary},
+            vanilla::{
+                Argument, Artifact, AssetObject, DownloadableClassifier, JavaRuntimeFile,
+                JavaRuntimeManifest, JavaRuntimeType, VanillaVersion,
+            },
         },
     },
 };
@@ -34,8 +38,9 @@ use crate::{
 use super::{
     downloader::{hash_bytes, validate_file_hash},
     manifest::vanilla::{
-        AssetIndex, DownloadMetadata, JarType, JavaManifest, JavaRuntime, LaunchArguments,
-        LaunchArguments113, Library, Logging, Rule, RuleType, VanillaManifestVersion, JavaVersion,
+        AssetIndex, DownloadMetadata, JarType, JavaManifest, JavaRuntime, JavaVersion,
+        LaunchArguments, LaunchArguments113, Library, Logging, Rule, RuleType,
+        VanillaManifestVersion,
     },
 };
 
@@ -294,12 +299,12 @@ fn get_arg_substring(arg: &str) -> Option<&str> {
 
 #[cfg(target_family = "unix")]
 fn get_classpath_separator() -> String {
-   ":".into() 
+    ":".into()
 }
 
 #[cfg(target_family = "windows")]
 fn get_classpath_separator() -> String {
-   ";".into() 
+    ";".into()
 }
 
 // Returns a string with the substituted value in the jvm argument or None if it doesn't apply.
@@ -325,7 +330,10 @@ fn substitute_jvm_arguments(arg: &str, argument_paths: &LaunchArgumentPaths) -> 
             // FIXME: Linux and Windows use different classpath serperators. Windows uses ';' and Linux uses ':'
             "${classpath}" => {
                 debug!("Vec: {:#?}", classpath_strs);
-                debug!("Classpath: {} ", classpath_strs.join(&get_classpath_separator()));
+                debug!(
+                    "Classpath: {} ",
+                    classpath_strs.join(&get_classpath_separator())
+                );
                 Some(arg.replace(
                     substr,
                     &format!(
@@ -413,31 +421,22 @@ fn path_to_utf8_str(path: &Path) -> &str {
     }
 }
 
-#[derive(Debug)]
 struct LibraryData {
-    library_paths: Vec<PathBuf>,
+    downloadables: Vec<Box<dyn Downloadable + Send + Sync>>,
     classifiers: Vec<DownloadableClassifier>,
 }
 
-async fn download_libraries(
-    libraries_dir: &Path,
-    libraries: &[Library],
-) -> ManifestResult<LibraryData> {
-    info!("Downloading {} libraries...", libraries.len());
-    if !libraries_dir.exists() {
-        fs::create_dir(&libraries_dir)?;
-    }
-    // Since libraries can have one artifact but no classifiers, or no artifact but (one or many) classifiers, or an artifact AND classifiers
-    // we extract all the downloadable artifacts into a vec and perform a single buffered download with them.
-
-    let mut downloadables: Vec<Artifact> = Vec::new();
+fn separate_classifiers_from_libraries(libraries: &[Library]) -> LibraryData {
+    let mut downloadables: Vec<Box<dyn Downloadable + Send + Sync>> = Vec::new();
     let mut classifiers: Vec<DownloadableClassifier> = Vec::new();
 
+    // Since libraries can have one artifact but no classifiers, or no artifact but (one or many) classifiers, or an artifact AND classifiers
+    // we extract all the downloadable artifacts into a vec and perform a single buffered download with them.
     for library in libraries {
         let downloads = &library.downloads;
         // Push the artifact if library has one.
         if let Some(artifact) = &downloads.artifact {
-            downloadables.push(artifact.to_owned());
+            downloadables.push(Box::new(artifact.to_owned()));
         }
         // If there is a natives json entry with an applicable (os dependent) classifier, get and append it
         let key = library.determine_key_for_classifiers();
@@ -448,22 +447,35 @@ async fn download_libraries(
                 None => continue,
             };
             classifiers.push(classifier.clone());
-            downloadables.push(classifier.classifier);
+            downloadables.push(Box::new(classifier.classifier));
         }
     }
+    LibraryData {
+        classifiers,
+        downloadables,
+    }
+}
 
+async fn download_libraries(
+    libraries_dir: &Path,
+    libraries: &[Box<dyn Downloadable + Send + Sync>],
+) -> ManifestResult<Vec<PathBuf>> {
+    info!("Downloading {} libraries...", libraries.len());
+    if !libraries_dir.exists() {
+        fs::create_dir(&libraries_dir)?;
+    }
     let start = Instant::now();
     // Perform one buffered download for all libraries, including classifiers
-    buffered_download_stream(&downloadables, &libraries_dir, |bytes, artifact| {
+    boxed_buffered_download_stream(&libraries, &libraries_dir, |bytes, artifact| {
         // FIXME: Removing file hashing makes the downloads MUCH faster. Only because of a couple slow hashes, upwards of 1s each
         if !validate_hash(&bytes, &artifact.hash()) {
             let err = format!("Error downloading {}, invalid hash.", &artifact.url());
             error!("{}", err);
             return Err(DownloadError::InvalidFileHashError(err));
         }
-        debug!("Artifact: {:#?}", &artifact);
         debug!("Downloading library: {}", artifact.name());
-        let artifact_path = str::replace(artifact.name(), "/", "\\");
+        // Windows only?
+        // let artifact_path = str::replace(artifact.name(), "/", "\\");
         let path = artifact.path(&libraries_dir);
         let mut file = File::create(&path)?;
         file.write_all(&bytes)?;
@@ -475,14 +487,11 @@ async fn download_libraries(
         start.elapsed().as_millis()
     );
     let mut file_paths: Vec<PathBuf> = Vec::with_capacity(libraries.len());
-    for artifact in downloadables {
-        file_paths.push(artifact.path(&libraries_dir));
+    for library in libraries {
+        file_paths.push(library.path(&libraries_dir));
     }
 
-    Ok(LibraryData {
-        library_paths: file_paths,
-        classifiers,
-    })
+    Ok(file_paths)
 }
 
 async fn download_game_jar(
@@ -613,10 +622,7 @@ async fn download_java_from_runtime_manifest(
     Ok(java_path)
 }
 
-async fn download_java_version(
-    java_dir: &Path,
-    java: JavaVersion,
-) -> ManifestResult<PathBuf> {
+async fn download_java_version(java_dir: &Path, java: JavaVersion) -> ManifestResult<PathBuf> {
     info!("Downloading java version manifest");
     let java_version_manifest: HashMap<String, JavaManifest> =
         download_json_object(JAVA_VERSION_MANIFEST).await?;
@@ -843,9 +849,11 @@ pub async fn create_instance(
     let resource_manager = resource_state.0.lock().await;
     let start = Instant::now();
 
-    let version: VanillaVersion = resource_manager.download_vanilla_version(&vanilla_version).await?;
+    let version: VanillaVersion = resource_manager
+        .download_vanilla_version(&vanilla_version)
+        .await?;
 
-    let libraries: Vec<Library> = version
+    let vanilla_libraries: Vec<Library> = version
         .libraries
         .into_iter()
         .filter_map(|lib| {
@@ -866,7 +874,26 @@ pub async fn create_instance(
         })
         .collect();
 
-    let library_data = download_libraries(&resource_manager.libraries_dir(), &libraries).await?;
+    let mut all_libraries: Vec<Box<dyn Downloadable + Send + Sync>> = Vec::new();
+
+    let library_data = separate_classifiers_from_libraries(&vanilla_libraries);
+    all_libraries.extend(library_data.downloadables);
+
+    match modloader_type.as_str() {
+        "Fabric" => {
+            let profile = download_fabric_profile(&vanilla_version, &modloader_version).await?;
+            for fabric_library in profile.libraries {
+                all_libraries.push(Box::new(fabric_library));
+            }
+        }
+        "Forge" => {
+            todo!("Forge libraries")
+        }
+        _ => {}
+    }
+
+    let library_paths =
+        download_libraries(&resource_manager.libraries_dir(), &all_libraries).await?;
 
     let game_jar_path = download_game_jar(
         &resource_manager.version_dir(),
@@ -876,17 +903,16 @@ pub async fn create_instance(
     )
     .await?;
 
-    // java versions is optional for versions 1.6.4 and older. We select java 8 for them by default. 
+    // java versions is optional for versions 1.6.4 and older. We select java 8 for them by default.
     let java_version = match version.java_version {
         Some(version) => version,
-        None => JavaVersion { component: "jre-legacy".into(), major_version: 8 },
+        None => JavaVersion {
+            component: "jre-legacy".into(),
+            major_version: 8,
+        },
     };
 
-    let java_path = download_java_version(
-        &resource_manager.java_dir(),
-        java_version
-    )
-    .await?;
+    let java_path = download_java_version(&resource_manager.java_dir(), java_version).await?;
 
     let logging =
         download_logging_configurations(&resource_manager.asset_objects_dir(), &version.logging)
@@ -920,7 +946,7 @@ pub async fn create_instance(
         &asset_index,
         LaunchArgumentPaths {
             logging,
-            library_paths: library_data.library_paths,
+            library_paths,
             instance_path: instance_dir.clone(),
             jar_path: game_jar_path,
             asset_dir_path: resource_manager.assets_dir(),
