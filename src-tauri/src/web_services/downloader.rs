@@ -40,6 +40,45 @@ pub trait Downloadable {
     fn path(&self, base_dir: &Path) -> PathBuf;
 }
 
+pub async fn boxed_buffered_download_stream(
+    items: &[Box<dyn Downloadable + Send + Sync>],
+    base_dir: &Path,
+    callback: impl Fn(&Bytes, &Box<dyn Downloadable + Send + Sync>) -> DownloadResult<()>,
+) -> DownloadResult<()> {
+    let mut futures = Vec::new();
+    for item in items {
+        futures.push(boxed_download_single(item, &base_dir, &callback));
+    }
+    let x = futures::stream::iter(futures)
+        .buffer_unordered(BUFFER_SIZE)
+        .collect::<Vec<DownloadResult<()>>>();
+
+    x.await;
+    Ok(())
+}
+
+async fn boxed_download_single(
+    item: &Box<dyn Downloadable + Send + Sync>,
+    base_dir: &Path,
+    callback: impl Fn(&Bytes, &Box<dyn Downloadable + Send + Sync>) -> DownloadResult<()>,
+) -> DownloadResult<()> {
+    let path = &item.path(base_dir);
+    if !path.exists() {
+        debug!("Downloading file {}", item.name());
+        let dir_path = path.parent().unwrap();
+        fs::create_dir_all(dir_path)?;
+
+        let bytes = download_bytes_from_url(&item.url()).await?;
+        let x = callback(&bytes, item);
+        if let Err(err) = x {
+            // TODO: Implmenet display for error.
+            error!("{:#?}", &err);
+        }
+    }
+    Ok(())
+}
+
+
 // FIXME: Dont bother checking file hash if the file is already downloaded. Assume that the file is valid.
 pub async fn buffered_download_stream<T>(
     items: &[T],
