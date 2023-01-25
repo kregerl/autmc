@@ -172,7 +172,7 @@ impl Downloadable for Asset {
 
     fn path(&self, base_dir: &Path) -> PathBuf {
         let first_two_chars = &self.hash.split_at(2);
-        base_dir.join(format!("{}/{}", &first_two_chars.0, &self.hash))
+        base_dir.join(&first_two_chars.0).join(&self.hash)
     }
 }
 
