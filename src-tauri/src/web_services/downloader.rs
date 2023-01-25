@@ -79,7 +79,6 @@ async fn boxed_download_single(
 }
 
 
-// FIXME: Dont bother checking file hash if the file is already downloaded. Assume that the file is valid.
 pub async fn buffered_download_stream<T>(
     items: &[T],
     base_dir: &Path,

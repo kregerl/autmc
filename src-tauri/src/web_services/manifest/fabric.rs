@@ -5,7 +5,9 @@ use serde::Deserialize;
 use crate::{
     consts::FABRIC_BASE_URL,
     state::resource_manager::ManifestResult,
-    web_services::downloader::{download_json_object, Downloadable},
+    web_services::downloader::{
+        download_bytes_from_url, download_json_object, Downloadable,
+    },
 };
 
 use super::vanilla::LaunchArguments;
@@ -28,22 +30,33 @@ pub struct FabricLibrary {
     url: String,
 }
 
-impl Downloadable for FabricLibrary {
+#[derive(Debug)]
+pub struct DownloadableFabricLibrary {
+    name: String,
+    url: String,
+    hash: String,
+}
+
+impl Downloadable for DownloadableFabricLibrary {
     fn name(&self) -> &str {
         &self.name
     }
 
     fn url(&self) -> String {
-        format!("{}{}", self.url, maven_to_fabric_endpoint(&self))
+        self.url.to_owned()
     }
 
-    // FIXME: Get hash or make an option
     fn hash(&self) -> &str {
-        ""
+        &self.hash
     }
 
     fn path(&self, base_dir: &Path) -> PathBuf {
-        base_dir.join(maven_to_fabric_endpoint(&self))
+        let mut path = maven_to_fabric_endpoint(&self.name, None);
+        #[cfg(target_family = "windows")]
+        {
+            path = path.replace("/", "\\");
+        }
+        base_dir.join(path)
     }
 }
 
@@ -58,9 +71,8 @@ pub struct FabricProfile {
     #[serde(rename = "type")]
     version_type: String,
     #[serde(rename = "mainClass")]
-    main_class: String,
+    pub main_class: String,
     arguments: LaunchArguments,
-    // TODO: Use custom deserializer with FabricLibrary so it can download the file hash too.
     pub libraries: Vec<FabricLibrary>,
 }
 
@@ -75,8 +87,35 @@ pub async fn download_fabric_profile(
     Ok(download_json_object::<FabricProfile>(&url).await?)
 }
 
-fn maven_to_fabric_endpoint(library: &FabricLibrary) -> String {
-    let splits: Vec<&str> = library.name.split(":").collect();
+pub async fn obtain_fabric_library_hashes(
+    libraries: &[FabricLibrary],
+) -> ManifestResult<Vec<DownloadableFabricLibrary>> {
+    let mut result = Vec::with_capacity(libraries.len());
+    for library in libraries {
+        let hash_url = format!(
+            "{}{}",
+            library.url,
+            maven_to_fabric_endpoint(&library.name, Some(".sha1"))
+        );
+        println!("Hash Url: {}", hash_url);
+        let bytes = download_bytes_from_url(&hash_url).await?;
+        let hash = String::from_utf8(bytes.to_vec())?;
+        result.push(DownloadableFabricLibrary {
+            name: library.name.to_owned(),
+            url: format!(
+                "{}{}",
+                library.url,
+                maven_to_fabric_endpoint(&library.name, None)
+            ),
+            hash,
+        });
+    }
+
+    Ok(result)
+}
+
+fn maven_to_fabric_endpoint(maven_artifact: &str, force_extension: Option<&str>) -> String {
+    let splits: Vec<&str> = maven_artifact.split(":").collect();
     let file_name_ending = if splits.get(3).is_some() {
         format!("{}-{}", splits[2], splits[3])
     } else {
@@ -86,7 +125,15 @@ fn maven_to_fabric_endpoint(library: &FabricLibrary) -> String {
     let full_file_name = if file_name_ending.contains("@") {
         file_name_ending.replace("@", ".")
     } else {
-        format!("{}.jar", file_name_ending)
+        format!(
+            "{}.jar{}",
+            file_name_ending,
+            if let Some(ext) = force_extension {
+                ext
+            } else {
+                ""
+            }
+        )
     };
 
     let mut result = Vec::new();
@@ -106,6 +153,19 @@ fn test_maven_to_fabric() {
         url: "https://maven.fabricmc.net/".into(),
     };
 
-    let result = format!("{}{}", lib.url, maven_to_fabric_endpoint(&lib));
+    let result = format!("{}{}", lib.url, maven_to_fabric_endpoint(&lib.name, None));
     assert!(result == "https://maven.fabricmc.net/org/ow2/asm/asm-commons/9.2/asm-commons-9.2.jar");
+}
+
+#[test]
+fn test_fabric_profile() {
+    let game_version = "1.19.3";
+    let fabric_version = "0.14.3";
+
+    tauri::async_runtime::block_on(async move {
+        let x = download_fabric_profile(game_version, fabric_version).await;
+        assert!(x.is_ok());
+        let hashes = obtain_fabric_library_hashes(&x.unwrap().libraries).await;
+        assert!(hashes.is_ok());
+    });
 }

@@ -26,9 +26,9 @@ use crate::{
             download_json_object, validate_hash, DownloadError, Downloadable,
         },
         manifest::{
-            fabric::{download_fabric_profile, FabricLibrary},
+            fabric::{download_fabric_profile, obtain_fabric_library_hashes},
             vanilla::{
-                Argument, Artifact, AssetObject, DownloadableClassifier, JavaRuntimeFile,
+                Argument, AssetObject, DownloadableClassifier, JavaRuntimeFile,
                 JavaRuntimeManifest, JavaRuntimeType, VanillaVersion,
             },
         },
@@ -337,8 +337,9 @@ fn substitute_jvm_arguments(arg: &str, argument_paths: &LaunchArgumentPaths) -> 
                 Some(arg.replace(
                     substr,
                     &format!(
-                        "{}:{}",
-                        classpath_strs.join(":"),
+                        "{}{}{}",
+                        classpath_strs.join(&get_classpath_separator()),
+                        get_classpath_separator(),
                         path_to_utf8_str(&argument_paths.jar_path)
                     ),
                 ))
@@ -762,7 +763,7 @@ async fn download_assets(
 
     let x = buffered_download_stream(&asset_object.objects, &asset_objects_dir, |bytes, asset| {
         if !validate_hash(&bytes, &asset.hash()) {
-            let err = format!("Error downloading asset {}, invalid hash.", &asset.name());
+            let err = format!("Error downloading asset {}, expected {} but got {}", &asset.name(), &asset.hash(), hash_bytes(&bytes));
             error!("{}", err);
             return Err(DownloadError::InvalidFileHashError(err));
         }
@@ -879,10 +880,13 @@ pub async fn create_instance(
     let library_data = separate_classifiers_from_libraries(&vanilla_libraries);
     all_libraries.extend(library_data.downloadables);
 
+    let mut main_class = version.main_class;
+
     match modloader_type.as_str() {
         "Fabric" => {
             let profile = download_fabric_profile(&vanilla_version, &modloader_version).await?;
-            for fabric_library in profile.libraries {
+            main_class = profile.main_class;
+            for fabric_library in obtain_fabric_library_hashes(&profile.libraries).await? {
                 all_libraries.push(Box::new(fabric_library));
             }
         }
@@ -940,7 +944,7 @@ pub async fn create_instance(
         );
     }
     let persitent_arguments = construct_arguments(
-        version.main_class,
+        main_class,
         &version.arguments,
         mc_version_manifest.unwrap(),
         &asset_index,

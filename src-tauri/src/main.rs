@@ -11,7 +11,7 @@ mod tests;
 mod web_services;
 
 use commands::show_microsoft_login_page;
-use log::{error, info, warn, debug};
+use log::{error, info, warn};
 use regex::Regex;
 use serde::ser::StdError;
 use state::{account_manager::AccountState, redirect};
@@ -38,8 +38,8 @@ fn main() {
     tauri::Builder::default()
         .setup(|app| {
             Ok(match setup(app) {
-                Ok(_) => println!("Here"),
-                Err(e) => debug!("Error: {:#?}", e),
+                Ok(_) => {},
+                Err(e) => println!("Error: {:#?}", e),
             })
         })
         .register_uri_scheme_protocol("autmc", autmc_uri_scheme)
@@ -72,7 +72,7 @@ fn setup(app: &mut App<Wry>) -> Result<(), Box<(dyn StdError + 'static)>> {
     let log_dir = path_resolver.app_log_dir().unwrap();
     fs::create_dir_all(&log_dir)?;
     match init_logger(&log_dir) {
-        Ok(x) => {},
+        Ok(_) => {},
         Err(e) => println!("Error: {}", e),
     }
     info!("Starting Autmc");
@@ -179,21 +179,18 @@ fn autmc_uri_scheme(
 
 /// Sets up the logger and saves launcher logs to ${app_dir}/logs/launcher_log_${datetime}.log
 fn init_logger(log_dir: &PathBuf) -> Result<(), fern::InitError> {
-    let datetime = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S");
+    let datetime = chrono::Local::now().format("%Y-%m-%dT%H-%M-%S");
     if !log_dir.is_dir() {
         fs::create_dir(&log_dir)?;
     }
-    println!("Before purge");
     purge_old_logs(&log_dir)?;
-    println!("After purge");
-    //let log_path = log_dir.join(format!("launcher_log_{}.log", datetime));
-    let log_path = log_dir.join("launcher_log.log");
+    let log_path = log_dir.join(format!("launcher_log_{}.log", datetime));
+    // let log_path = log_dir.join("launcher_log.log");
     println!("Log path: {:#?}", log_path);
     let latest_log_path = log_dir.join("latest.log");
     if latest_log_path.exists() {
         fs::remove_file(&latest_log_path)?;
     }
-    println!("After latest.log");
     fern::Dispatch::new()
         .format(|out, message, record| {
             out.finish(format_args!(
@@ -207,7 +204,7 @@ fn init_logger(log_dir: &PathBuf) -> Result<(), fern::InitError> {
         })
         .level(log::LevelFilter::Debug)
         .chain(std::io::stdout())
-        .chain(fern::log_file(log_path.as_os_str()).expect("Error here"))
+        .chain(fern::log_file(log_path.as_os_str())?)
         .chain(fern::log_file(latest_log_path.as_os_str())?)
         .apply()?;
     Ok(())
