@@ -1,5 +1,5 @@
 use std::{
-    path::PathBuf,
+    path::PathBuf, collections::HashMap,
 };
 
 use log::debug;
@@ -15,7 +15,7 @@ use crate::{
         resource_manager::{ManifestResult, ResourceState},
     },
     web_services::{
-        authentication::AuthResult, manifest::vanilla::VanillaManifestVersion,
+        authentication::AuthResult, manifest::{vanilla::VanillaManifestVersion, fabric::FabricVersionEntry},
         resources::create_instance,
     },
 };
@@ -95,7 +95,8 @@ impl VersionEntry {
 #[derive(Serialize)]
 pub struct VersionManifest {
     vanilla_versions: Vec<VersionEntry>,
-    fabric_versions: Vec<String>,
+    fabric_versions: Vec<FabricVersionEntry>,
+    forge_versions: HashMap<String, Vec<String>>,  
 }
 
 #[tauri::command(async)]
@@ -107,10 +108,12 @@ pub async fn obtain_manifests(app_handle: AppHandle<Wry>) -> ManifestResult<Vers
 
     let vanilla_versions = resource_manager.get_vanilla_version_list();
     let fabric_versions = resource_manager.get_fabric_version_list();
+    let forge_versions = resource_manager.get_forge_version_list();
 
     Ok(VersionManifest {
         vanilla_versions,
         fabric_versions,
+        forge_versions,
     })
 }
 

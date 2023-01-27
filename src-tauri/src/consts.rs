@@ -12,6 +12,7 @@ pub const MINECRAFT_LICENSE_URL: &str = "https://api.minecraftservices.com/entit
 pub const MINECRAFT_PROFILE_URL: &str = "https://api.minecraftservices.com/minecraft/profile";
 
 pub const VANILLA_MANIFEST_URL: &str = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
+pub const FORGE_BASE_URL: &str = "https://maven.minecraftforge.net/net/minecraftforge/forge";
 pub const FORGE_MANIFEST_URL: &str = "https://files.minecraftforge.net/net/minecraftforge/forge/maven-metadata.json";
 pub const FABRIC_BASE_URL: &str = "https://meta.fabricmc.net/v2";
 /// The url to download assets from. Uses the hash as the endpoint: `...net/<first 2 hex letters of hash>/<whole hash>`

@@ -20,6 +20,7 @@
         launcherName = await getName();
         launcherVersion = await getVersion();
         let skin = await invoke("get_account_skin");
+        console.log("Skin:", skin);
     });
 
 </script>

@@ -5,6 +5,12 @@ export interface VersionEntry {
     releasedDate: string;
     versionType: string;
 }
+
+export interface FabricVersionEntry {
+    version: string;
+    stable: boolean;
+}
+
 export interface VersionManifest {
     vanilla_versions: VersionEntry[];
     fabric_versions: string[];

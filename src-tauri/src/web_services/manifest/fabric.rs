@@ -1,16 +1,14 @@
 use std::path::{Path, PathBuf};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     consts::FABRIC_BASE_URL,
     state::resource_manager::ManifestResult,
-    web_services::downloader::{
-        download_bytes_from_url, download_json_object, Downloadable,
-    },
+    web_services::downloader::{download_bytes_from_url, download_json_object, Downloadable},
 };
 
-use super::vanilla::LaunchArguments;
+use super::vanilla::LaunchArguments113;
 
 #[derive(Debug, Deserialize)]
 pub struct FabricLoaderVersion {
@@ -18,7 +16,7 @@ pub struct FabricLoaderVersion {
     build: i32,
     maven: String,
     pub version: String,
-    stable: bool,
+    pub stable: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -72,8 +70,23 @@ pub struct FabricProfile {
     version_type: String,
     #[serde(rename = "mainClass")]
     pub main_class: String,
-    arguments: LaunchArguments,
+    pub arguments: LaunchArguments113,
     pub libraries: Vec<FabricLibrary>,
+}
+
+#[derive(Serialize)]
+pub struct FabricVersionEntry {
+    version: String,
+    stable: bool,
+}
+
+impl FabricVersionEntry {
+    pub fn new(version: &FabricLoaderVersion) -> Self {
+        Self {
+            version: version.version.to_owned(),
+            stable: version.stable,
+        }
+    }
 }
 
 pub async fn download_fabric_profile(

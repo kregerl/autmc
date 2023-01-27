@@ -3,4 +3,4 @@ use std::collections::HashMap;
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
-pub struct ForgeManifest(HashMap<String, Vec<String>>);
+pub struct ForgeManifest(pub HashMap<String, Vec<String>>);

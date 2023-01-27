@@ -209,6 +209,7 @@ fn construct_jvm_arguments112(argument_paths: &LaunchArgumentPaths) -> Vec<Strin
 fn construct_arguments(
     main_class: String,
     arguments: &LaunchArguments,
+    fabric_arguments: Option<LaunchArguments113>,
     mc_version: &VanillaManifestVersion,
     asset_index: &str,
     argument_paths: LaunchArgumentPaths,
@@ -236,6 +237,10 @@ fn construct_arguments(
             arguments.game.iter().map(|arg| arg.clone()).collect()
         }
     });
+
+    if let Some(args) = fabric_arguments {
+        formatted_arguments.append(&mut construct_jvm_arguments113(&args, &argument_paths));
+    }
 
     // Construct the logging configuration argument
     if let Some(substr) = get_arg_substring(&argument_paths.logging.0) {
@@ -882,19 +887,20 @@ pub async fn create_instance(
 
     let mut main_class = version.main_class;
 
-    match modloader_type.as_str() {
+    let modloader_launch_arguments = match modloader_type.as_str() {
         "Fabric" => {
             let profile = download_fabric_profile(&vanilla_version, &modloader_version).await?;
             main_class = profile.main_class;
             for fabric_library in obtain_fabric_library_hashes(&profile.libraries).await? {
                 all_libraries.push(Box::new(fabric_library));
             }
+            Some(profile.arguments)
         }
         "Forge" => {
-            todo!("Forge libraries")
+            todo!("Forge libraries");
         }
-        _ => {}
-    }
+        _ => {None}
+    };
 
     let library_paths =
         download_libraries(&resource_manager.libraries_dir(), &all_libraries).await?;
@@ -946,6 +952,7 @@ pub async fn create_instance(
     let persitent_arguments = construct_arguments(
         main_class,
         &version.arguments,
+        modloader_launch_arguments,
         mc_version_manifest.unwrap(),
         &asset_index,
         LaunchArgumentPaths {

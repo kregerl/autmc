@@ -3,7 +3,7 @@ use std::{
     io::{self, BufReader, Write},
     path::{Path, PathBuf},
     string::FromUtf8Error,
-    sync::Arc,
+    sync::Arc, collections::HashMap,
 };
 
 use bytes::Bytes;
@@ -18,7 +18,7 @@ use crate::{
     web_services::{
         downloader::{download_bytes_from_url, validate_file_hash, validate_hash, DownloadError},
         manifest::{
-            fabric::FabricLoaderManifest,
+            fabric::{FabricLoaderManifest, FabricVersionEntry},
             forge::ForgeManifest,
             vanilla::{VanillaManifest, VanillaManifestVersion, VanillaVersion},
         },
@@ -192,19 +192,24 @@ impl ResourceManager {
         result
     }
 
-    pub fn get_fabric_version_list(&self) -> Vec<String> {
+    pub fn get_fabric_version_list(&self) -> Vec<FabricVersionEntry> {
         let mut result = Vec::new();
         if let Some(manifest) = &self.fabric_manifest {
             let FabricLoaderManifest(vec) = manifest;
             for entry in vec {
-                result.push(entry.version.clone());
+                result.push(FabricVersionEntry::new(&entry));
             }
         }
         result
     }
 
-    // TODO: Add filters if they apply.
-    // pub fn get_forge_version_list(&self)
+    pub fn get_forge_version_list(&self) -> HashMap<String, Vec<String>> {
+        if let Some(manifest) = &self.forge_manifest {
+            manifest.0.to_owned()
+        } else {
+            HashMap::new()
+        }
+    }
 
     /// Get the vanilla manifest for a given mc_version. Returns None if mc_version is invalid.
     pub fn get_vanilla_manifest_from_version(
