@@ -192,12 +192,12 @@ impl ResourceManager {
         result
     }
 
-    pub fn get_fabric_version_list(&self) -> Vec<FabricVersionEntry> {
+    pub fn get_fabric_version_list(&self) -> Vec<String> {
         let mut result = Vec::new();
         if let Some(manifest) = &self.fabric_manifest {
             let FabricLoaderManifest(vec) = manifest;
             for entry in vec {
-                result.push(FabricVersionEntry::new(&entry));
+                result.push(entry.version.to_owned());
             }
         }
         result

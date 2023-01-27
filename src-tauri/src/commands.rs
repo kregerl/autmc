@@ -95,7 +95,7 @@ impl VersionEntry {
 #[derive(Serialize)]
 pub struct VersionManifest {
     vanilla_versions: Vec<VersionEntry>,
-    fabric_versions: Vec<FabricVersionEntry>,
+    fabric_versions: Vec<String>,
     forge_versions: HashMap<String, Vec<String>>,  
 }
 

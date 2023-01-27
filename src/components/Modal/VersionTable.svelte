@@ -1,13 +1,19 @@
+<script context="module" lang="ts">
+    export interface Row {
+        id: string;
+        entries: string[];
+    }
+</script>
 <script lang="ts">
-    export let headers: string[];
-    export let body: string[];
+    export let headers: Row;
+    export let body: Row[];
 
-    export let selected = body.at(0);
+    export let selected = body.at(0).id;
 
     function setActive() {
         for (let entry of body) {
-            let element = document.getElementById(entry);
-            if (element.classList.contains("selected")) 
+            let element = document.getElementById(entry.id);
+            if (element.classList.contains("selected"))
                 element.classList.remove("selected");
         }
         this.classList.add("selected");
@@ -18,15 +24,21 @@
 <table>
     <thead>
         <tr>
-            {#each headers as header}
+            {#each headers.entries as header}
                 <th>{header}</th>
             {/each}
         </tr>
     </thead>
     <tbody>
         {#each body as row}
-            <tr id={row} class={selected === row ? "selected" : ""} on:click={setActive}>
-                <td>{row}</td>
+            <tr
+                id={row.id}
+                class={selected === row.id ? "selected" : ""}
+                on:click={setActive}
+            >
+                {#each row.entries as entry}
+                    <td>{entry}</td>
+                {/each}
             </tr>
         {/each}
     </tbody>
@@ -61,10 +73,9 @@
         text-align: left;
     }
 
-tr {
-    cursor: pointer;
-
-}
+    tr {
+        cursor: pointer;
+    }
 
     tbody > tr:nth-child(odd) {
         background-color: #444;

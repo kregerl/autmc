@@ -1,8 +1,13 @@
 <script lang="ts">
-    import { getManifest } from "../../manifest";
+    import {
+        getManifest,
+        isValidVersionForForge,
+        VersionEntry,
+        VersionManifest,
+    } from "../../manifest";
     import { updateSelectionClasses } from "../../selectable";
     import VanillaVersionTable from "./VanillaVersionTable.svelte";
-    import VersionTable from "./VersionTable.svelte";
+    import VersionTable, { Row } from "./VersionTable.svelte";
 
     interface Filter {
         id: string;
@@ -12,7 +17,7 @@
 
     let filters: Filter[] = [
         { id: "release", name: "Releases", checked: true },
-        { id: "snapshot", name: "Snapshots", checked: false },
+        { id: "snapshot", name: "Snapshots", checked: true },
         { id: "old_beta", name: "Betas", checked: false },
         { id: "old_alpha", name: "Alphas", checked: false },
     ];
@@ -24,7 +29,17 @@
     export let selectedVanillaVersion;
     export let selectedModloaderVersion;
 
+    $: if (
+        selectedModloader === "Forge" &&
+        selectedVanillaVersion !== undefined &&
+        !isValidVersionForForge(selectedVanillaVersion)
+    ) {
+        console.log("Here: ", selectedVanillaVersion);
+        selectedModloader = updateSelectionClasses("None", buttons);
+    }
     $: modloaderFilters = getModloaderFilters(selectedModloader);
+
+    let getManifestPromise = getManifest();
 
     // TODO: Forge filters
     function getModloaderFilters(modloader: string) {
@@ -36,17 +51,56 @@
     }
 
     function updateModloaderSelection() {
+        if (this.classList.contains("disabled")) return;
         selectedModloader = updateSelectionClasses(this.id, buttons);
+        if (selectedModloader !== "None") getManifestPromise = getManifest();
     }
 
+    function getBodyForModloaderTable(manifest: VersionManifest): Row[] {
+        let rows: Row[] = [];
+        if (selectedModloader === "Fabric") {
+            for (let version of manifest.fabric_versions) {
+                rows.push({ id: version, entries: [version] });
+            }
+        } else if (selectedModloader === "Forge") {
+            if (manifest.forge_versions.has(selectedVanillaVersion)) {
+                for (let version of manifest.forge_versions.get(
+                    selectedVanillaVersion
+                )) {
+                    rows.push({ id: version, entries: [version] });
+                }
+            }
+            rows.reverse();
+        }
+        if (rows.length > 0) selectedModloaderVersion = rows.at(0).id;
+        return rows;
+    }
 
+    function getHeadersForModloaderTable() {
+        return { id: "Version", entries: ["Version"] };
+    }
+
+    function applyVanillaVersionFilters(versions: VersionEntry[], filters: Filter[]): VersionEntry[] {
+        let filteredVersions: VersionEntry[] = [];
+        for (let version of versions) {
+            for (let filter of filters) {
+                if (version.versionType === filter.id && filter.checked) {
+                    filteredVersions.push(version);
+                }
+            }
+        }
+        if (filteredVersions.filter(version => version.version === selectedVanillaVersion).length < 1) {
+            selectedVanillaVersion = filteredVersions.at(0).version;
+        }
+        return filteredVersions;
+    }
 </script>
 
 <div class="outer">
     <div class="vanilla-version">
-        {#await getManifest() then manifest}
+        {#await getManifestPromise then manifest}
             <VanillaVersionTable
-                versionEntries={manifest.vanilla_versions}
+                versionEntries={applyVanillaVersionFilters(manifest.vanilla_versions, filters)}
                 bind:selected={selectedVanillaVersion}
             />
         {/await}
@@ -57,7 +111,11 @@
             {#each buttons as button, i}
                 <div
                     id={button}
-                    class="tab menu-button {i === 0 ? 'selected' : ''}"
+                    class="tab menu-button {i === 0 ? 'selected' : ''}
+                    {button === 'Forge' &&
+                    !isValidVersionForForge(selectedVanillaVersion)
+                        ? 'disabled'
+                        : ''}"
                     on:click={updateModloaderSelection}
                     on:keypress
                 >
@@ -67,16 +125,18 @@
         </div>
         {#if selectedModloader !== "None"}
             <div class="modloader-manifest-wrapper">
-                {#await getManifest() then manifest}
-                    <VersionTable
-                        --header-height="2vw"
-                        --font-size="1vw"
-                        headers={["Version"]}
-                        body={selectedModloader === "Fabric"
-                            ? manifest.fabric_versions
-                            : []}
-                        bind:selected={selectedModloaderVersion}
-                    />
+                {#await getManifestPromise then manifest}
+                    {#if getBodyForModloaderTable(manifest).length < 1}
+                        <h3>Nothing</h3>
+                    {:else}
+                        <VersionTable
+                            --header-height="2vw"
+                            --font-size="1vw"
+                            headers={getHeadersForModloaderTable()}
+                            body={getBodyForModloaderTable(manifest)}
+                            bind:selected={selectedModloaderVersion}
+                        />
+                    {/if}
                 {/await}
             </div>
         {:else}
@@ -194,6 +254,4 @@
         cursor: pointer;
         margin-left: 8px;
     }
-
-   
 </style>
