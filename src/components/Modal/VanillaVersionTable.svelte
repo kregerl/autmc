@@ -89,4 +89,18 @@
         height: 3vh;
         font-size: 1.75vmin;
     }
+
+    ::-webkit-scrollbar {
+        width: 6px;
+    }
+
+    ::-webkit-scrollbar-track {
+        background: transparent;
+        box-shadow: inset 0 0 5px #4e4e4e;
+    }
+
+    ::-webkit-scrollbar-thumb {
+        background: #8c6ec9;
+        height: 6vh;
+    }
 </style>
