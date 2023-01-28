@@ -80,7 +80,10 @@
         return { id: "Version", entries: ["Version"] };
     }
 
-    function applyVanillaVersionFilters(versions: VersionEntry[], filters: Filter[]): VersionEntry[] {
+    function applyVanillaVersionFilters(
+        versions: VersionEntry[],
+        filters: Filter[]
+    ): VersionEntry[] {
         let filteredVersions: VersionEntry[] = [];
         for (let version of versions) {
             for (let filter of filters) {
@@ -89,7 +92,11 @@
                 }
             }
         }
-        if (filteredVersions.filter(version => version.version === selectedVanillaVersion).length < 1) {
+        if (
+            filteredVersions.filter(
+                (version) => version.version === selectedVanillaVersion
+            ).length < 1
+        ) {
             selectedVanillaVersion = filteredVersions.at(0).version;
         }
         return filteredVersions;
@@ -98,9 +105,15 @@
 
 <div class="outer">
     <div class="vanilla-version">
+        <div class="vanilla-header">
+            <h3>Vanilla</h3>
+        </div>
         {#await getManifestPromise then manifest}
             <VanillaVersionTable
-                versionEntries={applyVanillaVersionFilters(manifest.vanilla_versions, filters)}
+                versionEntries={applyVanillaVersionFilters(
+                    manifest.vanilla_versions,
+                    filters
+                )}
                 bind:selected={selectedVanillaVersion}
             />
         {/await}
@@ -124,21 +137,17 @@
             {/each}
         </div>
         {#if selectedModloader !== "None"}
-            <div class="modloader-manifest-wrapper">
-                {#await getManifestPromise then manifest}
-                    {#if getBodyForModloaderTable(manifest).length < 1}
-                        <h3>Nothing</h3>
-                    {:else}
-                        <VersionTable
-                            --header-height="2vw"
-                            --font-size="1vw"
-                            headers={getHeadersForModloaderTable()}
-                            body={getBodyForModloaderTable(manifest)}
-                            bind:selected={selectedModloaderVersion}
-                        />
-                    {/if}
-                {/await}
-            </div>
+            {#await getManifestPromise then manifest}
+                {#if getBodyForModloaderTable(manifest).length < 1}
+                    <h3>Nothing</h3>
+                {:else}
+                    <VersionTable
+                        headers={getHeadersForModloaderTable()}
+                        body={getBodyForModloaderTable(manifest)}
+                        bind:selected={selectedModloaderVersion}
+                    />
+                {/if}
+            {/await}
         {:else}
             <h3>No Modloader Selected</h3>
         {/if}
@@ -187,9 +196,21 @@
 
     .vanilla-version {
         grid-area: vanilla-version;
-        margin-right: 2px;
-        max-height: 58vh;
-        overflow-y: scroll;
+    }
+
+    .vanilla-header {
+        height: 4vh;
+        text-align: center;
+        font-size: 1.25vw;
+        background-color: #4e4e4e;
+        vertical-align: middle;
+    }
+
+    .vanilla-header > h3 {
+        margin: 0px;
+        margin-bottom: 0px;
+        padding-top: 6px;
+        font-size: 2vh;
     }
 
     .modloader-version {
@@ -225,11 +246,6 @@
         margin-bottom: 0px;
         margin-top: 6px;
         font-size: 2vh;
-    }
-
-    .modloader-manifest-wrapper {
-        max-height: 54vh;
-        overflow-y: scroll;
     }
 
     .filters {

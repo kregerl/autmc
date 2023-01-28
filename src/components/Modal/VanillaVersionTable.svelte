@@ -8,7 +8,7 @@
     function setActive() {
         for (let entry of versionEntries) {
             let element = document.getElementById(entry.version);
-            if (element.classList.contains("selected")) 
+            if (element.classList.contains("selected"))
                 element.classList.remove("selected");
         }
         this.classList.add("selected");
@@ -25,7 +25,11 @@
     </thead>
     <tbody>
         {#each versionEntries as entry}
-            <tr id={entry.version} class={selected === entry.version ? "selected" : ""} on:click={setActive}>
+            <tr
+                id={entry.version}
+                class={selected === entry.version ? "selected" : ""}
+                on:click={setActive}
+            >
                 <td>{entry.version}</td>
                 <td>{entry.versionType}</td>
             </tr>
@@ -34,46 +38,33 @@
 </table>
 
 <style>
-    /* FIXME: Scroll bars are not selectable when on the header. Scrollbars should stop at bottom of header and not go over them. */
     table {
-        background-color: #4e4e4e;
         width: 100%;
-        position: sticky;
         table-layout: fixed;
         border-collapse: collapse;
-        border-spacing: 0px;
     }
 
-    thead {
-        position: sticky;
-        top: 0;
+    thead tr th {
+        text-align: left;
         background-color: #4e4e4e;
-        height: 8vh;
-        font-size: 2vw;
     }
 
-    th:first-child {
-        border-right: 1px solid #444;
+    table tbody {
+        display: block;
+        width: 100%;
+        height: 54vh;
+        overflow-y: scroll;
     }
 
-    th {
-        height: 8vh;
-        font-size: 1.5vw;
+    table tr {
+        display: block;
+        width: 100%;
+    }
+
+    table th,
+    table td {
         text-align: left;
-        border-left: 1px solid #444;
-    }
-
-    td {
-        font-size: 1vw;
-        text-align: left;
-    }
-
-    tr {
-        cursor: pointer;
-    }
-
-    tr > td, th {
-        padding-left: 8px;
+        width: 200px;
     }
 
     tbody > tr:nth-child(odd) {
@@ -82,5 +73,20 @@
 
     tbody > tr:nth-child(even) {
         background-color: #333;
+    }
+
+    tbody > tr {
+        cursor: pointer;
+    }
+
+    tr > td,
+    th {
+        padding-left: 8px;
+    }
+
+    th,
+    tr {
+        height: 3vh;
+        font-size: 1.75vmin;
     }
 </style>

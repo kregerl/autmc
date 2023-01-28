@@ -4,6 +4,7 @@
         entries: string[];
     }
 </script>
+
 <script lang="ts">
     export let headers: Row;
     export let body: Row[];
@@ -45,36 +46,48 @@
 </table>
 
 <style>
-    /* FIXME: Scroll bars are not selectable when on the header. Scrollbars should stop at bottom of header and not go over them. */
     table {
-        background-color: #4e4e4e;
         width: 100%;
-        position: sticky;
         table-layout: fixed;
-        border-spacing: 0px;
+        border-collapse: collapse;
     }
 
-    thead {
-        position: sticky;
-        top: 0;
+    thead tr th {
+        text-align: left;
         background-color: #4e4e4e;
-        height: var(--header-height);
-        font-size: var(--font-size);
     }
 
-    th {
-        height: var(--header-height);
-        font-size: var(--font-size);
+    table tbody {
+        display: block;
+        overflow-y: scroll;
+        width: 100%;
+        height: 54vh;
+    }
+
+    table tr {
+        display: block;
+        width: 100%;
+    }
+
+    table th,
+    table td {
         text-align: left;
+        width: 400px;
     }
 
-    td {
-        font-size: var(--font-size);
-        text-align: left;
-    }
-
+    th,
     tr {
+        height: 3vh;
+        font-size: 1.75vmin;
+    }
+
+    tbody > tr {
         cursor: pointer;
+    }
+
+    tr > td,
+    th {
+        padding-left: 8px;
     }
 
     tbody > tr:nth-child(odd) {
