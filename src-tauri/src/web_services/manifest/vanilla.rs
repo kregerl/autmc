@@ -13,6 +13,7 @@ use serde::{
 
 use crate::{consts::VANILLA_ASSET_BASE_URL, web_services::downloader::Downloadable};
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 /// The version metadata returned in the manifest request.
 pub struct VanillaManifestVersion {
@@ -126,6 +127,7 @@ pub enum LaunchArguments {
     LaunchArguments113(LaunchArguments113),
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
 pub struct DownloadMetadata {
     sha1: String,
@@ -145,6 +147,7 @@ impl DownloadMetadata {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct Asset {
     path: String,
@@ -204,6 +207,7 @@ where
     Ok(result)
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct AssetIndex {
     pub id: String,
@@ -360,6 +364,7 @@ struct ClientLoggerFile {
     metadata: DownloadMetadata,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct ClientLogger {
     pub argument: String,
@@ -388,6 +393,7 @@ pub struct Logging {
     pub client: ClientLogger,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 /// The launch arguments and metadata for a given vanilla version.
 // REVIEW: I believe this response is different for older versions of the game. versions < 1.13
@@ -417,24 +423,28 @@ pub struct VanillaVersion {
     version_type: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub enum JarType {
     Client,
     Server,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct JavaRuntimeAvailability {
     group: u32,
     progress: u32,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct JavaRuntimeVersion {
     pub name: String,
     released: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct JavaRuntime {
     availability: JavaRuntimeAvailability,
@@ -485,6 +495,7 @@ where
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct JavaRuntimeDownload {
     lzma: Option<DownloadMetadata>,

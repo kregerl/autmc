@@ -245,6 +245,7 @@ impl ResourceManager {
                     self.serialize_version(&version_id, &bytes)?;
 
                     info!("REMOVEME: Reading vanilla version struct from string");
+                    // TODO: Replace this string conversion and directly read bytes into json using serde_json::from_slice()
                     let byte_str = String::from_utf8(bytes.to_vec())?;
                     let vanilla_version = serde_json::from_str::<VanillaVersion>(&byte_str)?;
                     info!("Finished downloading version `{}`", version_id);

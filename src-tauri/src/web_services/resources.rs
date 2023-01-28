@@ -30,7 +30,7 @@ use crate::{
             vanilla::{
                 Argument, AssetObject, DownloadableClassifier, JavaRuntimeFile,
                 JavaRuntimeManifest, JavaRuntimeType, VanillaVersion,
-            },
+            }, forge::{download_forge_version, download_forge_hashes, self},
         },
     },
 };
@@ -859,6 +859,7 @@ pub async fn create_instance(
         .download_vanilla_version(&vanilla_version)
         .await?;
 
+    // FIXME: Do the rule checks after every library has been added to a vec.
     let vanilla_libraries: Vec<Library> = version
         .libraries
         .into_iter()
@@ -887,6 +888,7 @@ pub async fn create_instance(
 
     let mut main_class = version.main_class;
 
+    // FIXME: Replace Option<LaunchArguments113> with Option<LaunchArguments> to work with forge. 
     let modloader_launch_arguments = match modloader_type.as_str() {
         "Fabric" => {
             let profile = download_fabric_profile(&vanilla_version, &modloader_version).await?;
@@ -897,6 +899,12 @@ pub async fn create_instance(
             Some(profile.arguments)
         }
         "Forge" => {
+            let forge_hashes = download_forge_hashes(&modloader_version).await?;
+            let forge_version = download_forge_version(&modloader_version, Some(forge_hashes.classifiers.installer)).await?;
+            main_class = forge_version.main_class;
+            for forge_library in forge_version.libraries {
+            }
+            debug!("type: {} :: version: {}", modloader_type, modloader_version);
             todo!("Forge libraries");
         }
         _ => {None}

@@ -8,8 +8,9 @@ use crate::{
     web_services::downloader::{download_bytes_from_url, download_json_object, Downloadable},
 };
 
-use super::vanilla::LaunchArguments113;
+use super::vanilla::{LaunchArguments, LaunchArguments113};
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct FabricLoaderVersion {
     separator: String,
@@ -58,6 +59,7 @@ impl Downloadable for DownloadableFabricLibrary {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct FabricProfile {
     id: String,
