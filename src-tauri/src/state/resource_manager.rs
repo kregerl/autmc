@@ -1,24 +1,25 @@
 use std::{
+    collections::HashMap,
     fs::{self, File},
     io::{self, BufReader, Write},
     path::{Path, PathBuf},
     string::FromUtf8Error,
-    sync::Arc, collections::HashMap,
+    sync::Arc,
 };
 
 use bytes::Bytes;
-use log::{debug, info};
+use log::info;
 use serde::Serialize;
 use tauri::async_runtime::Mutex;
 use zip::result::ZipError;
 
 use crate::{
-    commands::{VersionEntry, VersionFilter},
+    commands::VersionEntry,
     consts::{FABRIC_BASE_URL, FORGE_MANIFEST_URL, VANILLA_MANIFEST_URL},
     web_services::{
         downloader::{download_bytes_from_url, validate_file_hash, validate_hash, DownloadError},
         manifest::{
-            fabric::{FabricLoaderManifest, FabricVersionEntry},
+            fabric::FabricLoaderManifest,
             forge::ForgeManifest,
             vanilla::{VanillaManifest, VanillaManifestVersion, VanillaVersion},
         },

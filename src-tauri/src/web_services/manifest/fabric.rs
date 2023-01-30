@@ -72,23 +72,8 @@ pub struct FabricProfile {
     version_type: String,
     #[serde(rename = "mainClass")]
     pub main_class: String,
-    pub arguments: LaunchArguments113,
+    pub arguments: LaunchArguments,
     pub libraries: Vec<FabricLibrary>,
-}
-
-#[derive(Serialize)]
-pub struct FabricVersionEntry {
-    version: String,
-    stable: bool,
-}
-
-impl FabricVersionEntry {
-    pub fn new(version: &FabricLoaderVersion) -> Self {
-        Self {
-            version: version.version.to_owned(),
-            stable: version.stable,
-        }
-    }
 }
 
 pub async fn download_fabric_profile(

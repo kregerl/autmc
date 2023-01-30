@@ -15,7 +15,7 @@ use crate::{
         resource_manager::{ManifestResult, ResourceState},
     },
     web_services::{
-        authentication::AuthResult, manifest::{vanilla::VanillaManifestVersion, fabric::FabricVersionEntry},
+        authentication::AuthResult, manifest::{vanilla::VanillaManifestVersion},
         resources::create_instance,
     },
 };

@@ -1,13 +1,15 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     env,
     fs::{self, File},
+    hash::{self, Hash},
     io::{self, Write},
     path::{Path, PathBuf},
     time::Instant,
 };
 
 use bytes::Bytes;
+use chrono::format;
 use log::{debug, error, info, warn};
 use tauri::{AppHandle, Manager, State, Wry};
 use xmltree::{Element, XMLNode};
@@ -27,10 +29,11 @@ use crate::{
         },
         manifest::{
             fabric::{download_fabric_profile, obtain_fabric_library_hashes},
+            forge::{self, download_forge_hashes, download_forge_version},
             vanilla::{
                 Argument, AssetObject, DownloadableClassifier, JavaRuntimeFile,
                 JavaRuntimeManifest, JavaRuntimeType, VanillaVersion,
-            }, forge::{download_forge_version, download_forge_hashes, self},
+            },
         },
     },
 };
@@ -155,12 +158,14 @@ struct LaunchArgumentPaths {
     instance_path: PathBuf,
     jar_path: PathBuf,
     asset_dir_path: PathBuf,
+    library_directory: PathBuf,
 }
 
 // TODO: Add -Xmx and -Xms arguments for memory
 fn construct_jvm_arguments113(
     arguments: &LaunchArguments113,
     argument_paths: &LaunchArgumentPaths,
+    mc_version: &str,
 ) -> Vec<String> {
     let mut formatted_arguments = Vec::new();
 
@@ -168,7 +173,7 @@ fn construct_jvm_arguments113(
         match jvm_arg {
             // For normal arguments, check if it has something that should be replaced and replace it
             Argument::Arg(value) => {
-                let sub_arg = substitute_jvm_arguments(&value, &argument_paths);
+                let sub_arg = substitute_jvm_arguments(&value, mc_version, &argument_paths);
                 formatted_arguments.push(match sub_arg {
                     Some(argument) => argument,
                     None => value.into(),
@@ -180,7 +185,7 @@ fn construct_jvm_arguments113(
                     continue;
                 }
                 for value in values {
-                    let sub_arg = substitute_jvm_arguments(&value, &argument_paths);
+                    let sub_arg = substitute_jvm_arguments(&value, mc_version, &argument_paths);
                     formatted_arguments.push(match sub_arg {
                         Some(argument) => argument,
                         None => value.into(),
@@ -193,15 +198,23 @@ fn construct_jvm_arguments113(
 }
 
 // TODO: Add -Xmx and -Xms arguments for memory
-fn construct_jvm_arguments112(argument_paths: &LaunchArgumentPaths) -> Vec<String> {
+fn construct_jvm_arguments112(
+    mc_version: &str,
+    argument_paths: &LaunchArgumentPaths,
+) -> Vec<String> {
     let mut formatted_arguments = Vec::new();
 
     formatted_arguments.push(
-        substitute_jvm_arguments("-Djava.library.path=${natives_directory}", &argument_paths)
-            .unwrap(),
+        substitute_jvm_arguments(
+            "-Djava.library.path=${natives_directory}",
+            mc_version,
+            &argument_paths,
+        )
+        .unwrap(),
     );
     formatted_arguments.push("-cp".into());
-    formatted_arguments.push(substitute_jvm_arguments("${classpath}", &argument_paths).unwrap());
+    formatted_arguments
+        .push(substitute_jvm_arguments("${classpath}", mc_version, &argument_paths).unwrap());
 
     formatted_arguments
 }
@@ -209,7 +222,7 @@ fn construct_jvm_arguments112(argument_paths: &LaunchArgumentPaths) -> Vec<Strin
 fn construct_arguments(
     main_class: String,
     arguments: &LaunchArguments,
-    fabric_arguments: Option<LaunchArguments113>,
+    modloader_arguments: Option<LaunchArguments>,
     mc_version: &VanillaManifestVersion,
     asset_index: &str,
     argument_paths: LaunchArgumentPaths,
@@ -224,7 +237,10 @@ fn construct_arguments(
 
         // Versions <= 1.12  use a string of game arguments and do not provide any jvm arguments.
         LaunchArguments::LaunchArguments112(game_args) => {
-            formatted_arguments.append(&mut construct_jvm_arguments112(&argument_paths));
+            formatted_arguments.append(&mut construct_jvm_arguments112(
+                &mc_version.id,
+                &argument_paths,
+            ));
             // Split game arg string on whitespace to get individual args
             game_args
                 .split_ascii_whitespace()
@@ -233,13 +249,39 @@ fn construct_arguments(
         }
         // Versions >= 1.13 provide the game and jvm arguments.
         LaunchArguments::LaunchArguments113(arguments) => {
-            formatted_arguments.append(&mut construct_jvm_arguments113(arguments, &argument_paths));
+            formatted_arguments.append(&mut construct_jvm_arguments113(
+                arguments,
+                &argument_paths,
+                &mc_version.id,
+            ));
             arguments.game.iter().map(|arg| arg.clone()).collect()
         }
     });
 
-    if let Some(args) = fabric_arguments {
-        formatted_arguments.append(&mut construct_jvm_arguments113(&args, &argument_paths));
+    // Append modloader arguments if a modloader is selected.
+    if let Some(args) = modloader_arguments {
+        game_args.append(&mut match args {
+            LaunchArguments::LaunchArguments112(game_args) => {
+                formatted_arguments.append(&mut construct_jvm_arguments112(
+                    &mc_version.id,
+                    &argument_paths,
+                ));
+                // Split game arg string on whitespace to get individual args
+                game_args
+                    .split_ascii_whitespace()
+                    .map(|split| Argument::Arg(split.into()))
+                    .collect::<Vec<Argument>>()
+            }
+            // Versions >= 1.13 provide the game and jvm arguments.
+            LaunchArguments::LaunchArguments113(arguments) => {
+                formatted_arguments.append(&mut construct_jvm_arguments113(
+                    &arguments,
+                    &argument_paths,
+                    &mc_version.id,
+                ));
+                arguments.game.iter().map(|arg| arg.clone()).collect()
+            }
+        });
     }
 
     // Construct the logging configuration argument
@@ -296,6 +338,7 @@ fn get_arg_substring(arg: &str) -> Option<&str> {
     let substr_end = arg.chars().position(|c| c == '}');
 
     if let (Some(start), Some(end)) = (substr_start, substr_end) {
+        debug!("get_arg_substring: {}", &arg[start..=end]);
         Some(&arg[start..=end])
     } else {
         None
@@ -303,57 +346,84 @@ fn get_arg_substring(arg: &str) -> Option<&str> {
 }
 
 #[cfg(target_family = "unix")]
-fn get_classpath_separator() -> String {
+pub fn get_classpath_separator() -> String {
     ":".into()
 }
 
 #[cfg(target_family = "windows")]
-fn get_classpath_separator() -> String {
+pub fn get_classpath_separator() -> String {
     ";".into()
 }
 
 // Returns a string with the substituted value in the jvm argument or None if it doesn't apply.
-fn substitute_jvm_arguments(arg: &str, argument_paths: &LaunchArgumentPaths) -> Option<String> {
-    let substring = get_arg_substring(arg);
+// mc_version is only needed here for one forge specific launch option
+fn substitute_jvm_arguments(
+    arg: &str,
+    mc_version: &str,
+    argument_paths: &LaunchArgumentPaths,
+) -> Option<String> {
+    debug!("substitute_jvm_arguments: {}", arg);
     let classpath_strs: Vec<&str> = (&argument_paths.library_paths)
         .into_iter()
         .map(|path| path_to_utf8_str(&path))
         .collect();
 
-    if let Some(substr) = substring {
-        info!("Substituting {} for jvm arguments", &substr);
-        match substr {
-            "${natives_directory}" => Some(arg.replace(
-                substr,
-                &format!(
-                    "{}",
-                    path_to_utf8_str(&argument_paths.instance_path.join("natives"))
-                ),
-            )),
-            "${launcher_name}" => Some(arg.replace(substr, LAUNCHER_NAME)),
-            "${launcher_version}" => Some(arg.replace(substr, LAUNCHER_VERSION)),
-            // FIXME: Linux and Windows use different classpath serperators. Windows uses ';' and Linux uses ':'
-            "${classpath}" => {
-                debug!("Vec: {:#?}", classpath_strs);
-                debug!(
-                    "Classpath: {} ",
-                    classpath_strs.join(&get_classpath_separator())
-                );
-                Some(arg.replace(
+    let mut formatted_argument: Option<String> = None;
+    // Iterate here since some arguments(forge) can have multiple substitutions in them
+    loop {
+        let arg_to_replace = if let Some(argument) = &formatted_argument {
+            argument.as_str()
+        } else {
+            arg
+        };
+
+        let substring = get_arg_substring(&arg_to_replace);
+
+        if let Some(substr) = substring {
+            info!("Substituting {} for jvm arguments", &substr);
+            formatted_argument = match substr {
+                "${natives_directory}" => Some(arg_to_replace.replace(
                     substr,
                     &format!(
-                        "{}{}{}",
-                        classpath_strs.join(&get_classpath_separator()),
-                        get_classpath_separator(),
-                        path_to_utf8_str(&argument_paths.jar_path)
+                        "{}",
+                        path_to_utf8_str(&argument_paths.instance_path.join("natives"))
                     ),
-                ))
-            }
-            _ => None,
+                )),
+                "${launcher_name}" => Some(arg_to_replace.replace(substr, LAUNCHER_NAME)),
+                "${launcher_version}" => Some(arg_to_replace.replace(substr, LAUNCHER_VERSION)),
+                "${classpath}" => {
+                    debug!("Vec: {:#?}", classpath_strs);
+                    debug!(
+                        "Classpath: {} ",
+                        classpath_strs.join(&get_classpath_separator())
+                    );
+                    Some(arg_to_replace.replace(
+                        substr,
+                        &format!(
+                            "{}{}{}",
+                            classpath_strs.join(&get_classpath_separator()),
+                            get_classpath_separator(),
+                            path_to_utf8_str(&argument_paths.jar_path)
+                        ),
+                    ))
+                }
+                // Forge specific jvm arguments
+                "${library_directory}" => Some(
+                    arg_to_replace
+                        .replace(substr, path_to_utf8_str(&argument_paths.library_directory)),
+                ),
+                "${classpath_separator}" => {
+                    Some(arg_to_replace.replace(substr, &get_classpath_separator()))
+                }
+                "${version_name}" => Some(arg_to_replace.replace(substr, &mc_version)),
+                _ => formatted_argument,
+            };
+            debug!("Got: {:#?}", formatted_argument);
+        } else {
+            break;
         }
-    } else {
-        None
     }
+    formatted_argument
 }
 
 fn substitute_game_arguments(
@@ -768,7 +838,12 @@ async fn download_assets(
 
     let x = buffered_download_stream(&asset_object.objects, &asset_objects_dir, |bytes, asset| {
         if !validate_hash(&bytes, &asset.hash()) {
-            let err = format!("Error downloading asset {}, expected {} but got {}", &asset.name(), &asset.hash(), hash_bytes(&bytes));
+            let err = format!(
+                "Error downloading asset {}, expected {} but got {}",
+                &asset.name(),
+                &asset.hash(),
+                hash_bytes(&bytes)
+            );
             error!("{}", err);
             return Err(DownloadError::InvalidFileHashError(err));
         }
@@ -842,26 +917,8 @@ fn extract_natives(
     Ok(())
 }
 
-pub async fn create_instance(
-    vanilla_version: String,
-    modloader_type: String,
-    modloader_version: String,
-    instance_name: String,
-    app_handle: &AppHandle<Wry>,
-) -> ManifestResult<()> {
-    let resource_state: State<ResourceState> = app_handle
-        .try_state()
-        .expect("`ResourceState` should already be managed.");
-    let resource_manager = resource_state.0.lock().await;
-    let start = Instant::now();
-
-    let version: VanillaVersion = resource_manager
-        .download_vanilla_version(&vanilla_version)
-        .await?;
-
-    // FIXME: Do the rule checks after every library has been added to a vec.
-    let vanilla_libraries: Vec<Library> = version
-        .libraries
+fn apply_library_rules(libraries: Vec<Library>) -> Vec<Library> {
+    libraries
         .into_iter()
         .filter_map(|lib| {
             // If we have any rules...
@@ -879,16 +936,35 @@ pub async fn create_instance(
                 Some(lib)
             }
         })
-        .collect();
+        .collect()
+}
+
+pub async fn create_instance(
+    vanilla_version: String,
+    modloader_type: String,
+    modloader_version: String,
+    instance_name: String,
+    app_handle: &AppHandle<Wry>,
+) -> ManifestResult<()> {
+    let resource_state: State<ResourceState> = app_handle
+        .try_state()
+        .expect("`ResourceState` should already be managed.");
+    let resource_manager = resource_state.0.lock().await;
+    let start = Instant::now();
+
+    let version: VanillaVersion = resource_manager
+        .download_vanilla_version(&vanilla_version)
+        .await?;
 
     let mut all_libraries: Vec<Box<dyn Downloadable + Send + Sync>> = Vec::new();
+
+    let vanilla_libraries = apply_library_rules(version.libraries);
 
     let library_data = separate_classifiers_from_libraries(&vanilla_libraries);
     all_libraries.extend(library_data.downloadables);
 
     let mut main_class = version.main_class;
 
-    // FIXME: Replace Option<LaunchArguments113> with Option<LaunchArguments> to work with forge. 
     let modloader_launch_arguments = match modloader_type.as_str() {
         "Fabric" => {
             let profile = download_fabric_profile(&vanilla_version, &modloader_version).await?;
@@ -900,18 +976,39 @@ pub async fn create_instance(
         }
         "Forge" => {
             let forge_hashes = download_forge_hashes(&modloader_version).await?;
-            let forge_version = download_forge_version(&modloader_version, Some(forge_hashes.classifiers.installer)).await?;
+            let forge_profile = download_forge_version(
+                &modloader_version,
+                Some(forge_hashes.classifiers.installer),
+            )
+            .await?;
+            let forge_version = forge_profile.version;
+
             main_class = forge_version.main_class;
-            for forge_library in forge_version.libraries {
+
+            let forge_libraries: Vec<Library> = forge_version
+                .libraries
+                .into_iter()
+                .chain(forge_profile.profile.libraries)
+                .collect();
+            let filtered_libraries = apply_library_rules(forge_libraries);
+            // If it is possible for forge libraries to have classifiers we are ignoring them here.
+            let data = separate_classifiers_from_libraries(&filtered_libraries);
+
+            for downloadable in data.downloadables {
+                all_libraries.push(downloadable);
             }
-            debug!("type: {} :: version: {}", modloader_type, modloader_version);
-            todo!("Forge libraries");
+            Some(forge_version.arguments)
         }
-        _ => {None}
+        _ => None,
     };
 
-    let library_paths =
-        download_libraries(&resource_manager.libraries_dir(), &all_libraries).await?;
+    // Filtering duplicated libraries here, should probably be done before attempting to download
+    let library_paths = download_libraries(&resource_manager.libraries_dir(), &all_libraries)
+        .await?
+        .drain(..)
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect();
 
     let game_jar_path = download_game_jar(
         &resource_manager.version_dir(),
@@ -969,6 +1066,7 @@ pub async fn create_instance(
             instance_path: instance_dir.clone(),
             jar_path: game_jar_path,
             asset_dir_path: resource_manager.assets_dir(),
+            library_directory: resource_manager.libraries_dir(),
         },
     );
     debug!("Persistent Arguments: {}", &persitent_arguments.join(" "));
