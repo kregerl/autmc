@@ -242,7 +242,7 @@ pub struct Artifact {
 impl Artifact {
     #[cfg(target_family = "windows")]
     fn get_os_specific_path(&self) -> String {
-        str::replace(&self.path, "/", "\\")
+        str::replace(&self.path, "/", &get_directory_separator())
     }
 
     #[cfg(target_family = "unix")]
@@ -308,7 +308,7 @@ pub struct LibraryExtraction {
 #[derive(Debug, Deserialize)]
 pub struct Library {
     pub downloads: LibraryDownloads,
-    name: String,
+    pub name: String,
     pub rules: Option<Vec<Rule>>,
     extract: Option<LibraryExtraction>,
     natives: Option<HashMap<String, String>>,

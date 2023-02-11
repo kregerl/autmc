@@ -53,7 +53,7 @@ impl Downloadable for DownloadableFabricLibrary {
         let mut path = maven_to_fabric_endpoint(&self.name, None);
         #[cfg(target_family = "windows")]
         {
-            path = path.replace("/", "\\");
+            path = path.replace("/", &get_directory_separator());
         }
         base_dir.join(path)
     }

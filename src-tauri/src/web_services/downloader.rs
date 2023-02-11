@@ -144,6 +144,13 @@ pub fn validate_hash(bytes: &Bytes, valid_hash: &str) -> bool {
     hash_bytes(bytes) == valid_hash
 }
 
+/// Hashes the `bytes` slice and returns the hex string
+pub fn hash_bytes_slice(bytes: &[u8]) -> String {
+    let mut hasher = Sha1::new();
+    hasher.input(bytes);
+    hasher.result_str()
+}
+
 /// Hashes the `bytes` and returns the hex string
 pub fn hash_bytes(bytes: &Bytes) -> String {
     let mut hasher = Sha1::new();

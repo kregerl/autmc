@@ -12,6 +12,7 @@ use bytes::Bytes;
 use chrono::format;
 use log::{debug, error, info, warn};
 use tauri::{AppHandle, Manager, State, Wry};
+use tempdir::TempDir;
 use xmltree::{Element, XMLNode};
 use zip::ZipArchive;
 
@@ -29,11 +30,14 @@ use crate::{
         },
         manifest::{
             fabric::{download_fabric_profile, obtain_fabric_library_hashes},
-            forge::{self, download_forge_hashes, download_forge_version},
+            forge::{
+                self, download_forge_hashes, download_forge_version, patch_forge,
+                InstallerArgumentPaths,
+            },
             vanilla::{
                 Argument, AssetObject, DownloadableClassifier, JavaRuntimeFile,
                 JavaRuntimeManifest, JavaRuntimeType, VanillaVersion,
-            },
+            }, path_to_utf8_str, get_classpath_separator,
         },
     },
 };
@@ -345,16 +349,6 @@ fn get_arg_substring(arg: &str) -> Option<&str> {
     }
 }
 
-#[cfg(target_family = "unix")]
-pub fn get_classpath_separator() -> String {
-    ":".into()
-}
-
-#[cfg(target_family = "windows")]
-pub fn get_classpath_separator() -> String {
-    ";".into()
-}
-
 // Returns a string with the substituted value in the jvm argument or None if it doesn't apply.
 // mc_version is only needed here for one forge specific launch option
 fn substitute_jvm_arguments(
@@ -479,21 +473,6 @@ pub fn substitute_account_specific_arguments(
         }
     } else {
         None
-    }
-}
-
-/// Converts a path into a utf8 compatible string. If the string is not utf8 compatible then
-/// it is set to an obvious error str: '__INVALID_UTF8_STRING__'
-fn path_to_utf8_str(path: &Path) -> &str {
-    match path.to_str() {
-        Some(s) => s,
-        None => {
-            error!(
-                "Retrieved invalid utf8 string from path: {}",
-                path.display()
-            );
-            "__INVALID_UTF8_STRING__"
-        }
     }
 }
 
@@ -965,6 +944,8 @@ pub async fn create_instance(
 
     let mut main_class = version.main_class;
 
+    let mut library_paths: Vec<PathBuf> = Vec::new();
+
     let modloader_launch_arguments = match modloader_type.as_str() {
         "Fabric" => {
             let profile = download_fabric_profile(&vanilla_version, &modloader_version).await?;
@@ -975,10 +956,15 @@ pub async fn create_instance(
             Some(profile.arguments)
         }
         "Forge" => {
+            let tmp_dir = TempDir::new("temp")?;
+            // TODO: Make a tempdir here that will be deleted when it goes out of scope. Extract actual forge jar into tempdir so relative paths will work with the processors.
             let forge_hashes = download_forge_hashes(&modloader_version).await?;
             let forge_profile = download_forge_version(
                 &modloader_version,
+                &vanilla_version,
                 Some(forge_hashes.classifiers.installer),
+                &resource_manager.version_dir(),
+                tmp_dir.path()
             )
             .await?;
             let forge_version = forge_profile.version;
@@ -994,21 +980,37 @@ pub async fn create_instance(
             // If it is possible for forge libraries to have classifiers we are ignoring them here.
             let data = separate_classifiers_from_libraries(&filtered_libraries);
 
-            for downloadable in data.downloadables {
-                all_libraries.push(downloadable);
-            }
+            library_paths.extend(
+                download_libraries(&resource_manager.libraries_dir(), &data.downloadables).await?,
+            );
+
+            let forge_installer_paths = InstallerArgumentPaths {
+                libraries_path: resource_manager.libraries_dir(),
+                versions_dir_path: resource_manager.version_dir(),
+                minecraft_version: vanilla_version.clone(),
+                forge_loader_version: modloader_version.clone(),
+            };
+
+            patch_forge(
+                &forge_profile.profile.processors,
+                &filtered_libraries,
+                forge_installer_paths,
+            );
+
             Some(forge_version.arguments)
         }
         _ => None,
     };
 
-    // Filtering duplicated libraries here, should probably be done before attempting to download
-    let library_paths = download_libraries(&resource_manager.libraries_dir(), &all_libraries)
-        .await?
-        .drain(..)
-        .collect::<HashSet<_>>()
-        .into_iter()
-        .collect();
+    // FIXME: Filtering duplicated libraries here, should probably be done before attempting to download
+    library_paths.extend(
+        download_libraries(&resource_manager.libraries_dir(), &all_libraries)
+            .await?
+            .drain(..)
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect::<Vec<PathBuf>>(),
+    );
 
     let game_jar_path = download_game_jar(
         &resource_manager.version_dir(),
