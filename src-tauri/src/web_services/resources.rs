@@ -34,10 +34,11 @@ use crate::{
                 self, download_forge_hashes, download_forge_version, patch_forge,
                 InstallerArgumentPaths,
             },
+            get_classpath_separator, path_to_utf8_str,
             vanilla::{
                 Argument, AssetObject, DownloadableClassifier, JavaRuntimeFile,
                 JavaRuntimeManifest, JavaRuntimeType, VanillaVersion,
-            }, path_to_utf8_str, get_classpath_separator,
+            },
         },
     },
 };
@@ -935,6 +936,17 @@ pub async fn create_instance(
         .download_vanilla_version(&vanilla_version)
         .await?;
 
+    // java versions is optional for versions 1.6.4 and older. We select java 8 for them by default.
+    let java_version = match version.java_version {
+        Some(version) => version,
+        None => JavaVersion {
+            component: "jre-legacy".into(),
+            major_version: 8,
+        },
+    };
+
+    let java_path = download_java_version(&resource_manager.java_dir(), java_version).await?;
+
     let mut all_libraries: Vec<Box<dyn Downloadable + Send + Sync>> = Vec::new();
 
     let vanilla_libraries = apply_library_rules(version.libraries);
@@ -964,7 +976,7 @@ pub async fn create_instance(
                 &vanilla_version,
                 Some(forge_hashes.classifiers.installer),
                 &resource_manager.version_dir(),
-                tmp_dir.path()
+                tmp_dir.path(),
             )
             .await?;
             let forge_version = forge_profile.version;
@@ -989,10 +1001,13 @@ pub async fn create_instance(
                 versions_dir_path: resource_manager.version_dir(),
                 minecraft_version: vanilla_version.clone(),
                 forge_loader_version: modloader_version.clone(),
+                tmp_dir: tmp_dir.path().to_path_buf()
             };
 
             patch_forge(
+                &java_path,
                 &forge_profile.profile.processors,
+                &forge_profile.profile.data,
                 &filtered_libraries,
                 forge_installer_paths,
             );
@@ -1019,17 +1034,6 @@ pub async fn create_instance(
         &version.id,
     )
     .await?;
-
-    // java versions is optional for versions 1.6.4 and older. We select java 8 for them by default.
-    let java_version = match version.java_version {
-        Some(version) => version,
-        None => JavaVersion {
-            component: "jre-legacy".into(),
-            major_version: 8,
-        },
-    };
-
-    let java_path = download_java_version(&resource_manager.java_dir(), java_version).await?;
 
     let logging =
         download_logging_configurations(&resource_manager.asset_objects_dir(), &version.logging)

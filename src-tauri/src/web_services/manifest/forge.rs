@@ -1,11 +1,14 @@
 use std::{
     collections::{btree_map::Entry, HashMap},
+    env::temp_dir,
     fs::{self, File},
     io::{self, BufReader, Cursor, Read, Write},
     path::{self, Path, PathBuf},
+    process::Command,
+    time::Instant,
 };
 
-use log::{debug, error};
+use log::{debug, error, info};
 use serde::Deserialize;
 use tauri::api::version;
 use tempdir::TempDir;
@@ -95,7 +98,7 @@ pub struct ForgeInstall {
     minecraft: String,
     #[serde(rename = "serverJarPath")]
     server_jar_path: String,
-    data: HashMap<String, ForgeData>,
+    pub data: HashMap<String, ForgeData>,
     pub processors: Vec<ForgeProcessor>,
     pub libraries: Vec<Library>,
 }
@@ -111,6 +114,7 @@ pub struct InstallerArgumentPaths {
     pub versions_dir_path: PathBuf,
     pub minecraft_version: String,
     pub forge_loader_version: String,
+    pub tmp_dir: PathBuf,
 }
 
 pub async fn download_forge_hashes(forge_version: &str) -> DownloadResult<ForgeHashes> {
@@ -171,7 +175,9 @@ pub async fn download_forge_version(
 }
 
 pub fn patch_forge(
+    java_path: &Path,
     processors: &[ForgeProcessor],
+    data: &HashMap<String, ForgeData>,
     libraries: &[Library],
     argument_paths: InstallerArgumentPaths,
 ) -> Result<(), io::Error> {
@@ -192,25 +198,28 @@ pub fn patch_forge(
     // TODO: Finish this
     // https://github.com/gorilla-devs/GDLauncher/blob/efa324afda52bfbc1267821d6ffa794ff4a18b05/src/common/reducers/actions.js#L1427
 
-    // Iterate over each processor and run them with the correctly substituted arguments. 
+    // Iterate over each processor and run them with the correctly substituted arguments.
+    info!("Spawning forge patching processors...");
     for processor in processors {
+        // Ignoring server side processors
+        if let Some(sides) = &processor.sides {
+            if !sides.contains(&"client".into()) {
+                continue;
+            }
+        }
+
         let jar_path = argument_paths
             .libraries_path
             .join(maven_to_vec(&processor.jar, None, None).join(&get_directory_separator()));
-        let endpoints: Vec<_> = processor
+
+        let classpaths: Vec<_> = processor
             .classpath
             .iter()
-            .map(|classpath| maven_to_vec(classpath, None, None).join(&get_directory_separator()))
-            .collect();
-        let x: Vec<_> = endpoints
-            .into_iter()
-            .map(|endpoint| {
-                argument_paths
-                    .libraries_path
-                    .join(endpoint)
-                    .into_os_string()
-                    .into_string()
-                    .unwrap()
+            .map(|classpath| {
+                let processor_classpath =
+                    maven_to_vec(classpath, None, None).join(&get_directory_separator());
+                path_to_utf8_str(&argument_paths.libraries_path.join(processor_classpath))
+                    .to_owned()
             })
             .collect();
 
@@ -231,6 +240,7 @@ pub fn patch_forge(
             .map(|argument| {
                 replace_arg_if_possible(
                     &argument,
+                    data,
                     &forge_installers_path,
                     &game_version_path,
                     &argument_paths,
@@ -239,32 +249,32 @@ pub fn patch_forge(
             .map(|argument| compute_path_if_possible(&argument, &argument_paths.libraries_path))
             .collect();
 
-        // Ignoring sides that are NOT empty AND dont contain 'client' 
-        if let Some(sides) = &processor.sides {
-            if !sides.contains(&"client".into()) {
-                continue;
-            }
-        }
-
         if let Some(main_class) = obtain_main_class_from_jar(&jar_path) {
-            let classpaths = format!(
+            let formatted_classpaths = format!(
                 "{}{}{}",
                 path_to_utf8_str(&jar_path),
                 get_classpath_separator(),
-                x.join(&get_classpath_separator())
+                classpaths.join(&get_classpath_separator())
             );
-            // TODO: Replace 'java' with actual path to a downloaded java version.
-            println!(
-                "java -cp {} {} {}",
-                classpaths,
-                main_class,
-                formatted_args.join(" ")
-            );
-            println!();
+            let mut args: Vec<String> = vec!["-cp".into()];
+            args.push(formatted_classpaths);
+            args.push(main_class);
+            args.extend(formatted_args);
+
+            println!("Working Dir: {:#?}", argument_paths.tmp_dir);
+            let mut command = Command::new(java_path);
+            command
+                .current_dir(&argument_paths.tmp_dir)
+                .args(args);
+            debug!("Command: {:#?}", command);
+            let mut child = command.spawn().expect("Could not spawn instance.");
+            child.wait();
+            debug!("Spawned forge processor with PID {}", child.id());
         } else {
             error!("Error obtaining main class from jar: {:#?}", &jar_path);
         }
     }
+    info!("Finished patching forge");
     Ok(())
 }
 
@@ -278,7 +288,7 @@ fn obtain_main_class_from_jar(jar_path: &Path) -> Option<String> {
     let version_file = archive.by_name("META-INF/MANIFEST.MF").unwrap();
     let bytes = version_file.bytes().collect::<Result<Vec<u8>, _>>().ok()?;
     let manifest = String::from_utf8(bytes).ok()?;
-    
+
     let id = "Main-Class: ";
     // Split the manifest at id and again at the newline to get only the main class, trimming excess whitespace.
     if let Some(entry) = manifest.find(id) {
@@ -290,13 +300,21 @@ fn obtain_main_class_from_jar(jar_path: &Path) -> Option<String> {
     }
 }
 
+// TODO: Allow using a side instead of alwasys assuming 'client'
 fn replace_arg_if_possible(
     arg: &str,
+    data: &HashMap<String, ForgeData>,
     forge_installers_path: &Path,
     game_version_path: &Path,
     argument_paths: &InstallerArgumentPaths,
 ) -> String {
-    arg.replace("{SIDE}", "client")
+    // Early return the argument if there is no formatting to be done on it.
+    if !arg.contains("{") {
+        return arg.into();
+    }
+
+    let mut formatted_arg = arg
+        .replace("{SIDE}", "client")
         .replace("{ROOT}", path_to_utf8_str(&forge_installers_path)) // Dirname of ${app_dir}/versions/<version>/forgeInstallers/<loaderVersion>.jar
         .replace(
             "{MINECRAFT_JAR}",
@@ -318,7 +336,15 @@ fn replace_arg_if_possible(
         .replace(
             "{LIBRARY_DIR}",
             path_to_utf8_str(&argument_paths.libraries_path),
-        ) // Libraries path
+        ); // Libraries path
+
+    // Replace arguments from the installer_profile's 'data' entry
+    for (key, value) in data {
+        let substr = format!("{{{}}}", key);
+        formatted_arg = formatted_arg.replace(&substr, &value.client);
+    }
+
+    formatted_arg
 }
 
 fn compute_path_if_possible(arg: &str, libraries_path: &Path) -> String {
@@ -369,8 +395,15 @@ pub fn test_download_forge_version() {
                 .to_path_buf(),
             minecraft_version: "1.19.3".into(),
             forge_loader_version: forge_version.into(),
+            tmp_dir: tmp_dir.path().to_path_buf(),
         };
 
-        let y = patch_forge(&fp.profile.processors, &fp.profile.libraries, paths);
+        let y = patch_forge(
+            Path::new("/home/loucas/.config/com.autm.launcher/java/17.0.3/bin/java"),
+            &fp.profile.processors,
+            &fp.profile.data,
+            &fp.profile.libraries,
+            paths,
+        );
     });
 }
