@@ -139,9 +139,14 @@ pub async fn download_bytes_from_url(url: &str) -> reqwest::Result<Bytes> {
     Ok(response.bytes().await?)
 }
 
-/// Validates that the hash of `bytes` matches the `valid_hash`
-pub fn validate_hash(bytes: &Bytes, valid_hash: &str) -> bool {
+/// Validates that the SHA1 hash of `bytes` matches the `valid_hash`
+pub fn validate_hash_sha1(bytes: &Bytes, valid_hash: &str) -> bool {
     hash_bytes_sha1(bytes) == valid_hash
+}
+
+/// Validates that the MD5 hash of `bytes` matches the `valid_hash`
+pub fn validate_hash_md5(bytes: &Bytes, valid_hash: &str) -> bool {
+    hash_bytes_md5(bytes) == valid_hash
 }
 
 /// Hashes the `bytes` using SHA1 and returns the hex string
@@ -166,7 +171,7 @@ pub fn validate_file_hash(path: &Path, valid_hash: &str) -> bool {
     }
     let result = read_bytes_from_file(path);
     if let Ok(bytes) = result {
-        let valid = validate_hash(&bytes, &valid_hash);
+        let valid = validate_hash_sha1(&bytes, &valid_hash);
         info!("REMOVEME: Is file valid: {}", valid);
         valid
     } else {

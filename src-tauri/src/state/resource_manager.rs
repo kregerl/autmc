@@ -17,7 +17,7 @@ use crate::{
     commands::VersionEntry,
     consts::{FABRIC_BASE_URL, FORGE_MANIFEST_URL, VANILLA_MANIFEST_URL},
     web_services::{
-        downloader::{download_bytes_from_url, validate_file_hash, validate_hash, DownloadError},
+        downloader::{download_bytes_from_url, validate_file_hash, validate_hash_sha1, DownloadError},
         manifest::{
             fabric::FabricLoaderManifest,
             forge::ForgeManifest,
@@ -36,7 +36,7 @@ pub enum ManifestError {
     JsonSerializationError(serde_json::Error),
     VersionRetrievalError(String),
     ResourceError(String),
-    InvalidFileDownload(String),
+    MismatchedFileHash(String),
     FileExtractionError(ZipError),
 }
 
@@ -58,7 +58,7 @@ impl Serialize for ManifestError {
             }
             ManifestError::VersionRetrievalError(error) => serializer.serialize_str(&error),
             ManifestError::ResourceError(error) => serializer.serialize_str(&error),
-            ManifestError::InvalidFileDownload(error) => serializer.serialize_str(&error),
+            ManifestError::MismatchedFileHash(error) => serializer.serialize_str(&error),
             ManifestError::FileExtractionError(error) => {
                 serializer.serialize_str(&error.to_string())
             }
@@ -95,7 +95,7 @@ impl From<DownloadError> for ManifestError {
         match error {
             DownloadError::RequestError(e) => ManifestError::HttpError(e),
             DownloadError::FileWriteError(e) => ManifestError::SerializationFilesystemError(e),
-            DownloadError::InvalidFileHashError(e) => ManifestError::InvalidFileDownload(e),
+            DownloadError::InvalidFileHashError(e) => ManifestError::MismatchedFileHash(e),
         }
     }
 }
@@ -240,7 +240,7 @@ impl ResourceManager {
                 } else {
                     info!("Requesting vanilla version from {}", &manifest_version.url);
                     let bytes = download_bytes_from_url(&manifest_version.url).await?;
-                    validate_hash(&bytes, "");
+                    validate_hash_sha1(&bytes, "");
 
                     info!("REMOVEME: Serializing vanilla version {}", version_id);
                     self.serialize_version(&version_id, &bytes)?;

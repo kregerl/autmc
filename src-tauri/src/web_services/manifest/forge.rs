@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap},
+    collections::HashMap,
     fs::{self, File},
     io::{self, BufReader, Cursor, Read, Write},
     path::{Path, PathBuf},
@@ -15,11 +15,10 @@ use zip::read::ZipFile;
 
 use crate::{
     consts::{FORGE_FILES_BASE_URL, FORGE_MAVEN_BASE_URL},
-    state::resource_manager::ManifestResult,
+    state::resource_manager::{ManifestError, ManifestResult},
     web_services::{
         downloader::{
-            download_bytes_from_url, download_json_object, 
-            DownloadResult,
+            download_bytes_from_url, download_json_object, validate_hash_md5, DownloadResult,
         },
         manifest::get_classpath_separator,
     },
@@ -130,11 +129,10 @@ fn bytes_from_zip_file(file: ZipFile) -> Vec<u8> {
         .collect()
 }
 
-// TODO: Validate jar hash
 pub async fn download_forge_version(
     forge_version: &str,
     minecraft_version: &str,
-    valid_hash: Option<ForgeFileHash>,
+    valid_hash: ForgeFileHash,
     version_path: &Path,
     tmp_dir: &Path,
 ) -> ManifestResult<ForgeProfile> {
@@ -147,24 +145,34 @@ pub async fn download_forge_version(
     );
     let bytes = download_bytes_from_url(&url).await?;
 
+    if !validate_hash_md5(&bytes, &valid_hash.hash) {
+        let error = "Could not validate installer hash, download aborted.".into();
+        error!("{}", &error);
+        return Err(ManifestError::MismatchedFileHash(error));
+    }
+
     // Write bytes to the forge installers path.
     let dir_path = &version_path.join(minecraft_version).join("forgeInstallers");
     fs::create_dir_all(dir_path)?;
 
+    // Save the forge installer file
     let path = dir_path.join(format!("forge-{}-{}", forge_version, terminal));
-    let mut file = File::create(path)?;
-    file.write_all(&bytes)?;
+    if !path.exists() {
+        let mut file = File::create(path)?;
+        file.write_all(&bytes)?;
+    }
 
-    // Unzip the file in memory
+    // Unzip the json files in memory
     let cursor = Cursor::new(bytes);
     let mut archive = zip::ZipArchive::new(cursor)?;
-    let version_file = archive.by_name("version.json")?;
 
+    let version_file = archive.by_name("version.json")?;
     let version_bytes = bytes_from_zip_file(version_file);
 
     let install_profile_file = archive.by_name("install_profile.json")?;
     let install_profile_bytes = bytes_from_zip_file(install_profile_file);
 
+    // Extract the rest of the archive into the tmp_dir
     archive.extract(tmp_dir)?;
 
     Ok(ForgeProfile {
@@ -185,9 +193,11 @@ pub fn patch_forge(
         .iter()
         .find(|library| library.name.starts_with("net.minecraftforge:forge:"));
 
+    // Copy the data map so it can be mutable.
     let mut forge_data_map = HashMap::new();
     forge_data_map.extend(data.into_iter());
 
+    // Format the client_lzma_path from the forge_universal_path
     if let Some(library) = forge_universal_path {
         // FIXME: Currently ignoring the "path" part of the install_profile.json
         let client_lzma_str = maven_to_vec(&library.name, Some("-clientdata"), Some(".lzma"))
@@ -197,12 +207,17 @@ pub fn patch_forge(
         if !client_lzma_parent.exists() {
             fs::create_dir_all(client_lzma_parent)?;
         }
-        debug!("New client.lzma: {}", path_to_utf8_str(&argument_paths.libraries_path.join(&client_lzma_path)));
+
+        debug!(
+            "Client lzma path: {}",
+            path_to_utf8_str(&argument_paths.libraries_path.join(&client_lzma_path))
+        );
 
         fs::copy(
             argument_paths.tmp_dir.join("data").join("client.lzma"),
             &client_lzma_path,
         )?;
+        // Patches issue wit BINPATCH where it uses a relative path but should use the client_lzma_path created above
         forge_data_map.insert(
             "BINPATCH".into(),
             ForgeData {
@@ -270,6 +285,7 @@ pub fn patch_forge(
             .collect();
 
         if let Some(main_class) = obtain_main_class_from_jar(&jar_path) {
+            // Format classpaths to include the processor jar
             let formatted_classpaths = format!(
                 "{}{}{}",
                 classpaths.join(&get_classpath_separator()),
@@ -281,16 +297,22 @@ pub fn patch_forge(
             args.push(main_class);
             args.extend(formatted_args);
 
-            println!("Working Dir: {:#?}", argument_paths.tmp_dir);
+            // Spawn a process for the forge processor with no output.
             let mut command = Command::new(java_path);
             command
                 .current_dir(&argument_paths.tmp_dir)
                 .args(args)
-                ;
+                .stdout(Stdio::null());
             debug!("Command: {:#?}", command);
             let mut child = command.spawn().expect("Could not spawn instance.");
-            child.wait()?;
-            debug!("Spawned forge processor with PID {}", child.id());
+            info!("Spawned forge processor with PID {}", child.id());
+            // Wait for the child process since it could take longer to finish and the tempdir will be deleted.
+            let status = child.wait()?;
+            info!(
+                "Forge processor({}) exited with exit code: {}",
+                child.id(),
+                status
+            );
         } else {
             error!("Error obtaining main class from jar: {:#?}", &jar_path);
         }
@@ -321,7 +343,7 @@ fn obtain_main_class_from_jar(jar_path: &Path) -> Option<String> {
     }
 }
 
-// TODO: Allow using a side instead of alwasys assuming 'client'
+// TODO: Allow using a side instead of always assuming 'client'
 fn replace_arg_if_possible(
     arg: &str,
     data: &HashMap<String, ForgeData>,
@@ -329,7 +351,7 @@ fn replace_arg_if_possible(
     game_version_path: &Path,
     argument_paths: &InstallerArgumentPaths,
 ) -> String {
-    // Early return the argument if there is no formatting to be done on it.
+    // Early return the argument if there is no formatting to be done
     if !arg.contains("{") {
         return arg.into();
     }
@@ -339,7 +361,11 @@ fn replace_arg_if_possible(
         .replace("{ROOT}", path_to_utf8_str(&forge_installers_path)) // Dirname of ${app_dir}/versions/<version>/forgeInstallers/<loaderVersion>.jar
         .replace(
             "{MINECRAFT_JAR}",
-            path_to_utf8_str(&game_version_path.join("client").join(format!("{}.jar", argument_paths.minecraft_version))),
+            path_to_utf8_str(
+                &game_version_path
+                    .join("client")
+                    .join(format!("{}.jar", argument_paths.minecraft_version)),
+            ),
         ) // Minecraft jar path
         .replace(
             "{MINECRAFT_VERSION}",
@@ -370,18 +396,20 @@ fn replace_arg_if_possible(
 
 fn compute_path_if_possible(arg: &str, libraries_path: &Path) -> String {
     if arg.starts_with("[") {
+        // Create path from maven with '[]' around them.
         let mut path = libraries_path.to_path_buf();
         for piece in maven_to_vec(&arg.replace("[", "").replace("]", ""), None, None) {
             path = path.join(piece);
         }
+        // If the parent dir doesnt exist yet, make it
         let parent_dir = path.parent().unwrap();
         if !parent_dir.exists() {
             match fs::create_dir_all(parent_dir) {
-                Ok(_) => {},
+                Ok(_) => {}
                 Err(error) => {
                     error!("Error creating parent directories: {}", error);
                     return arg.to_owned();
-                },
+                }
             }
         }
 
@@ -393,7 +421,7 @@ fn compute_path_if_possible(arg: &str, libraries_path: &Path) -> String {
 
 #[test]
 pub fn test_download_forge_hashes() {
-    let forge_version = "1.19.3-44.1.8";
+    let forge_version = "1.19.3-44.1.16";
 
     tauri::async_runtime::block_on(async move {
         let x = download_forge_hashes(forge_version).await;
@@ -404,14 +432,16 @@ pub fn test_download_forge_hashes() {
 
 #[test]
 pub fn test_download_forge_version() {
-    let forge_version = "1.19.3-44.1.8";
+    let forge_version = "1.19.3-44.1.16";
     let tmp_dir = TempDir::new("temp").unwrap();
 
     tauri::async_runtime::block_on(async move {
         let x = download_forge_version(
             forge_version,
             "1.19.3",
-            None,
+            ForgeFileHash {
+                hash: "268bde630c51b1e94257d76377ec2424".into(),
+            },
             Path::new("/home/loucas/.config/com.autm.launcher/versions"),
             tmp_dir.path(),
         )

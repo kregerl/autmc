@@ -2,15 +2,13 @@ use std::{
     collections::{HashMap, HashSet},
     env,
     fs::{self, File},
-    hash::{self, Hash},
     io::{self, Write},
     path::{Path, PathBuf},
     time::Instant,
 };
 
 use bytes::Bytes;
-use chrono::format;
-use futures::{future::BoxFuture, Future};
+use futures::future::BoxFuture;
 use log::{debug, error, info, warn};
 use tauri::{AppHandle, Manager, State, Wry};
 use tempdir::TempDir;
@@ -27,13 +25,12 @@ use crate::{
     web_services::{
         downloader::{
             boxed_buffered_download_stream, buffered_download_stream, download_bytes_from_url,
-            download_json_object, validate_hash, DownloadError, Downloadable,
+            download_json_object, validate_hash_sha1, DownloadError, Downloadable,
         },
         manifest::{
             fabric::{download_fabric_profile, obtain_fabric_library_hashes},
             forge::{
-                self, download_forge_hashes, download_forge_version, patch_forge,
-                InstallerArgumentPaths,
+                download_forge_hashes, download_forge_version, patch_forge, InstallerArgumentPaths,
             },
             get_classpath_separator, path_to_utf8_str,
             vanilla::{
@@ -66,7 +63,10 @@ fn rule_matches(rule: &Rule) -> bool {
     }
     match rule_type.as_ref().unwrap() {
         RuleType::Features(_feature_rules) => {
-            error!("Implement feature rules for arguments: {:#?}", _feature_rules);
+            error!(
+                "Implement feature rules for arguments: {:#?}",
+                _feature_rules
+            );
             // FIXME: Currently just skipping these
             false
         }
@@ -152,7 +152,7 @@ fn determine_key_for_java_manifest<'a>(
         }
         _ => {
             unreachable!(
-                "Unknown java version os: {}. Expected `linux`, `mac-os` or `windows`",
+                "Unknown java version OS: {}. Expected `linux`, `mac-os` or `windows`",
                 key
             )
         }
@@ -443,7 +443,7 @@ fn substitute_game_arguments(
                 &format!("{}", path_to_utf8_str(&argument_paths.asset_dir_path)),
             )),
             "${assets_index_name}" => Some(arg.replace(substr, &asset_index)),
-            "${user_type}" => Some(arg.replace(substr, "mojang")), // TODO: Unknown but hardcoded to "mojang" as thats what the gdlauncher example shows
+            "${user_type}" => Some(arg.replace(substr, "mojang")),
             "${version_type}" => Some(arg.replace(substr, &mc_version.version_type)),
             "${resolution_width}" => None, // TODO: Launcher option specific
             "${resolution_height}" => None, // TODO: Launcher option specific
@@ -524,8 +524,7 @@ async fn download_libraries(
     let start = Instant::now();
     // Perform one buffered download for all libraries, including classifiers
     boxed_buffered_download_stream(&libraries, &libraries_dir, |bytes, artifact| {
-        // FIXME: Removing file hashing makes the downloads MUCH faster. Only because of a couple slow hashes, upwards of 1s each
-        if !validate_hash(&bytes, &artifact.hash()) {
+        if !validate_hash_sha1(&bytes, &artifact.hash()) {
             let err = format!("Error downloading {}, invalid hash.", &artifact.url());
             error!("{}", err);
             return Err(DownloadError::InvalidFileHashError(err));
@@ -571,13 +570,13 @@ async fn download_game_jar(
     if !validate_file_hash(&path, valid_hash) {
         info!("Downloading {} {} jar", version_id, jar_str);
         let bytes = download_bytes_from_url(download.url()).await?;
-        if !validate_hash(&bytes, valid_hash) {
+        if !validate_hash_sha1(&bytes, valid_hash) {
             let err = format!(
                 "Error downloading {} {} jar, invalid hash.",
                 version_id, jar_str
             );
             error!("{}", err);
-            return Err(ManifestError::InvalidFileDownload(err));
+            return Err(ManifestError::MismatchedFileHash(err));
         }
         let mut file = File::create(&path)?;
         file.write_all(&bytes)?;
@@ -585,8 +584,6 @@ async fn download_game_jar(
     Ok(path)
 }
 
-// FIXME: Use an indexmap instead of a hashmap. Complete this process in a single pass since the index map is ordered correctly.
-//        The correct order is important since it will create dirs before creating files in those dirs.
 async fn download_java_from_runtime_manifest(
     java_dir: &Path,
     manifest: &JavaRuntime,
@@ -616,15 +613,14 @@ async fn download_java_from_runtime_manifest(
     info!("Downloading all java files.");
     let start = Instant::now();
     buffered_download_stream(&files, &base_path, |bytes, jrt| {
-        if !validate_hash(&bytes, &jrt.hash()) {
+        if !validate_hash_sha1(&bytes, &jrt.hash()) {
             let err = format!("Error downloading {}, invalid hash.", &jrt.url());
             error!("{}", err);
             return Err(DownloadError::InvalidFileHashError(err));
         }
         let path = jrt.path(&base_path);
         let mut file = File::create(&path)?;
-        // TODO: Change from target_os ="linux" to unix
-        #[cfg(target_os = "linux")]
+        #[cfg(target_family = "unix")]
         {
             use std::os::unix::prelude::PermissionsExt;
 
@@ -706,7 +702,6 @@ async fn download_java_version(java_dir: &Path, java: JavaVersion) -> ManifestRe
         None => {
             let s = format!("Java runtime is empty for component {}", &java.component);
             error!("{}", s);
-            //TODO: New error type?
             return Err(ManifestError::VersionRetrievalError(s));
         }
     }
@@ -818,7 +813,7 @@ async fn download_assets(
     fs::create_dir_all(&asset_objects_dir)?;
 
     let x = buffered_download_stream(&asset_object.objects, &asset_objects_dir, |bytes, asset| {
-        if !validate_hash(&bytes, &asset.hash()) {
+        if !validate_hash_sha1(&bytes, &asset.hash()) {
             let err = format!(
                 "Error downloading asset {}, expected {} but got {}",
                 &asset.name(),
@@ -948,6 +943,7 @@ pub async fn create_instance(
 
     let java_path = download_java_version(&resource_manager.java_dir(), java_version).await?;
 
+    // Init vec of libraries to download.
     let mut all_libraries: Vec<Box<dyn Downloadable + Send + Sync>> = Vec::new();
 
     let vanilla_libraries = apply_library_rules(version.libraries);
@@ -972,7 +968,7 @@ pub async fn create_instance(
 
     // Temp dir for extracting forge installer into, closed/deleted at end of function.
     let tmp_dir = TempDir::new("temp")?;
-    
+
     let modloader_launch_arguments = match modloader_type.as_str() {
         "Fabric" => {
             let profile = download_fabric_profile(&vanilla_version, &modloader_version).await?;
@@ -983,12 +979,11 @@ pub async fn create_instance(
             Some(profile.arguments)
         }
         "Forge" => {
-            // FIXME: Two forge modules are exporting the same blaze3d.systems package that is causing the game to crash. 
             let forge_hashes = download_forge_hashes(&modloader_version).await?;
             let forge_profile = download_forge_version(
                 &modloader_version,
                 &vanilla_version,
-                Some(forge_hashes.classifiers.installer),
+                forge_hashes.classifiers.installer,
                 &resource_manager.version_dir(),
                 tmp_dir.path(),
             )
@@ -1006,11 +1001,15 @@ pub async fn create_instance(
             // If it is possible for forge libraries to have classifiers we are ignoring them here.
             let forge_library_data = separate_classifiers_from_libraries(&filtered_libraries);
 
-            debug!("Library Data: {:#?}", forge_library_data.classifiers);
             all_libraries.extend(forge_library_data.downloadables);
 
-            // Download libraries used for forge processors.
-            download_libraries(&resource_manager.libraries_dir(), &separate_classifiers_from_libraries(&forge_profile.profile.libraries).downloadables).await?;
+            // Download libraries used for forge processors without adding them to game's classpath
+            download_libraries(
+                &resource_manager.libraries_dir(),
+                &separate_classifiers_from_libraries(&forge_profile.profile.libraries)
+                    .downloadables,
+            )
+            .await?;
 
             let forge_installer_paths = InstallerArgumentPaths {
                 libraries_path: resource_manager.libraries_dir(),

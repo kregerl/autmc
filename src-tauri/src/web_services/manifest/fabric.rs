@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize};
 
 use crate::{
     consts::FABRIC_BASE_URL,
@@ -8,14 +8,13 @@ use crate::{
     web_services::downloader::{download_bytes_from_url, download_json_object, Downloadable},
 };
 
-use super::vanilla::{LaunchArguments};
+use super::{vanilla::{LaunchArguments}, get_directory_separator};
 
-#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct FabricLoaderVersion {
-    separator: String,
-    build: i32,
-    maven: String,
+    // separator: String,
+    // build: i32,
+    // maven: String,
     pub version: String,
     pub stable: bool,
 }
@@ -50,26 +49,21 @@ impl Downloadable for DownloadableFabricLibrary {
     }
 
     fn path(&self, base_dir: &Path) -> PathBuf {
-        let mut path = maven_to_fabric_endpoint(&self.name, None);
-        #[cfg(target_family = "windows")]
-        {
-            path = path.replace("/", &get_directory_separator());
-        }
+        let path = maven_to_fabric_endpoint(&self.name, None).replace("/", &get_directory_separator());
         base_dir.join(path)
     }
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct FabricProfile {
-    id: String,
-    #[serde(rename = "inheritsFrom")]
-    inherits_from: String,
-    #[serde(rename = "releaseTime")]
-    release_time: String,
-    time: String,
-    #[serde(rename = "type")]
-    version_type: String,
+    // id: String,
+    // #[serde(rename = "inheritsFrom")]
+    // inherits_from: String,
+    // #[serde(rename = "releaseTime")]
+    // release_time: String,
+    // time: String,
+    // #[serde(rename = "type")]
+    // version_type: String,
     #[serde(rename = "mainClass")]
     pub main_class: String,
     pub arguments: LaunchArguments,

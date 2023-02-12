@@ -13,7 +13,6 @@ use serde::{
 
 use crate::{consts::VANILLA_ASSET_BASE_URL, web_services::downloader::Downloadable};
 
-#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 /// The version metadata returned in the manifest request.
 pub struct VanillaManifestVersion {
@@ -21,12 +20,12 @@ pub struct VanillaManifestVersion {
     #[serde(rename = "type")]
     pub version_type: String,
     pub url: String,
-    time: String,
+    // time: String,
     #[serde(rename = "releaseTime")]
     pub release_time: String,
     pub sha1: String,
-    #[serde(rename = "complianceLevel")]
-    compliance_level: u32,
+    // #[serde(rename = "complianceLevel")]
+    // compliance_level: u32,
 }
 
 #[derive(Debug, Deserialize)]
@@ -127,7 +126,6 @@ pub enum LaunchArguments {
     LaunchArguments113(LaunchArguments113),
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
 pub struct DownloadMetadata {
     sha1: String,
@@ -147,7 +145,6 @@ impl DownloadMetadata {
     }
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct Asset {
     path: String,
@@ -207,14 +204,13 @@ where
     Ok(result)
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct AssetIndex {
     pub id: String,
     #[serde(flatten)]
     pub metadata: DownloadMetadata,
-    #[serde(rename = "totalSize")]
-    total_size: u32,
+    // #[serde(rename = "totalSize")]
+    // total_size: u32,
 }
 
 #[derive(Debug, Deserialize)]
@@ -364,13 +360,12 @@ struct ClientLoggerFile {
     metadata: DownloadMetadata,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct ClientLogger {
     pub argument: String,
     file: ClientLoggerFile,
-    #[serde(rename = "type")]
-    logger_type: String,
+    // #[serde(rename = "type")]
+    // logger_type: String,
 }
 
 impl ClientLogger {
@@ -393,7 +388,6 @@ pub struct Logging {
     pub client: ClientLogger,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 /// The launch arguments and metadata for a given vanilla version.
 // REVIEW: I believe this response is different for older versions of the game. versions < 1.13
@@ -402,9 +396,9 @@ pub struct VanillaVersion {
     pub arguments: LaunchArguments,
     #[serde(rename = "assetIndex")]
     pub asset_index: AssetIndex,
-    assets: String,
-    #[serde(rename = "complianceLevel")]
-    compliance_level: Option<u32>,
+    // assets: String,
+    // #[serde(rename = "complianceLevel")]
+    // compliance_level: Option<u32>,
     pub downloads: GameDownloads,
     pub id: String,
     #[serde(rename = "javaVersion")]
@@ -414,40 +408,36 @@ pub struct VanillaVersion {
     pub logging: Logging,
     #[serde(rename = "mainClass")]
     pub main_class: String,
-    #[serde(rename = "minimumLauncherVersion")]
-    min_launcher_version: u32,
-    #[serde(rename = "releaseTime")]
-    release_time: String,
-    time: String,
-    #[serde(rename = "type")]
-    version_type: String,
+    // #[serde(rename = "minimumLauncherVersion")]
+    // min_launcher_version: u32,
+    // #[serde(rename = "releaseTime")]
+    // release_time: String,
+    // time: String,
+    // #[serde(rename = "type")]
+    // version_type: String,
 }
 
-#[allow(dead_code)]
 #[derive(Debug)]
 pub enum JarType {
     Client,
     Server,
 }
 
-#[allow(dead_code)]
-#[derive(Debug, Deserialize)]
-struct JavaRuntimeAvailability {
-    group: u32,
-    progress: u32,
-}
+// #[derive(Debug, Deserialize)]
+// struct JavaRuntimeAvailability {
+//     group: u32,
+//     progress: u32,
+// }
 
-#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct JavaRuntimeVersion {
     pub name: String,
-    released: String,
+    // released: String,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct JavaRuntime {
-    availability: JavaRuntimeAvailability,
+    // availability: JavaRuntimeAvailability,
     pub manifest: DownloadMetadata,
     pub version: JavaRuntimeVersion,
 }
@@ -495,10 +485,9 @@ where
     }
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct JavaRuntimeDownload {
-    lzma: Option<DownloadMetadata>,
+    // lzma: Option<DownloadMetadata>,
     raw: DownloadMetadata,
 }
 
