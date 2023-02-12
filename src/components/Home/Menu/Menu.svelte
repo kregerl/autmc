@@ -19,8 +19,20 @@
     onMount(async () => {
         launcherName = await getName();
         launcherVersion = await getVersion();
-        let skin = await invoke("get_account_skin");
-        console.log("Skin:", skin);
+
+        const image = new Image(64, 64);
+        let skin = await invoke("get_account_skin") as string;
+        image.src = skin;
+       
+        const canvas = document.getElementById("head-canvas") as HTMLCanvasElement;
+        const context = canvas.getContext("2d");
+        canvas.width = image.width;
+        canvas.height = image.height;
+        context.imageSmoothingEnabled = false;
+
+        image.onload = () => {
+            context.drawImage(image, 8, 8, 8, 8, 0, 0, image.width, image.height);
+        }
     });
 
 </script>
@@ -33,7 +45,8 @@
         </div>
     
         <div class="image-content">
-            <img src="https://i.pinimg.com/originals/85/78/bf/8578bfd439ef6ee41e103ae82b561986.png" alt="Skin Head"/>
+            <canvas id="head-canvas"/>
+            <!-- <img src="http://textures.minecraft.net/texture/1a4af718455d4aab528e7a61f86fa25e6a369d1768dcb13f7df319a713eb810b" alt="Skin Head"/> -->
             <h3 class="header dropshadow">{username}</h3>
         </div>
     
@@ -70,9 +83,10 @@
         overflow: hidden;
     }
 
-    .image-content img {
+    .image-content > canvas {
         float: left;
-        width: 2.5vw;
+        width: 2.6vw;
+        height: 2.6vw;
         border-radius: 8px;
         margin-left: 24px;
         margin-right: 8px;

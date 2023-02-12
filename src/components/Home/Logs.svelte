@@ -21,11 +21,25 @@
     function scrollToBottom() {
         element.scroll({ top: element.scrollHeight, behavior: "smooth" });
     }
+
+    function isError(line) {
+        return line.includes("/ERROR]:");
+    }
+
+    function isWarning(line) {
+        return line.includes("/WARN]:");
+    }
 </script>
 
 <ul>
     {#each lines as line}
-        <li>{line}</li>
+        {#if isError(line)}
+            <li class="error">{line}</li>
+        {:else if isWarning(line)}
+            <li class="warn">{line}</li>
+        {:else}
+            <li>{line}</li>
+        {/if}
     {/each}
 </ul>
 
@@ -33,7 +47,7 @@
 <style>
     ul {
         color: white;
-        height: 100%;
+        height: 100vh;
         padding-left: 0;
         margin: 0;
         list-style: none;
@@ -43,5 +57,13 @@
         padding: 8px;
         font-size: 1.25rem;
         background-color: #444;
+    }
+
+    li.error {
+        color: rgb(160, 0, 0);
+    }
+
+    li.warn {
+        color: rgb(211, 197, 0);
     }
 </style>

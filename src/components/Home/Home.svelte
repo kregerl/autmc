@@ -4,7 +4,6 @@
     import Instances, {ID as INSTANCE_ID} from "./Instances.svelte";
     import Logs, {ID as LOGS_ID} from './Logs.svelte';
     import { onMount } from 'svelte';
-    import type { VersionManifest } from '../../manifest';
 
     let selected;
     // Logs
