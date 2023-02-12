@@ -10,6 +10,7 @@ use std::{
 
 use bytes::Bytes;
 use chrono::format;
+use futures::{future::BoxFuture, Future};
 use log::{debug, error, info, warn};
 use tauri::{AppHandle, Manager, State, Wry};
 use tempdir::TempDir;
@@ -44,7 +45,7 @@ use crate::{
 };
 
 use super::{
-    downloader::{hash_bytes, validate_file_hash},
+    downloader::{hash_bytes_sha1, validate_file_hash},
     manifest::vanilla::{
         AssetIndex, DownloadMetadata, JarType, JavaManifest, JavaRuntime, JavaVersion,
         LaunchArguments, LaunchArguments113, Library, Logging, Rule, RuleType,
@@ -65,7 +66,7 @@ fn rule_matches(rule: &Rule) -> bool {
     }
     match rule_type.as_ref().unwrap() {
         RuleType::Features(_feature_rules) => {
-            error!("Implement feature rules for arguments");
+            error!("Implement feature rules for arguments: {:#?}", _feature_rules);
             // FIXME: Currently just skipping these
             false
         }
@@ -561,10 +562,10 @@ async fn download_game_jar(
         JarType::Server => "server",
     };
     // Create all dirs in path to file location.
-    let dir_path = &versions_dir.join(version_id);
+    let dir_path = &versions_dir.join(version_id).join(jar_str);
     fs::create_dir_all(dir_path)?;
 
-    let path = dir_path.join(format!("{}.jar", &jar_str));
+    let path = dir_path.join(format!("{}.jar", &version_id));
     let valid_hash = download.hash();
     // Check if the file exists and the hash matches the download's sha1.
     if !validate_file_hash(&path, valid_hash) {
@@ -781,7 +782,7 @@ async fn download_logging_configurations(
             original_bytes
         }
     };
-    let hash = hash_bytes(&patched_bytes);
+    let hash = hash_bytes_sha1(&patched_bytes);
     let first_two_chars = hash.split_at(2);
     let objects_dir = &asset_objects_dir.join(first_two_chars.0);
     fs::create_dir_all(&objects_dir)?;
@@ -822,7 +823,7 @@ async fn download_assets(
                 "Error downloading asset {}, expected {} but got {}",
                 &asset.name(),
                 &asset.hash(),
-                hash_bytes(&bytes)
+                hash_bytes_sha1(&bytes)
             );
             error!("{}", err);
             return Err(DownloadError::InvalidFileHashError(err));
@@ -958,6 +959,20 @@ pub async fn create_instance(
 
     let mut library_paths: Vec<PathBuf> = Vec::new();
 
+    let game_jar_path = download_game_jar(
+        &resource_manager.version_dir(),
+        JarType::Client,
+        &version.downloads.client,
+        &version.id,
+    )
+    .await?;
+
+    // Future that, if present, will be executed after all libraries have been downloaded.
+    let mut deferred_forge_patcher: Option<BoxFuture<Result<(), io::Error>>> = None;
+
+    // Temp dir for extracting forge installer into, closed/deleted at end of function.
+    let tmp_dir = TempDir::new("temp")?;
+    
     let modloader_launch_arguments = match modloader_type.as_str() {
         "Fabric" => {
             let profile = download_fabric_profile(&vanilla_version, &modloader_version).await?;
@@ -968,8 +983,7 @@ pub async fn create_instance(
             Some(profile.arguments)
         }
         "Forge" => {
-            let tmp_dir = TempDir::new("temp")?;
-            // TODO: Make a tempdir here that will be deleted when it goes out of scope. Extract actual forge jar into tempdir so relative paths will work with the processors.
+            // FIXME: Two forge modules are exporting the same blaze3d.systems package that is causing the game to crash. 
             let forge_hashes = download_forge_hashes(&modloader_version).await?;
             let forge_profile = download_forge_version(
                 &modloader_version,
@@ -986,31 +1000,35 @@ pub async fn create_instance(
             let forge_libraries: Vec<Library> = forge_version
                 .libraries
                 .into_iter()
-                .chain(forge_profile.profile.libraries)
+                // .chain(forge_profile.profile.libraries)
                 .collect();
             let filtered_libraries = apply_library_rules(forge_libraries);
             // If it is possible for forge libraries to have classifiers we are ignoring them here.
-            let data = separate_classifiers_from_libraries(&filtered_libraries);
+            let forge_library_data = separate_classifiers_from_libraries(&filtered_libraries);
 
-            library_paths.extend(
-                download_libraries(&resource_manager.libraries_dir(), &data.downloadables).await?,
-            );
+            debug!("Library Data: {:#?}", forge_library_data.classifiers);
+            all_libraries.extend(forge_library_data.downloadables);
+
+            // Download libraries used for forge processors.
+            download_libraries(&resource_manager.libraries_dir(), &separate_classifiers_from_libraries(&forge_profile.profile.libraries).downloadables).await?;
 
             let forge_installer_paths = InstallerArgumentPaths {
                 libraries_path: resource_manager.libraries_dir(),
                 versions_dir_path: resource_manager.version_dir(),
                 minecraft_version: vanilla_version.clone(),
                 forge_loader_version: modloader_version.clone(),
-                tmp_dir: tmp_dir.path().to_path_buf()
+                tmp_dir: tmp_dir.path().to_path_buf(),
             };
 
-            patch_forge(
-                &java_path,
-                &forge_profile.profile.processors,
-                &forge_profile.profile.data,
-                &filtered_libraries,
-                forge_installer_paths,
-            );
+            deferred_forge_patcher = Some(Box::pin(async {
+                patch_forge(
+                    &java_path.clone(),
+                    forge_profile.profile.processors,
+                    forge_profile.profile.data,
+                    forge_profile.profile.libraries,
+                    forge_installer_paths,
+                )
+            }));
 
             Some(forge_version.arguments)
         }
@@ -1027,13 +1045,9 @@ pub async fn create_instance(
             .collect::<Vec<PathBuf>>(),
     );
 
-    let game_jar_path = download_game_jar(
-        &resource_manager.version_dir(),
-        JarType::Client,
-        &version.downloads.client,
-        &version.id,
-    )
-    .await?;
+    if let Some(future) = deferred_forge_patcher {
+        future.await?;
+    }
 
     let logging =
         download_logging_configurations(&resource_manager.asset_objects_dir(), &version.logging)
@@ -1084,7 +1098,7 @@ pub async fn create_instance(
 
     instance_manager.add_instance(InstanceConfiguration {
         instance_name: instance_name.into(),
-        jvm_path: java_path,
+        jvm_path: java_path.clone(),
         arguments: persitent_arguments,
     })?;
     debug!("After persistent args");
@@ -1093,5 +1107,6 @@ pub async fn create_instance(
         &resource_manager.libraries_dir(),
         library_data.classifiers,
     )?;
+    tmp_dir.close()?;
     Ok(())
 }

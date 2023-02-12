@@ -8,7 +8,7 @@ use crate::{
     web_services::downloader::{download_bytes_from_url, download_json_object, Downloadable},
 };
 
-use super::vanilla::{LaunchArguments, LaunchArguments113};
+use super::vanilla::{LaunchArguments};
 
 #[allow(dead_code)]
 #[derive(Debug, Deserialize)]

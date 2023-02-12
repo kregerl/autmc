@@ -1,17 +1,16 @@
 use std::{
-    collections::{btree_map::Entry, HashMap},
-    env::temp_dir,
+    collections::{HashMap},
     fs::{self, File},
     io::{self, BufReader, Cursor, Read, Write},
-    path::{self, Path, PathBuf},
-    process::Command,
-    time::Instant,
+    path::{Path, PathBuf},
+    process::{Command, Stdio},
 };
 
 use log::{debug, error, info};
 use serde::Deserialize;
-use tauri::api::version;
+#[cfg(test)]
 use tempdir::TempDir;
+
 use zip::read::ZipFile;
 
 use crate::{
@@ -19,7 +18,7 @@ use crate::{
     state::resource_manager::ManifestResult,
     web_services::{
         downloader::{
-            download_bytes_from_url, download_json_object, hash_bytes, hash_bytes_slice,
+            download_bytes_from_url, download_json_object, 
             DownloadResult,
         },
         manifest::get_classpath_separator,
@@ -176,27 +175,48 @@ pub async fn download_forge_version(
 
 pub fn patch_forge(
     java_path: &Path,
-    processors: &[ForgeProcessor],
-    data: &HashMap<String, ForgeData>,
-    libraries: &[Library],
+    processors: Vec<ForgeProcessor>,
+    data: HashMap<String, ForgeData>,
+    libraries: Vec<Library>,
     argument_paths: InstallerArgumentPaths,
 ) -> Result<(), io::Error> {
     // Find the path to the forge universal jar from the libraries list
     let forge_universal_path = libraries
         .iter()
-        .find(|library| library.name.starts_with("net.minecraftforge:forge"));
+        .find(|library| library.name.starts_with("net.minecraftforge:forge:"));
+
+    let mut forge_data_map = HashMap::new();
+    forge_data_map.extend(data.into_iter());
+
     if let Some(library) = forge_universal_path {
         // FIXME: Currently ignoring the "path" part of the install_profile.json
-        let client_lzma_path = maven_to_vec(&library.name, Some("-clientdata"), Some(".lzma"));
-        println!("client_lzma_path: {:#?}", client_lzma_path);
+        let client_lzma_str = maven_to_vec(&library.name, Some("-clientdata"), Some(".lzma"))
+            .join(&get_directory_separator());
+        let client_lzma_path = argument_paths.libraries_path.join(client_lzma_str);
+        let client_lzma_parent = client_lzma_path.parent().unwrap();
+        if !client_lzma_parent.exists() {
+            fs::create_dir_all(client_lzma_parent)?;
+        }
+        debug!("New client.lzma: {}", path_to_utf8_str(&argument_paths.libraries_path.join(&client_lzma_path)));
+
+        fs::copy(
+            argument_paths.tmp_dir.join("data").join("client.lzma"),
+            &client_lzma_path,
+        )?;
+        forge_data_map.insert(
+            "BINPATCH".into(),
+            ForgeData {
+                client: path_to_utf8_str(&argument_paths.libraries_path.join(client_lzma_path))
+                    .into(),
+                // TODO: Implement server
+                server: "__UNIMPLEMENTED__".into(),
+            },
+        );
     } else {
         // FIXME: Populate errors to caller
         error!("Error getting forge universal path, does it exist?");
         return Ok(());
     }
-
-    // TODO: Finish this
-    // https://github.com/gorilla-devs/GDLauncher/blob/efa324afda52bfbc1267821d6ffa794ff4a18b05/src/common/reducers/actions.js#L1427
 
     // Iterate over each processor and run them with the correctly substituted arguments.
     info!("Spawning forge patching processors...");
@@ -240,7 +260,7 @@ pub fn patch_forge(
             .map(|argument| {
                 replace_arg_if_possible(
                     &argument,
-                    data,
+                    &forge_data_map,
                     &forge_installers_path,
                     &game_version_path,
                     &argument_paths,
@@ -252,9 +272,9 @@ pub fn patch_forge(
         if let Some(main_class) = obtain_main_class_from_jar(&jar_path) {
             let formatted_classpaths = format!(
                 "{}{}{}",
-                path_to_utf8_str(&jar_path),
+                classpaths.join(&get_classpath_separator()),
                 get_classpath_separator(),
-                classpaths.join(&get_classpath_separator())
+                path_to_utf8_str(&jar_path),
             );
             let mut args: Vec<String> = vec!["-cp".into()];
             args.push(formatted_classpaths);
@@ -265,10 +285,11 @@ pub fn patch_forge(
             let mut command = Command::new(java_path);
             command
                 .current_dir(&argument_paths.tmp_dir)
-                .args(args);
+                .args(args)
+                ;
             debug!("Command: {:#?}", command);
             let mut child = command.spawn().expect("Could not spawn instance.");
-            child.wait();
+            child.wait()?;
             debug!("Spawned forge processor with PID {}", child.id());
         } else {
             error!("Error obtaining main class from jar: {:#?}", &jar_path);
@@ -318,7 +339,7 @@ fn replace_arg_if_possible(
         .replace("{ROOT}", path_to_utf8_str(&forge_installers_path)) // Dirname of ${app_dir}/versions/<version>/forgeInstallers/<loaderVersion>.jar
         .replace(
             "{MINECRAFT_JAR}",
-            path_to_utf8_str(&game_version_path.join("client.jar")),
+            path_to_utf8_str(&game_version_path.join("client").join(format!("{}.jar", argument_paths.minecraft_version))),
         ) // Minecraft jar path
         .replace(
             "{MINECRAFT_VERSION}",
@@ -353,6 +374,17 @@ fn compute_path_if_possible(arg: &str, libraries_path: &Path) -> String {
         for piece in maven_to_vec(&arg.replace("[", "").replace("]", ""), None, None) {
             path = path.join(piece);
         }
+        let parent_dir = path.parent().unwrap();
+        if !parent_dir.exists() {
+            match fs::create_dir_all(parent_dir) {
+                Ok(_) => {},
+                Err(error) => {
+                    error!("Error creating parent directories: {}", error);
+                    return arg.to_owned();
+                },
+            }
+        }
+
         path_to_utf8_str(&path).to_owned()
     } else {
         arg.to_owned()
@@ -400,9 +432,9 @@ pub fn test_download_forge_version() {
 
         let y = patch_forge(
             Path::new("/home/loucas/.config/com.autm.launcher/java/17.0.3/bin/java"),
-            &fp.profile.processors,
-            &fp.profile.data,
-            &fp.profile.libraries,
+            fp.profile.processors,
+            fp.profile.data,
+            fp.profile.libraries,
             paths,
         );
     });

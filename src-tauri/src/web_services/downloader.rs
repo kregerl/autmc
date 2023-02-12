@@ -5,7 +5,7 @@ use std::{
 };
 
 use bytes::Bytes;
-use crypto::{digest::Digest, sha1::Sha1};
+use crypto::{digest::Digest, sha1::Sha1, md5::Md5};
 use futures::StreamExt;
 use log::{debug, error, info};
 use serde::de::DeserializeOwned;
@@ -141,19 +141,19 @@ pub async fn download_bytes_from_url(url: &str) -> reqwest::Result<Bytes> {
 
 /// Validates that the hash of `bytes` matches the `valid_hash`
 pub fn validate_hash(bytes: &Bytes, valid_hash: &str) -> bool {
-    hash_bytes(bytes) == valid_hash
+    hash_bytes_sha1(bytes) == valid_hash
 }
 
-/// Hashes the `bytes` slice and returns the hex string
-pub fn hash_bytes_slice(bytes: &[u8]) -> String {
+/// Hashes the `bytes` using SHA1 and returns the hex string
+pub fn hash_bytes_sha1(bytes: &Bytes) -> String {
     let mut hasher = Sha1::new();
     hasher.input(bytes);
     hasher.result_str()
 }
 
-/// Hashes the `bytes` and returns the hex string
-pub fn hash_bytes(bytes: &Bytes) -> String {
-    let mut hasher = Sha1::new();
+/// Hashes the `bytes` using MD5 and returns the hex string
+pub fn hash_bytes_md5(bytes: &Bytes) -> String {
+    let mut hasher = Md5::new();
     hasher.input(bytes);
     hasher.result_str()
 }
