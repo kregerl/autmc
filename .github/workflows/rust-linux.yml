@@ -16,8 +16,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
-    - name: Install GTK3-Dev
-      run: sudo apt install libgtk-3-dev -y
+    - name: Install Dependencies
+      run: sudo apt install libgtk-3-dev -y; sudo apt install libsoup-2.4 -y
     - name: Build
       run: cargo build --verbose
       working-directory: ./src-tauri
