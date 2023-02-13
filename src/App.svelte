@@ -3,7 +3,8 @@
     import Login from './components/Login.svelte';
     import Home from "./components/Home/Home.svelte";
     import NewInstance from "./components/Modal/NewInstance.svelte";
-    
+    import RightClickMenu from "./components/RightClickMenu.svelte";
+
     // const unlisten =  listen("auth_result", (event) => {
     //     console.log(event);
     //     console.log("Here");
@@ -22,7 +23,7 @@
     <Route path="/login" component={Login}/>
     <Route path="/new-instance" component={NewInstance}/>
     <!-- TODO: Only for testing, remove this -->
-    <Route path="/test" component={NewInstance}/>
+    <Route path="/test" component={RightClickMenu}/>
 </Router>
 
 <style>

@@ -38,7 +38,7 @@ fn main() {
     tauri::Builder::default()
         .setup(|app| {
             Ok(match setup(app) {
-                Ok(_) => {},
+                Ok(_) => {}
                 Err(e) => println!("Error: {:#?}", e),
             })
         })
@@ -72,7 +72,7 @@ fn setup(app: &mut App<Wry>) -> Result<(), Box<(dyn StdError + 'static)>> {
     let log_dir = path_resolver.app_log_dir().unwrap();
     fs::create_dir_all(&log_dir)?;
     match init_logger(&log_dir) {
-        Ok(_) => {},
+        Ok(_) => {}
         Err(e) => println!("Error: {}", e),
     }
     info!("Starting Autmc");
@@ -120,7 +120,13 @@ fn setup(app: &mut App<Wry>) -> Result<(), Box<(dyn StdError + 'static)>> {
                 // FIXME: Dont just unwrap, give user any auth errors.
                 let account = validation_result.unwrap();
                 // Save account to account manager.
+                let account_skin = account.skin_url.clone();
                 account_manager.add_and_activate_account(account);
+
+                match app_handle.emit_all("active-account-skin", account_skin) {
+                    Ok(_) => {}
+                    Err(error) => error!("{}", error.to_string()),
+                }
 
                 match account_manager.serialize_accounts() {
                     Ok(_) => {}
@@ -164,9 +170,15 @@ fn autmc_uri_scheme(
             .try_state()
             .expect("`AccountState` should already be managed.");
         let mut account_manager = account_state.0.lock().await;
-
+        
+        let account_skin = account.skin_url.clone();
         // Save account to account manager.
         account_manager.add_and_activate_account(account);
+
+        match handle.emit_all("active-account-skin", account_skin) {
+            Ok(_) => {}
+            Err(error) => error!("{}", error.to_string()),
+        }
 
         match account_manager.serialize_accounts() {
             Ok(_) => {}

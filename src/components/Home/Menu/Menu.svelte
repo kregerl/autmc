@@ -1,7 +1,8 @@
 <script lang="ts">
     import { getName, getVersion } from "@tauri-apps/api/app";
     import { invoke } from "@tauri-apps/api/tauri";
-    import { onMount } from "svelte";
+    import {listen, UnlistenFn } from '@tauri-apps/api/event'
+    import { onDestroy, onMount } from "svelte";
     import MenuNavbar from "./MenuNavbar.svelte";
 
     export let selectedTab: string;
@@ -34,7 +35,6 @@
             context.drawImage(image, 8, 8, 8, 8, 0, 0, image.width, image.height);
         }
     });
-
 </script>
 
 <nav>
@@ -51,12 +51,12 @@
         </div>
     
         <div class="image-content-small">
-            <img src="SwitchUser.svg" alt="Switch User">
+            <img src="svg/SwitchUser.svg" alt="Switch User">
             <h3 class="header dropshadow">Switch User</h3>
         </div>
     
         <div class="image-content-small">
-            <img src="Settings.svg" alt="Switch User">
+            <img src="svg/Settings.svg" alt="Switch User">
             <h3 class="header dropshadow">Launcher Settings</h3>
         </div>
     </div>

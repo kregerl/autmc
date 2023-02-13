@@ -1,9 +1,9 @@
 <script lang="ts">
-    import {listen } from '@tauri-apps/api/event'
+    import {listen, UnlistenFn } from '@tauri-apps/api/event'
     import Menu from "./Menu/Menu.svelte";
     import Instances, {ID as INSTANCE_ID} from "./Instances.svelte";
     import Logs, {ID as LOGS_ID} from './Logs.svelte';
-    import { onMount } from 'svelte';
+    import { onDestroy, onMount } from 'svelte';
 
     let selected;
     // Logs
@@ -11,11 +11,17 @@
     let element;
 
     // FIXME: Lines are always appended, if an instance is closed the logs should be cleared here.
+
+    let unlistener: UnlistenFn;
     onMount(async () => {
-        const unlisten = await listen("instance-logging", (event) => {
+        unlistener = await listen("instance-logging", (event) => {
             lines = [...lines, event.payload];
             console.log("Event", event);
         });
+    });
+
+    onDestroy(() => {
+        unlistener();
     });
 </script>
 

@@ -1,8 +1,8 @@
 <script lang="ts">
-    import { updateSelectionClasses } from "../../selectable";
+    import { updateSelectionClasses } from "../../../selectable";
     import { createEventDispatcher } from "svelte";
-    import VanillaOptions from "./VanillaOptions.svelte";
     import { invoke } from "@tauri-apps/api";
+    import VanillaOptions from "./VanillaOptions.svelte";
 
     let modal;
     const dispatch = createEventDispatcher();
@@ -70,7 +70,7 @@
         <h1>Create New Instance</h1>
         <input
             type="image"
-            src="PlusSign.svg"
+            src="svg/PlusSign.svg"
             alt="Close Instance Creation"
             on:click={close}
         />

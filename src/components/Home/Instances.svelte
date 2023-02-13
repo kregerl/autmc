@@ -5,6 +5,7 @@
 <script lang="ts">
     import { invoke } from "@tauri-apps/api/tauri";
     import NewInstance from "../Modal/NewInstance.svelte";
+    import RightClickMenu from "../RightClickMenu.svelte";
 
 
     let showModal = false;
@@ -22,6 +23,7 @@
         return invoke("load_instances");
     }
 </script>
+
 
 <div class="header">
     <button class="new-instance" on:click={createNewInstance}>
@@ -84,6 +86,8 @@
     <div class="instance"></div>
     <div class="instance"></div> -->
 </div>
+
+<RightClickMenu validClasses={["instance"]}/>
 
 {#if showModal}
     <NewInstance on:close={() => (showModal = false)} />
