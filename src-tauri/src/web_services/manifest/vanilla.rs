@@ -238,6 +238,8 @@ pub struct Artifact {
 impl Artifact {
     #[cfg(target_family = "windows")]
     fn get_os_specific_path(&self) -> String {
+        use super::get_directory_separator;
+
         str::replace(&self.path, "/", &get_directory_separator())
     }
 
