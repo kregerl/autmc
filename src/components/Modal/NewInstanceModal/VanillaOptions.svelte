@@ -4,8 +4,8 @@
         isValidVersionForForge,
         VersionEntry,
         VersionManifest,
-    } from "../../manifest";
-    import { updateSelectionClasses } from "../../selectable";
+    } from "../../../manifest";
+    import { updateSelectionClasses } from "../../../selectable";
     import VanillaVersionTable from "./VanillaVersionTable.svelte";
     import VersionTable, { Row } from "./VersionTable.svelte";
 

@@ -1,8 +1,7 @@
 <script lang="ts">
     import { getName, getVersion } from "@tauri-apps/api/app";
     import { invoke } from "@tauri-apps/api/tauri";
-    import {listen, UnlistenFn } from '@tauri-apps/api/event'
-    import { onDestroy, onMount } from "svelte";
+    import { onMount } from "svelte";
     import MenuNavbar from "./MenuNavbar.svelte";
 
     export let selectedTab: string;
@@ -17,12 +16,21 @@
         "Logs"
     ];
 
+    function getSkin(): Promise<string> {
+        return new Promise((resolve) => {
+            setTimeout(async () => {
+                resolve(await invoke("get_account_skin") as string)
+            });
+        });
+    }
+
     onMount(async () => {
         launcherName = await getName();
         launcherVersion = await getVersion();
 
         const image = new Image(64, 64);
-        let skin = await invoke("get_account_skin") as string;
+
+        let skin = await getSkin();
         image.src = skin;
        
         const canvas = document.getElementById("head-canvas") as HTMLCanvasElement;
@@ -46,7 +54,6 @@
     
         <div class="image-content">
             <canvas id="head-canvas"/>
-            <!-- <img src="http://textures.minecraft.net/texture/1a4af718455d4aab528e7a61f86fa25e6a369d1768dcb13f7df319a713eb810b" alt="Skin Head"/> -->
             <h3 class="header dropshadow">{username}</h3>
         </div>
     

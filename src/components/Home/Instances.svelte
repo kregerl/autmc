@@ -4,7 +4,7 @@
 
 <script lang="ts">
     import { invoke } from "@tauri-apps/api/tauri";
-    import NewInstance from "../Modal/NewInstance.svelte";
+    import NewInstance from "../Modal/NewInstanceModal/NewInstance.svelte";
     import RightClickMenu from "../RightClickMenu.svelte";
 
 
@@ -67,27 +67,10 @@
     <div class="instance">Test</div>
     <div class="instance">Test2</div>
     <div class="instance">Test3</div>
-    <!-- <div class="instance"></div>
-    <div class="instance"></div>
-    <div class="instance"></div>
-    <div class="instance"></div>
-    <div class="instance"></div>
-    <div class="instance"></div>
-    <div class="instance"></div>
-    <div class="instance"></div>
-    <div class="instance"></div>
-    <div class="instance"></div>
-    <div class="instance"></div>
-    <div class="instance"></div>
-    <div class="instance"></div>
-    <div class="instance"></div>
-    <div class="instance"></div>
-    <div class="instance"></div>
-    <div class="instance"></div>
-    <div class="instance"></div> -->
 </div>
 
-<RightClickMenu validClasses={["instance"]}/>
+<!-- TODO: Use this  -->
+<!-- <RightClickMenu validClasses={["instance"]}/> -->
 
 {#if showModal}
     <NewInstance on:close={() => (showModal = false)} />

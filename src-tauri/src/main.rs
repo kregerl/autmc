@@ -86,16 +86,6 @@ fn setup(app: &mut App<Wry>) -> Result<(), Box<(dyn StdError + 'static)>> {
     // Spawn an async thread and use the app_handle to refresh active account.
     // TODO: Maybe emit event to display a toast telling the user what happened.
     tauri::async_runtime::spawn(async move {
-        // Download manifests into the resource manager
-        let resource_state: tauri::State<ResourceState> = app_handle
-            .try_state()
-            .expect("`ResourceState` should already be managed.");
-        let mut resource_manager = resource_state.0.lock().await;
-        match resource_manager.download_manifests().await {
-            Ok(_) => {}
-            Err(error) => error!("Manifest Error: {:#?}", error),
-        }
-
         let account_state: tauri::State<AccountState> = app_handle
             .try_state()
             .expect("`AccountState` should already be managed.");
@@ -138,6 +128,16 @@ fn setup(app: &mut App<Wry>) -> Result<(), Box<(dyn StdError + 'static)>> {
                     error!("{}", error.to_string());
                 }
             }
+        }
+
+        // Download manifests into the resource manager
+        let resource_state: tauri::State<ResourceState> = app_handle
+            .try_state()
+            .expect("`ResourceState` should already be managed.");
+        let mut resource_manager = resource_state.0.lock().await;
+        match resource_manager.download_manifests().await {
+            Ok(_) => {}
+            Err(error) => error!("Manifest Error: {:#?}", error),
         }
     });
     Ok(())
