@@ -4,6 +4,8 @@
     import { invoke } from "@tauri-apps/api";
     import VanillaOptions from "./VanillaOptions.svelte";
 
+    export let instances: Promise<string[]>;
+    
     let modal;
     const dispatch = createEventDispatcher();
     const buttons = ["Vanilla", "Curseforge", "Modrinth", "Import Zip"];
@@ -56,7 +58,7 @@
         console.log("Vanilla:", selectedVanillaVersion);
         console.log("Modloader Type:", selectedModloader);
         console.log("Modloader:", selectedModloaderVersion);
-        invoke("obtain_version", { vanillaVersion: selectedVanillaVersion, modloaderType: selectedModloader, modloaderVersion: selectedModloaderVersion ?? "", instanceName: instanceName });
+        instances = invoke("obtain_version", { vanillaVersion: selectedVanillaVersion, modloaderType: selectedModloader, modloaderVersion: selectedModloaderVersion ?? "", instanceName: instanceName });
         close();
     }
 </script>

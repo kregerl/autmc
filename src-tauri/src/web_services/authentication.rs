@@ -99,7 +99,7 @@ pub struct MinecraftProfileSkin {
     state: String,
     url: String,
     variant: String,
-    alias: String,
+    alias: Option<String>,
 }
 
 #[allow(unused)]
@@ -248,6 +248,21 @@ impl Serialize for AuthenticationError {
                 serializer.serialize_str(&format!("Status code: {}", status_code))
             }
         }?)
+    }
+}
+
+impl ToString for AuthenticationError {
+    fn to_string(&self) -> String {
+        match self {
+            AuthenticationError::MicrosoftError { error_type, error_description } => format!("{}: {}", error_type, error_description),
+            AuthenticationError::XboxError { xerr, message, hint } => format!("{}: {}({})", xerr, message, hint),
+            AuthenticationError::MinecraftProfileError { error, error_message } => format!("{}: {}", error, error_message),
+            AuthenticationError::UnknownQueryParameter(error) => error.clone(),
+            AuthenticationError::UrlParseError(error) => error.to_string(),
+            AuthenticationError::RequestError(error) => error.to_string(),
+            AuthenticationError::WindowError(error) => error.to_string(),
+            AuthenticationError::HttpResponseError(error) => error.to_string(),
+        }
     }
 }
 
@@ -545,6 +560,9 @@ async fn obtain_minecraft_profile(access_token: &str) -> AuthResult<MinecraftPro
 
     if response.status().is_success() {
         debug!("obtain_minecraft_profile Response: {:#?}", response);
+
+        // debug!("String: {:#?}", String::from_utf8(response.bytes().await?.to_vec()));
+        // todo!("Fix obtain_minecraft_profile");
         let profile_response = response.json::<MinecraftProfileResponse>().await?;
         match profile_response {
             MinecraftProfileResponse::Success(success) => Ok(success),

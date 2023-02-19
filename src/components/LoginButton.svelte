@@ -15,6 +15,6 @@
         font-size: 36px;
         text-align: center;
         text-shadow: 2px 4px 4px #FFFFFF80;
-        margin: 0;
+        margin: 4px;
     }
 </style>

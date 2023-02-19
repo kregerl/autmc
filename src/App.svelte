@@ -7,23 +7,24 @@
     import { listen, UnlistenFn } from "@tauri-apps/api/event";
     import { onDestroy, onMount } from "svelte";
 
-    let unlistener: UnlistenFn;
+    // let unlistener: UnlistenFn;
+    let authErrorUnlistener: UnlistenFn;
     onMount(async () => {
-        unlistener = await listen("auth_result", (event) => {
-            console.log(event);
-            console.log("Here");
-            navigate("/");
+        authErrorUnlistener = await listen("authentication-error", event => {
+            console.log("Here", event);
         });
+
+        // unlistener = await listen("auth_result", (event) => {
+        //     console.log(event);
+        //     console.log("Here");
+        //     navigate("/");
+        // });
     });
 
     onDestroy(() => {
-        unlistener();
+        authErrorUnlistener();
+        // unlistener();
     });
-
-    window.onload = function () {
-        // TODO: Check the state's account manager, if theres an active account redirect to `/home` else, stay at '/'.
-        console.log("On Load");
-    };
 </script>
 
 <Router>

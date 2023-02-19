@@ -1,19 +1,43 @@
 <script lang="ts">
-    import { listen } from "@tauri-apps/api/event"
     import { invoke } from "@tauri-apps/api/tauri";
-    import { link } from "svelte-navigator";
     import LoginButton from "./LoginButton.svelte";
+
+    interface BasicAccount {
+        uuid: string;
+        name: string;
+        skin_url: string;
+    }
+
+    interface AccountInformation {
+        active_account: string;
+        accounts: Map<string, BasicAccount>;
+    }
 
     function microsoftLogin() {
         invoke("show_microsoft_login_page").catch((err) => console.log(err));
     }
-</script>
 
+    function loginToAccount(uuid: string) {
+        invoke("login_to_account", {uuid: uuid}).catch((err) => console.log(err));
+    }
+
+    function getAccounts(): Promise<AccountInformation> {
+        return invoke("get_accounts");
+    }
+</script>
 
 <div class="flex">
     <div class="accounts">
-        <h1>Switch Accounts</h1>
-        <LoginButton class="menu-button" on:click={microsoftLogin}>Add Account</LoginButton>
+        <h1>Choose Account</h1>
+        {#await getAccounts() then accounts}
+            {#each Object.values(accounts.accounts) as account}
+                <!-- TODO: Add skin and more information to account buttons -->
+                <LoginButton on:click={() => loginToAccount(account.uuid)}>
+                    {account.name}
+                </LoginButton>
+            {/each}
+        {/await}
+        <LoginButton on:click={microsoftLogin}>Add Account</LoginButton>
     </div>
 </div>
 
@@ -28,8 +52,9 @@
     }
 
     .flex div {
-        background-color: gray;
-        color: black;
+        background-color: #333;
+        color: white;
+        border-radius: 8px;
     }
 
     .accounts {
@@ -37,13 +62,16 @@
         display: flex;
         flex-direction: column;
     }
-    
+
     .accounts * {
         margin: 4px;
     }
 
-    .accounts :global(.menu-button) {
-        margin: 4px;
+    .accounts > h1 {
+        background-color: #4e4e4e;
+        margin: 0px;
+        margin-bottom: 4px;
+        border-top-left-radius: 8px;
+        border-top-right-radius: 8px;
     }
-
 </style>

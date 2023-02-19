@@ -1099,6 +1099,8 @@ pub async fn create_instance(
         instance_name: instance_name.into(),
         jvm_path: java_path.clone(),
         arguments: persitent_arguments,
+        modloader_type,
+        modloader_version,
     })?;
     debug!("After persistent args");
     extract_natives(
@@ -1106,6 +1108,7 @@ pub async fn create_instance(
         &resource_manager.libraries_dir(),
         library_data.classifiers,
     )?;
+    debug!("Updating instances");
     tmp_dir.close()?;
     Ok(())
 }

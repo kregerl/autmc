@@ -27,8 +27,8 @@ use web_services::authentication::{authenticate, validate_account, AuthMode};
 
 use crate::{
     commands::{
-        get_account_skin, get_instance_path, launch_instance, load_instances, obtain_manifests,
-        obtain_version,
+        get_account_skin, get_accounts, get_instance_path, launch_instance, load_instances,
+        login_to_account, obtain_manifests, obtain_version,
     },
     state::{instance_manager::InstanceState, resource_manager::ResourceState},
 };
@@ -56,7 +56,9 @@ fn main() {
             get_instance_path,
             load_instances,
             get_account_skin,
-            launch_instance
+            launch_instance,
+            get_accounts,
+            login_to_account
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -107,20 +109,33 @@ fn setup(app: &mut App<Wry>) -> Result<(), Box<(dyn StdError + 'static)>> {
         match deserialized_account {
             Some(active_account) => {
                 let validation_result = validate_account(active_account).await;
-                // FIXME: Dont just unwrap, give user any auth errors.
-                let account = validation_result.unwrap();
-                // Save account to account manager.
-                let account_skin = account.skin_url.clone();
-                account_manager.add_and_activate_account(account);
 
-                match app_handle.emit_all("active-account-skin", account_skin) {
-                    Ok(_) => {}
-                    Err(error) => error!("{}", error.to_string()),
+                // If the result if an error, emit error to user
+                if let Err(validation_error) = &validation_result {
+                    if let Err(error) = app_handle.emit_to(
+                        "main",
+                        "authentication-error",
+                        validation_error.to_string(),
+                    ) {
+                        error!("{}", error.to_string());
+                        return;
+                    }
                 }
 
-                match account_manager.serialize_accounts() {
-                    Ok(_) => {}
-                    Err(err) => warn!("Could not properly serialize account information: {}", err),
+                let account = validation_result.unwrap();
+                // Save account to account manager.
+                account_manager.add_and_activate_account(account);
+
+                if let Err(error) = account_manager.serialize_accounts() {
+                    warn!(
+                        "Could not properly serialize account information: {}",
+                        error
+                    );
+                    return;
+                }
+
+                if let Err(error) = redirect(&app_handle, "") {
+                    error!("{}", error.to_string());
                 }
             }
             None => {
@@ -159,30 +174,39 @@ fn autmc_uri_scheme(
     let handle = app_handle.clone();
     // Spawn a thread to handle authentication.
     tauri::async_runtime::spawn(async move {
-        // TODO: Emit an authentication error
         let auth_mode = AuthMode::Full(url);
-        let res = authenticate(auth_mode).await;
-        println!("Auth Result: {:#?}", &res);
-        // FIXME: Dont just unwrap, give user any auth errors.
-        let account = res.unwrap();
+        let authentication_result = authenticate(auth_mode).await;
+        
+        // If the result if an error, emit error to user
+        if let Err(authentication_error) = &authentication_result {
+            if let Err(error) = handle.emit_to(
+                "main",
+                "authentication-error",
+                authentication_error.to_string(),
+            ) {
+                error!("{}", error.to_string())
+            }
+        }
+        let account = authentication_result.unwrap();
 
         let account_state: tauri::State<AccountState> = handle
             .try_state()
             .expect("`AccountState` should already be managed.");
         let mut account_manager = account_state.0.lock().await;
-        
-        let account_skin = account.skin_url.clone();
+
         // Save account to account manager.
         account_manager.add_and_activate_account(account);
 
-        match handle.emit_all("active-account-skin", account_skin) {
-            Ok(_) => {}
-            Err(error) => error!("{}", error.to_string()),
+        if let Err(error) = account_manager.serialize_accounts() {
+            warn!(
+                "Could not properly serialize account information: {}",
+                error
+            );
+            return;
         }
 
-        match account_manager.serialize_accounts() {
-            Ok(_) => {}
-            Err(err) => warn!("Could not properly serialize account information: {}", err),
+        if let Err(error) = redirect(&handle, "") {
+            error!("{}", error.to_string());
         }
     });
     let body: Vec<u8> = "<h1>Hello World!</h1>".as_bytes().to_vec();

@@ -20,6 +20,8 @@ pub struct InstanceConfiguration {
     pub instance_name: String,
     pub jvm_path: PathBuf,
     pub arguments: Vec<String>,
+    pub modloader_type: String,
+    pub modloader_version: String,
 }
 
 pub struct InstanceState(pub Arc<AsyncMutex<InstanceManager>>);

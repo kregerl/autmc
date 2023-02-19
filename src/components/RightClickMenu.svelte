@@ -1,8 +1,12 @@
 <script lang="ts">
+    import ManageInstance from "./Modal/ManageInstanceModal/ManageInstance.svelte";
+
+
     interface Button {
         svg: string;
         svgAlt: string;
         text: string;
+        callback: (event: MouseEvent) => void;
     }
 
     export let validClasses: string[] = [];
@@ -12,12 +16,12 @@
 
     // If button is undefined then it will be replaced with <hr>
     let buttons: Array<Button | undefined> = [
-        { svg: "svg/ManageInstance.svg", svgAlt: "Manage", text: "Manage" },
-        { svg: "svg/Folder.svg", svgAlt: "Open Folder", text: "Open Folder" },
-        { svg: "svg/Copy.svg", svgAlt: "Copy", text: "Copy" },
+        { svg: "svg/ManageInstance.svg", svgAlt: "Manage", text: "Manage", callback: openManageInstanceModal},
+        { svg: "svg/Folder.svg", svgAlt: "Open Folder", text: "Open Folder", callback: () => {} },
+        { svg: "svg/Copy.svg", svgAlt: "Copy", text: "Copy", callback: () => {} },
         undefined,
-        { svg: "svg/Repair.svg", svgAlt: "Repair", text: "Repair" },
-        { svg: "svg/Trash.svg", svgAlt: "Delete Instance", text: "Delete" },
+        { svg: "svg/Repair.svg", svgAlt: "Repair", text: "Repair", callback: () => {} },
+        { svg: "svg/Trash.svg", svgAlt: "Delete Instance", text: "Delete", callback: () => {} },
     ];
 
     export function clickOutside(element, callbackFunction) {
@@ -37,6 +41,11 @@
                 document.body.removeEventListener("click", onClick);
             },
         };
+    }
+    let showManageInstanceModal = false;
+
+    function openManageInstanceModal() {
+        showManageInstanceModal = true;
     }
 
     function close() {
@@ -67,6 +76,10 @@
             }
         }
     }
+
+    function tabKeyDown() {
+        // TODO: Implement "Enter" updating selection of tabs.
+    }
 </script>
 
 {#if show}
@@ -79,13 +92,17 @@
             {#if button === undefined}
                 <hr />
             {:else}
-                <div class="button">
+                <div class="button" on:click={button.callback} on:keydown={tabKeyDown}>
                     <img src={button.svg} alt={button.svgAlt} />
                     {button.text}
                 </div>
             {/if}
         {/each}
     </div>
+{/if}
+
+{#if showManageInstanceModal}
+    <ManageInstance on:close={() => (showManageInstanceModal = false)} targetInstance={lastTarget}/>
 {/if}
 
 <svelte:body on:contextmenu|preventDefault={onRightClick} />

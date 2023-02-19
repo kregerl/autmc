@@ -7,11 +7,16 @@
     import NewInstance from "../Modal/NewInstanceModal/NewInstance.svelte";
     import RightClickMenu from "../RightClickMenu.svelte";
 
-
-    let showModal = false;
+    // FIXME: All instances are hidden briefly when this gets changed since its being awaited on. 
+    let promise = getInstances();
+    let showNewInstanceModal = false;
 
     function createNewInstance() {
-        showModal = true;
+        showNewInstanceModal = true;
+    }
+
+    function closeModal() {
+        showNewInstanceModal = false;
     }
 
     async function launchInstance() {
@@ -51,7 +56,7 @@
     <input type="text" placeholder="Search Instances" />
 </div>
 <div class="instance-grid">
-    {#await getInstances() then instances}
+    {#await promise then instances}
         {#each instances as instance}
             <div
                 id={instance}
@@ -70,10 +75,10 @@
 </div>
 
 <!-- TODO: Use this  -->
-<!-- <RightClickMenu validClasses={["instance"]}/> -->
+<RightClickMenu validClasses={["instance"]}/>
 
-{#if showModal}
-    <NewInstance on:close={() => (showModal = false)} />
+{#if showNewInstanceModal}
+    <NewInstance on:close={closeModal} bind:instances={promise}/>
 {/if}
 
 <style>

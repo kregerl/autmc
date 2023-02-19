@@ -87,14 +87,29 @@ impl AccountManager {
         }
     }
 
+    /// Get the active account's uuid
+    pub fn get_active_uuid(&self) -> Option<String> {
+        self.active.clone()
+    }
+
+    /// Return the hashmap of uuid -> account
+    pub fn get_all_accounts(&self) -> HashMap<String, Account> {
+        self.accounts.clone()
+    }
+
     /// Add and activate an account, overwriting any existing accounts with the same uuid.
     pub fn add_and_activate_account(&mut self, account: Account) {
-        self.active = Some(account.uuid.clone());
+        self.activate_account(&account.uuid.clone());
         self.add_account(account);
         info!(
             "Added and activated account: {}",
             self.active.as_ref().unwrap()
         );
+    }
+
+    // Activate the account associated with uuid
+    pub fn activate_account(&mut self, uuid: &str) {
+        self.active = Some(uuid.to_owned());
     }
 
     /// Adds an account, overwriting any existing accounts with the same uuid.

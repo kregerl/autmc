@@ -2,6 +2,7 @@
     import { getName, getVersion } from "@tauri-apps/api/app";
     import { invoke } from "@tauri-apps/api/tauri";
     import { onMount } from "svelte";
+    import { navigate } from "svelte-navigator";
     import MenuNavbar from "./MenuNavbar.svelte";
 
     export let selectedTab: string;
@@ -9,19 +10,18 @@
     let launcherVersion: string = "1.0.0";
     let username: string = "AreUThreateningMe";
 
-    const buttons = [
-        "Instances",
-        "Servers",
-        "Screenshots",
-        "Logs"
-    ];
+    const buttons = ["Instances", "Servers", "Screenshots", "Logs"];
 
     function getSkin(): Promise<string> {
         return new Promise((resolve) => {
             setTimeout(async () => {
-                resolve(await invoke("get_account_skin") as string)
+                resolve((await invoke("get_account_skin")) as string);
             });
         });
+    }
+
+    function switchUser() {
+        navigate("/login");
     }
 
     onMount(async () => {
@@ -32,16 +32,28 @@
 
         let skin = await getSkin();
         image.src = skin;
-       
-        const canvas = document.getElementById("head-canvas") as HTMLCanvasElement;
+
+        const canvas = document.getElementById(
+            "head-canvas"
+        ) as HTMLCanvasElement;
         const context = canvas.getContext("2d");
         canvas.width = image.width;
         canvas.height = image.height;
         context.imageSmoothingEnabled = false;
 
         image.onload = () => {
-            context.drawImage(image, 8, 8, 8, 8, 0, 0, image.width, image.height);
-        }
+            context.drawImage(
+                image,
+                8,
+                8,
+                8,
+                8,
+                0,
+                0,
+                image.width,
+                image.height
+            );
+        };
     });
 </script>
 
@@ -51,24 +63,25 @@
             <h1 class="header dropshadow">{launcherName}</h1>
             <span>v{launcherVersion}</span>
         </div>
-    
+
         <div class="image-content">
-            <canvas id="head-canvas"/>
+            <canvas id="head-canvas" />
+            <!-- FIXME: Use real username instead of hardcoded one -->
             <h3 class="header dropshadow">{username}</h3>
         </div>
-    
-        <div class="image-content-small">
-            <img src="svg/SwitchUser.svg" alt="Switch User">
+
+        <div class="image-content-small" on:click={switchUser}>
+            <img src="svg/SwitchUser.svg" alt="Switch User" />
             <h3 class="header dropshadow">Switch User</h3>
         </div>
-    
+
         <div class="image-content-small">
-            <img src="svg/Settings.svg" alt="Switch User">
+            <img src="svg/Settings.svg" alt="Switch User" />
             <h3 class="header dropshadow">Launcher Settings</h3>
         </div>
     </div>
     <div class="menu-buttons">
-        <MenuNavbar buttons={buttons} bind:selected={selectedTab}></MenuNavbar>
+        <MenuNavbar {buttons} bind:selected={selectedTab} />
     </div>
 </nav>
 
@@ -82,7 +95,7 @@
     .launcher-header {
         padding-top: 8px;
         padding-bottom: 4px;
-        background-color: #4E4E4E;
+        background-color: #4e4e4e;
     }
 
     .image-content {
@@ -108,6 +121,7 @@
         width: 100%;
         overflow: hidden;
         margin-bottom: 8px;
+        cursor: pointer;
     }
 
     .image-content-small * {
@@ -132,7 +146,7 @@
         width: 100%;
         overflow: hidden;
         text-align: center;
-        margin-bottom: 16px
+        margin-bottom: 16px;
     }
 
     .title * {
