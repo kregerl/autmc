@@ -12,17 +12,17 @@
 
     // FIXME: Lines are always appended, if an instance is closed the logs should be cleared here.
 
-    let unlistener: UnlistenFn;
-    onMount(async () => {
-        unlistener = await listen("instance-logging", (event) => {
-            lines = [...lines, event.payload];
-            console.log("Event", event);
-        });
-    });
+    // let unlistener: UnlistenFn;
+    // onMount(async () => {
+    //     unlistener = await listen("instance-logging", (event) => {
+    //         lines = [...lines, event.payload];
+    //         console.log("Event", event);
+    //     });
+    // });
 
-    onDestroy(() => {
-        unlistener();
-    });
+    // onDestroy(() => {
+    //     unlistener();
+    // });
 </script>
 
 <div class="container">

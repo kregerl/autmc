@@ -3,6 +3,7 @@
     import { invoke } from "@tauri-apps/api/tauri";
     import { onMount } from "svelte";
     import { navigate } from "svelte-navigator";
+    import Head from "../../Head.svelte";
     import MenuNavbar from "./MenuNavbar.svelte";
 
     export let selectedTab: string;
@@ -12,14 +13,6 @@
 
     const buttons = ["Instances", "Servers", "Screenshots", "Logs"];
 
-    function getSkin(): Promise<string> {
-        return new Promise((resolve) => {
-            setTimeout(async () => {
-                resolve((await invoke("get_account_skin")) as string);
-            });
-        });
-    }
-
     function switchUser() {
         navigate("/login");
     }
@@ -27,34 +20,11 @@
     onMount(async () => {
         launcherName = await getName();
         launcherVersion = await getVersion();
-
-        const image = new Image(64, 64);
-
-        let skin = await getSkin();
-        image.src = skin;
-
-        const canvas = document.getElementById(
-            "head-canvas"
-        ) as HTMLCanvasElement;
-        const context = canvas.getContext("2d");
-        canvas.width = image.width;
-        canvas.height = image.height;
-        context.imageSmoothingEnabled = false;
-
-        image.onload = () => {
-            context.drawImage(
-                image,
-                8,
-                8,
-                8,
-                8,
-                0,
-                0,
-                image.width,
-                image.height
-            );
-        };
     });
+
+    async function getSkinUrl(): Promise<string> {
+        return invoke("get_account_skin");
+    }
 </script>
 
 <nav>
@@ -65,12 +35,14 @@
         </div>
 
         <div class="image-content">
-            <canvas id="head-canvas" />
+            {#await getSkinUrl() then skin}
+                <Head skinUrl={skin} />
+            {/await}
             <!-- FIXME: Use real username instead of hardcoded one -->
             <h3 class="header dropshadow">{username}</h3>
         </div>
 
-        <div class="image-content-small" on:click={switchUser}>
+        <div class="image-content-small" on:click={switchUser} on:keydown>
             <img src="svg/SwitchUser.svg" alt="Switch User" />
             <h3 class="header dropshadow">Switch User</h3>
         </div>
@@ -103,7 +75,7 @@
         overflow: hidden;
     }
 
-    .image-content > canvas {
+    .image-content :global(canvas) {
         float: left;
         width: 2.6vw;
         height: 2.6vw;

@@ -24,7 +24,7 @@ futures = { version = "0.3.26", features = ["thread-pool"] }
 indexmap = { version = "1.9.2", features = ["serde-1"] }
 rust-crypto = "0.2.36"
 xmltree = "0.10.3"
-keyring = "1.2.1"
+keyring = "2.0.1"
 tempdir = "0.3.7"
 chrono = "0.4.23"
 image = "0.24.5"
