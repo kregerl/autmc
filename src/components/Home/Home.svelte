@@ -3,6 +3,7 @@
     import Menu from "./Menu/Menu.svelte";
     import Instances, {ID as INSTANCE_ID} from "./Instances.svelte";
     import Logs, {ID as LOGS_ID} from './Logs.svelte';
+    import Screenshots, { ID as SCREENSHOTS_ID } from "../Screenshots/Screenshots.svelte";
     import { onDestroy, onMount } from 'svelte';
 
     let selected;
@@ -40,6 +41,8 @@
             {:else}
                 <Logs bind:lines bind:element/>
             {/if}
+        {:else if selected === SCREENSHOTS_ID}
+            <Screenshots />
         {/if}
     </div>
 </div>

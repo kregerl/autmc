@@ -14,6 +14,13 @@
     "allowlist": {
       "path": {
         "all": true
+      },
+      "fs": {
+        "scope": ["$APP/instances/*"]
+      },
+      "protocol": {
+        "asset": true,
+        "assetScope": ["$APP/instances/**/screenshots/*.png"]
       }
     },
     "bundle": {
@@ -50,7 +57,7 @@
       }
     },
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; img-src 'self' asset: https://asset.localhost"
     },
     "updater": {
       "active": false

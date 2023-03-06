@@ -28,7 +28,7 @@ use web_services::authentication::{authenticate, validate_account, AuthMode};
 use crate::{
     commands::{
         get_account_skin, get_accounts, get_instance_path, launch_instance, load_instances,
-        login_to_account, obtain_manifests, obtain_version,
+        login_to_account, obtain_manifests, obtain_version, open_folder, get_screenshots,
     },
     state::{instance_manager::InstanceState, resource_manager::ResourceState},
 };
@@ -58,7 +58,9 @@ fn main() {
             get_account_skin,
             launch_instance,
             get_accounts,
-            login_to_account
+            login_to_account,
+            open_folder,
+            get_screenshots
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -133,10 +135,6 @@ fn setup(app: &mut App<Wry>) -> Result<(), Box<(dyn StdError + 'static)>> {
                     );
                     return;
                 }
-
-                if let Err(error) = redirect(&app_handle, "") {
-                    error!("{}", error.to_string());
-                }
             }
             None => {
                 if let Err(error) = redirect(&app_handle, "login") {
@@ -203,10 +201,6 @@ fn autmc_uri_scheme(
                 error
             );
             return;
-        }
-
-        if let Err(error) = redirect(&handle, "") {
-            error!("{}", error.to_string());
         }
     });
     let body: Vec<u8> = "<h1>Hello World!</h1>".as_bytes().to_vec();

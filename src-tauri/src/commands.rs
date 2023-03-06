@@ -1,6 +1,6 @@
-use std::{collections::HashMap, hash::Hash, path::PathBuf};
+use std::{collections::HashMap, env, hash::Hash, io, path::PathBuf, process::Command, fs};
 
-use log::{debug, warn, error};
+use log::{debug, error, warn};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State, Wry};
@@ -8,9 +8,10 @@ use tauri::{AppHandle, Manager, State, Wry};
 use crate::{
     consts::{CLIENT_ID, MICROSOFT_LOGIN_URL},
     state::{
-        account_manager::{AccountState},
+        account_manager::AccountState,
         instance_manager::InstanceState,
-        resource_manager::{ManifestResult, ResourceState}, redirect,
+        redirect,
+        resource_manager::{ManifestResult, ResourceState},
     },
     web_services::{
         authentication::{validate_account, AuthResult},
@@ -221,12 +222,11 @@ pub async fn login_to_account(uuid: String, app_handle: AppHandle<Wry>) {
             }
 
             if let Err(error) = account_manager.serialize_accounts() {
-                warn!("Could not properly serialize account information: {}", error);
+                warn!(
+                    "Could not properly serialize account information: {}",
+                    error
+                );
                 return;
-            }
-
-            if let Err(error) = redirect(&app_handle, "") {
-                error!("{}", error.to_string());
             }
         }
         None => {
@@ -279,4 +279,53 @@ pub async fn launch_instance(instance_name: String, app_handle: AppHandle<Wry>) 
         account_manager.get_active_account().unwrap(),
     );
     instance_manager.emit_logs_for_running_instance(app_handle.clone());
+}
+
+// FIXME: Instance names can be different from the directory name its stored in.
+#[tauri::command(async)]
+pub async fn open_folder(instance_name: String, app_handle: AppHandle<Wry>) {
+    let instance_state: State<InstanceState> = app_handle
+        .try_state()
+        .expect("`InstanceState` should already be managed.");
+    let instance_manager = instance_state.0.lock().await;
+
+    let command = match env::consts::OS {
+        "linux" => "xdg-open",
+        "macos" => "open",
+        "windows" => "explorer",
+        _ => unimplemented!(
+            "Cannot open file explorer, unknown OS type: {}",
+            env::consts::OS
+        ),
+    };
+
+    let result = Command::new(command)
+        .arg(instance_manager.instances_dir().join(instance_name))
+        .spawn();
+
+    if let Err(e) = result {
+        error!("Error spawning file manager process: {}", e);
+    }
+}
+
+#[tauri::command(async)]
+pub async fn get_screenshots(app_handle: AppHandle<Wry>) -> HashMap<String, Vec<String>> {
+    let instance_state: State<InstanceState> = app_handle
+        .try_state()
+        .expect("`InstanceState` should already be managed.");
+    let instance_manager = instance_state.0.lock().await;
+    let instance_dir = instance_manager.instances_dir();
+    
+    let mut instance_screenshots = HashMap::new();
+    for instance in instance_manager.get_instance_names() {
+        let paths = fs::read_dir(instance_dir.join(&instance).join("screenshots")).unwrap();        
+        let mut screenshots: Vec<String> = Vec::new();
+        for path in paths {
+            let file_name = path.unwrap().file_name();
+            screenshots.push(file_name.to_str().unwrap().into());
+        }
+        instance_screenshots.insert(instance, screenshots);
+    }
+
+    instance_screenshots
 }

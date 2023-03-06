@@ -1,6 +1,7 @@
 <script lang="ts">
     import { invoke } from "@tauri-apps/api/tauri";
     import { onMount } from "svelte";
+    import { navigate } from "svelte-navigator";
     import Head from "./Head.svelte";
 
     interface BasicAccount {
@@ -22,9 +23,10 @@
     }
 
     function loginToAccount(uuid: string) {
-        invoke("login_to_account", { uuid: uuid }).catch((err) =>
-            console.log(err)
-        );
+        invoke("login_to_account", { uuid: uuid }).catch((err) => {
+            console.log(err);
+        });
+        navigate("/");
     }
 
     function getAccounts(): Promise<AccountInformation> {
@@ -58,6 +60,7 @@
         <button class="button add-account" on:click={microsoftLogin}>
             Add Account
         </button>
+        <h1>{window.location}</h1>
     </div>
 </div>
 

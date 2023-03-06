@@ -5,13 +5,16 @@
     import { navigate } from "svelte-navigator";
     import Head from "../../Head.svelte";
     import MenuNavbar from "./MenuNavbar.svelte";
+    import { ID as INSTANCE_ID } from "../Instances.svelte";
+    import { ID as LOGS_ID } from "../Logs.svelte";
+    import { ID as SCREENSHOTS_ID } from "../../Screenshots/Screenshots.svelte";
 
     export let selectedTab: string;
     let launcherName: string = "Example";
     let launcherVersion: string = "1.0.0";
     let username: string = "AreUThreateningMe";
 
-    const buttons = ["Instances", "Servers", "Screenshots", "Logs"];
+    const buttons = [INSTANCE_ID, "Servers", SCREENSHOTS_ID, LOGS_ID];
 
     function switchUser() {
         navigate("/login");

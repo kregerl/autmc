@@ -1,6 +1,6 @@
 <script lang="ts">
+    import { invoke } from "@tauri-apps/api/tauri";
     import ManageInstance from "./Modal/ManageInstanceModal/ManageInstance.svelte";
-
 
     interface Button {
         svg: string;
@@ -16,12 +16,37 @@
 
     // If button is undefined then it will be replaced with <hr>
     let buttons: Array<Button | undefined> = [
-        { svg: "svg/ManageInstance.svg", svgAlt: "Manage", text: "Manage", callback: openManageInstanceModal},
-        { svg: "svg/Folder.svg", svgAlt: "Open Folder", text: "Open Folder", callback: () => {} },
-        { svg: "svg/Copy.svg", svgAlt: "Copy", text: "Copy", callback: () => {} },
+        {
+            svg: "svg/ManageInstance.svg",
+            svgAlt: "Manage",
+            text: "Manage",
+            callback: openManageInstanceModal,
+        },
+        {
+            svg: "svg/Folder.svg",
+            svgAlt: "Open Folder",
+            text: "Open Folder",
+            callback: openFolder,
+        },
+        {
+            svg: "svg/Copy.svg",
+            svgAlt: "Copy",
+            text: "Copy",
+            callback: () => {},
+        },
         undefined,
-        { svg: "svg/Repair.svg", svgAlt: "Repair", text: "Repair", callback: () => {} },
-        { svg: "svg/Trash.svg", svgAlt: "Delete Instance", text: "Delete", callback: () => {} },
+        {
+            svg: "svg/Repair.svg",
+            svgAlt: "Repair",
+            text: "Repair",
+            callback: () => {},
+        },
+        {
+            svg: "svg/Trash.svg",
+            svgAlt: "Delete Instance",
+            text: "Delete",
+            callback: () => {},
+        },
     ];
 
     export function clickOutside(element, callbackFunction) {
@@ -46,6 +71,14 @@
 
     function openManageInstanceModal() {
         showManageInstanceModal = true;
+        close();
+    }
+
+    async function openFolder() {
+        if (lastTarget) {
+            await invoke("open_folder", { instanceName: lastTarget.id });
+        }
+        close();
     }
 
     function close() {
@@ -92,7 +125,11 @@
             {#if button === undefined}
                 <hr />
             {:else}
-                <div class="button" on:click={button.callback} on:keydown={tabKeyDown}>
+                <div
+                    class="button"
+                    on:click={button.callback}
+                    on:keydown={tabKeyDown}
+                >
                     <img src={button.svg} alt={button.svgAlt} />
                     {button.text}
                 </div>
@@ -102,7 +139,10 @@
 {/if}
 
 {#if showManageInstanceModal}
-    <ManageInstance on:close={() => (showManageInstanceModal = false)} targetInstance={lastTarget}/>
+    <ManageInstance
+        on:close={() => (showManageInstanceModal = false)}
+        targetInstance={lastTarget}
+    />
 {/if}
 
 <svelte:body on:contextmenu|preventDefault={onRightClick} />
