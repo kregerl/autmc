@@ -37,7 +37,7 @@
 
 </script>
 
-<div class="flex-row header-wrapper">
+<div  class="flex-row header-wrapper">
     <label>
         <input
             type="checkbox"
@@ -54,7 +54,7 @@
     <div
         transition:fade={{ duration: 100 }}
         id={key}
-        class="flex-row images-row"
+        class="images-row"
     >
         {#each value as screenshot}
             {#await getPath(key, screenshot) then path}
@@ -70,21 +70,24 @@
 
 <style>
     .images-row {
-        max-width: 100%;
-        justify-content: flex-start;
-        margin: 8px;
-        width: 100%;
+        display: grid;
+        grid-auto-flow: column;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 8px;
+        height: auto;
+        width: auto;
+        margin-left: 8px;
     }
 
     .images-row > img {
-        width: 20%;
+        max-width: 100%;
         height: auto;
-        margin: 8px;
-        margin-top: 0px;
+        object-fit: cover;
     }
 
     .images-row > img:hover {
         opacity: 0.7;
+        cursor: pointer;
     }
 
     h3 {

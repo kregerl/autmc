@@ -68,10 +68,6 @@
             </div>
         {/each}
     {/await}
-
-    <div class="instance">Test</div>
-    <div class="instance">Test2</div>
-    <div class="instance">Test3</div>
 </div>
 
 <!-- TODO: Use this  -->
@@ -109,6 +105,7 @@
         min-height: 180px;
         background-color: red;
         border-radius: 12px;
+        cursor: pointer;
     }
 
     svg {
