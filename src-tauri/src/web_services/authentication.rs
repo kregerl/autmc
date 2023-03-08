@@ -341,7 +341,6 @@ pub async fn authenticate(auth_mode: AuthMode) -> AuthResult<Account> {
     Ok(Account {
         uuid: minecraft_profile.id.clone(),
         name: minecraft_profile.name.clone(),
-        // IDEA: Skin url for head?
         skin_url: active_skin.url.clone(),
         microsoft_access_token: microsoft_token.0,
         microsoft_access_token_expiry: microsoft_token.2,
@@ -561,8 +560,6 @@ async fn obtain_minecraft_profile(access_token: &str) -> AuthResult<MinecraftPro
     if response.status().is_success() {
         debug!("obtain_minecraft_profile Response: {:#?}", response);
 
-        // debug!("String: {:#?}", String::from_utf8(response.bytes().await?.to_vec()));
-        // todo!("Fix obtain_minecraft_profile");
         let profile_response = response.json::<MinecraftProfileResponse>().await?;
         match profile_response {
             MinecraftProfileResponse::Success(success) => Ok(success),

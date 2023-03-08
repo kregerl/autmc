@@ -4,7 +4,6 @@
 
 <script lang="ts">
     import { invoke } from "@tauri-apps/api";
-    import { flip } from "svelte/animate";
 
     import ScreenshotRow from "./ScreenshotRow.svelte";
 
@@ -14,8 +13,10 @@
 
     function sortScreenshotMap(screenshotMap) {
         let original = Object.entries(screenshotMap);
-        let sorted = new Map(Array.from(original).sort(([a], [b]) => a.localeCompare(b)));
-        console.log(sorted);
+        let sorted = new Map<string, string[]>();
+        for (const [key, values] of original) {
+            sorted.set(key, (values as string[]).sort().reverse());
+        }
         return [...sorted];
     }
 </script>

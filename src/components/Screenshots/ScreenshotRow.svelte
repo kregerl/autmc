@@ -1,7 +1,7 @@
 <script lang="ts">
     import { convertFileSrc } from "@tauri-apps/api/tauri";
     import { appConfigDir, join } from "@tauri-apps/api/path";
-    import { fade, slide } from "svelte/transition";
+    import { fly, TransitionConfig } from "svelte/transition";
     import ViewImageModal from "../Modal/ViewImageModal/ViewImageModal.svelte";
 
     export let key;
@@ -20,12 +20,16 @@
             )
         );
     }
- 
     let hidden = false;
-    function hideElements(e: MouseEvent) {
-        console.log('this', this)
-        // console.log("Hide Elements : ", e, key, this);
+    function hideElements(_e: MouseEvent) {
         hidden = !hidden;
+    }
+
+    function conditionalFly(elemnt, args): TransitionConfig {
+        if (hidden && elemnt !== undefined) {
+            console.log("animate");
+            return fly(elemnt, args);
+        }
     }
 
     let lastTarget;
@@ -34,10 +38,9 @@
         showImageModal = true;
         lastTarget = this.src;
     }
-
 </script>
 
-<div  class="flex-row header-wrapper">
+<div class="flex-row header-wrapper">
     <label>
         <input
             type="checkbox"
@@ -51,32 +54,36 @@
     <h3>{key}</h3>
 </div>
 {#if !hidden}
-    <div
-        transition:fade={{ duration: 100 }}
-        id={key}
-        class="images-row"
-    >
+    <div out:conditionalFly={{ y: -10, duration: 300 }} class="images-row">
         {#each value as screenshot}
             {#await getPath(key, screenshot) then path}
-                <img src={path} alt={screenshot} on:click={openImageModal} on:keydown/>
+                <img
+                    src={path}
+                    alt={screenshot}
+                    on:click={openImageModal}
+                    on:keydown
+                />
             {/await}
         {/each}
     </div>
 {/if}
 
 {#if showImageModal && lastTarget !== undefined}
-    <ViewImageModal image={lastTarget} on:close={() => showImageModal = false}/>
+    <ViewImageModal
+        image={lastTarget}
+        on:close={() => (showImageModal = false)}
+    />
 {/if}
 
 <style>
     .images-row {
         display: grid;
-        grid-auto-flow: column;
         grid-template-columns: repeat(5, minmax(0, 1fr));
         gap: 8px;
         height: auto;
         width: auto;
         margin-left: 8px;
+        margin-right: 8px;
     }
 
     .images-row > img {

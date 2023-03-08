@@ -1,4 +1,4 @@
-use std::{collections::HashMap, env, hash::Hash, io, path::PathBuf, process::Command, fs};
+use std::{collections::HashMap, env, fs, hash::Hash, io, path::PathBuf, process::Command};
 
 use log::{debug, error, warn};
 use reqwest::Url;
@@ -315,16 +315,19 @@ pub async fn get_screenshots(app_handle: AppHandle<Wry>) -> HashMap<String, Vec<
         .expect("`InstanceState` should already be managed.");
     let instance_manager = instance_state.0.lock().await;
     let instance_dir = instance_manager.instances_dir();
-    
+
     let mut instance_screenshots = HashMap::new();
     for instance in instance_manager.get_instance_names() {
-        let paths = fs::read_dir(instance_dir.join(&instance).join("screenshots")).unwrap();        
-        let mut screenshots: Vec<String> = Vec::new();
-        for path in paths {
-            let file_name = path.unwrap().file_name();
-            screenshots.push(file_name.to_str().unwrap().into());
+        let paths = fs::read_dir(instance_dir.join(&instance).join("screenshots"));
+
+        if let Ok(paths) = paths {
+            let mut screenshots: Vec<String> = Vec::new();
+            for path in paths {
+                let file_name = path.unwrap().file_name();
+                screenshots.push(file_name.to_str().unwrap().into());
+            }
+            instance_screenshots.insert(instance, screenshots);
         }
-        instance_screenshots.insert(instance, screenshots);
     }
 
     instance_screenshots
