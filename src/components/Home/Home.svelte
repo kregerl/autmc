@@ -1,16 +1,16 @@
 <script lang="ts">
-    import {listen, UnlistenFn } from '@tauri-apps/api/event'
+    import { listen, UnlistenFn } from "@tauri-apps/api/event";
     import Menu from "./Menu/Menu.svelte";
-    import Instances, {ID as INSTANCE_ID} from "./Instances.svelte";
-    import Logs, {ID as LOGS_ID} from './Logs.svelte';
-    import Screenshots, { ID as SCREENSHOTS_ID } from "../Screenshots/Screenshots.svelte";
-    import { onDestroy, onMount } from 'svelte';
+    import Instances, { ID as INSTANCE_ID } from "./Instances.svelte";
+    import Logs, { ID as LOGS_ID } from "./Logs/Logs.svelte";
+    import Screenshots, {
+        ID as SCREENSHOTS_ID,
+    } from "../Screenshots/Screenshots.svelte";
+    import { onDestroy, onMount } from "svelte";
 
     let selected;
-    // Logs
-    let lines;
     let element;
-
+    // Logs
     // FIXME: Lines are always appended, if an instance is closed the logs should be cleared here.
 
     // let unlistener: UnlistenFn;
@@ -28,19 +28,19 @@
 
 <div class="container">
     <div class="menu">
-        <Menu bind:selectedTab={selected}/>
+        <Menu bind:selectedTab={selected} />
     </div>
     <div class="content" bind:this={element}>
         {#if selected === INSTANCE_ID}
-            <Instances/>
+            <Instances />
         {:else if selected === LOGS_ID}
-            {#if lines !== undefined && lines.length === 0}
+            <!-- {#if logLines.size === 0}
             <div class="flex-row">
                 <h1>No Logs</h1>
             </div>
-            {:else}
-                <Logs bind:lines bind:element/>
-            {/if}
+            {:else} -->
+            <Logs bind:element />
+            <!-- {/if} -->
         {:else if selected === SCREENSHOTS_ID}
             <Screenshots />
         {/if}
@@ -49,12 +49,12 @@
 
 <style>
     .container {
-        display: grid; 
-        grid-template-columns: 0.4fr 1.6fr; 
+        display: grid;
+        grid-template-columns: 0.4fr 1.6fr;
         gap: 0px 0px;
-        grid-template-areas: 
-        "menu content"
-        "menu content"; 
+        grid-template-areas:
+            "menu content"
+            "menu content";
     }
 
     .menu {
@@ -81,5 +81,4 @@
         color: white;
         text-align: center;
     }
-
 </style>

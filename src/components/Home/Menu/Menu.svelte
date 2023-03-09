@@ -6,7 +6,7 @@
     import Head from "../../Head.svelte";
     import MenuNavbar from "./MenuNavbar.svelte";
     import { ID as INSTANCE_ID } from "../Instances.svelte";
-    import { ID as LOGS_ID } from "../Logs.svelte";
+    import { ID as LOGS_ID } from "../Logs/Logs.svelte";
     import { ID as SCREENSHOTS_ID } from "../../Screenshots/Screenshots.svelte";
 
     export let selectedTab: string;

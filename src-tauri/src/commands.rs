@@ -1,4 +1,10 @@
-use std::{collections::HashMap, env, fs, hash::Hash, io, path::PathBuf, process::Command};
+use std::{
+    collections::HashMap,
+    env,
+    fs::{self, File},
+    path::PathBuf,
+    process::{Command, Stdio}, io::{BufReader, BufRead},
+};
 
 use log::{debug, error, warn};
 use reqwest::Url;
@@ -10,7 +16,6 @@ use crate::{
     state::{
         account_manager::AccountState,
         instance_manager::InstanceState,
-        redirect,
         resource_manager::{ManifestResult, ResourceState},
     },
     web_services::{
@@ -278,7 +283,7 @@ pub async fn launch_instance(instance_name: String, app_handle: AppHandle<Wry>) 
         &instance_name,
         account_manager.get_active_account().unwrap(),
     );
-    instance_manager.emit_logs_for_running_instance(app_handle.clone());
+    instance_manager.emit_logs_for_running_instance(instance_name.into(), app_handle.clone());
 }
 
 // FIXME: Instance names can be different from the directory name its stored in.
@@ -301,6 +306,7 @@ pub async fn open_folder(instance_name: String, app_handle: AppHandle<Wry>) {
 
     let result = Command::new(command)
         .arg(instance_manager.instances_dir().join(instance_name))
+        .stdout(Stdio::null())
         .spawn();
 
     if let Err(e) = result {
@@ -331,4 +337,40 @@ pub async fn get_screenshots(app_handle: AppHandle<Wry>) -> HashMap<String, Vec<
     }
 
     instance_screenshots
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct HistoricalLogs {
+    log_id: String,
+    log_lines: Vec<String>,
+}
+
+#[tauri::command(async)]
+pub async fn get_logs(app_handle: AppHandle<Wry>) -> HashMap<String, HistoricalLogs> {
+    // TODO: Extract the compressed logs 
+    debug!("Invoked get_logs");
+    let instance_state: State<InstanceState> = app_handle
+        .try_state()
+        .expect("`InstanceState` should already be managed.");
+    let instance_manager = instance_state.0.lock().await;
+    let instance_dir = instance_manager.instances_dir();
+
+    let mut map = HashMap::new();
+    for instance in instance_manager.get_instance_names() {
+        let paths = fs::read_dir(instance_dir.join(&instance).join("logs"));
+        if let Ok(paths) = paths {
+            for path_res in paths {
+                let path = path_res.unwrap().path();
+                if path.is_file() {
+                    let file = File::open(&path).unwrap();
+                    let log_lines: Vec<String> = BufReader::new(file).lines().filter_map(|line| line.ok()).collect();
+                    map.insert(instance.clone(), HistoricalLogs {
+                        log_id: path.to_str().unwrap().into(),
+                        log_lines
+                    });
+                }
+            }
+        }
+    }
+    map
 }

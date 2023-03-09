@@ -6,14 +6,34 @@
     import RightClickMenu from "./components/RightClickMenu.svelte";
     import { listen, UnlistenFn } from "@tauri-apps/api/event";
     import { onDestroy, onMount } from "svelte";
+    import { writableMap, LogInformation } from "./logstore";
+    import { invoke } from "@tauri-apps/api/tauri";
 
-    // let unlistener: UnlistenFn;
+    interface Payload {
+        instance_name: string;
+        line: string;
+    }
+
+    let unlistener: UnlistenFn;
     let authErrorUnlistener: UnlistenFn;
     onMount(async () => {
-        authErrorUnlistener = await listen("authentication-error", event => {
+        authErrorUnlistener = await listen("authentication-error", (event) => {
             console.log("Here", event);
         });
 
+        unlistener = await listen("instance-logging", (event) => {
+            let payload = event.payload as Payload;
+            console.log("payload", payload);
+            if ($writableMap.has(payload.instance_name)) {
+                let current = $writableMap.get(payload.instance_name);
+                $writableMap = $writableMap.set(payload.instance_name, [...current, payload.line]);
+            } else {
+                $writableMap = $writableMap.set(payload.instance_name, [payload.line]);
+            }
+        });
+
+        let logs: Map<string, Map<string, string[]>> = await invoke("get_logs");
+        // $writableMap = new Map([...$writableMap, ...logs]);
         // unlistener = await listen("auth_result", (event) => {
         //     console.log(event);
         //     console.log("Here");
@@ -23,12 +43,14 @@
 
     onDestroy(() => {
         authErrorUnlistener();
-        // unlistener();
+        unlistener();
     });
 </script>
 
 <Router>
-    <Route path="/" component={Home} />
+    <Route path="/">
+        <Home />
+    </Route>
     <Route path="/login" component={Login} />
     <Route path="/new-instance" component={NewInstance} />
     <!-- TODO: Only for testing, remove this -->

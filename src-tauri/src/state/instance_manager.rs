@@ -7,7 +7,7 @@ use std::{
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     sync::{Arc, Mutex},
-    thread,
+    thread::{self, JoinHandle},
 };
 use tauri::{async_runtime::Mutex as AsyncMutex, AppHandle, Manager, Wry};
 
@@ -37,6 +37,7 @@ pub struct InstanceManager {
     instance_map: HashMap<String, InstanceConfiguration>,
     // <Instance name, child process>
     children: HashMap<String, Arc<Mutex<Child>>>,
+    logging_threads: HashMap<String, JoinHandle<()>>,
 }
 
 impl InstanceManager {
@@ -45,6 +46,7 @@ impl InstanceManager {
             app_dir: app_dir.into(),
             instance_map: HashMap::new(),
             children: HashMap::new(),
+            logging_threads: HashMap::new(),
         }
     }
 
@@ -122,32 +124,53 @@ impl InstanceManager {
                     .stdout(Stdio::piped());
                 debug!("Command: {:#?}", command);
                 let child = command.spawn().expect("Could not spawn instance.");
-                self.children.insert(instance_name.into(), Arc::new(Mutex::new(child)));
+                self.children
+                    .insert(instance_name.into(), Arc::new(Mutex::new(child)));
             }
             None => error!("Unknown instance name: {}", instance_name),
         }
     }
 
-    pub fn emit_logs_for_running_instance(&self, app_handle: AppHandle<Wry>) {
+    pub fn emit_logs_for_running_instance(
+        &mut self,
+        instance_name: String,
+        app_handle: AppHandle<Wry>,
+    ) {
         if let Some(instance) = self.get_running_instance() {
-
+            let name = instance_name.clone();
             // FIXME: Save thread handle in a map and when and instance is exited, 'join' the thread handle to get its status.
             // https://doc.rust-lang.org/std/thread/
-            // To learn when a thread completes, it is necessary to capture the JoinHandle object that is 
-            // returned by the call to spawn, which provides a join method that allows the caller to 
+            // To learn when a thread completes, it is necessary to capture the JoinHandle object that is
+            // returned by the call to spawn, which provides a join method that allows the caller to
             // wait for the completion of the spawned thread:
-            thread::spawn(move || {
+            let handle = thread::spawn(move || {
+                #[derive(Serialize, Clone)]
+                struct Logging {
+                    instance_name: String,
+                    category: String,
+                    line: String,
+                }
                 if let Ok(mut child) = instance.lock() {
-                    let stdout= child.stdout.as_mut().unwrap();
+                    let stdout = child.stdout.as_mut().unwrap();
                     let reader = BufReader::new(stdout);
                     for line in reader.lines() {
                         match line {
-                            Ok(l) => app_handle.emit_all("instance-logging", l).unwrap(),
+                            Ok(l) => app_handle
+                                .emit_all(
+                                    "instance-logging",
+                                    Logging {
+                                        instance_name: instance_name.clone(),
+                                        category: "Active".into(),
+                                        line: l,
+                                    },
+                                )
+                                .unwrap(),
                             Err(error) => error!("Error reading child process's stdout: {}", error),
                         }
                     }
-                } 
+                }
             });
+            self.logging_threads.insert(name, handle);
         }
     }
 
