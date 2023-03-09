@@ -2,14 +2,16 @@ use std::{
     collections::HashMap,
     env,
     fs::{self, File},
-    path::PathBuf,
-    process::{Command, Stdio}, io::{BufReader, BufRead},
+    io::{self, BufRead, BufReader, Read},
+    path::{Path, PathBuf},
+    process::{Command, Stdio},
 };
 
 use log::{debug, error, warn};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State, Wry};
+use zip::ZipArchive;
 
 use crate::{
     consts::{CLIENT_ID, MICROSOFT_LOGIN_URL},
@@ -20,7 +22,7 @@ use crate::{
     },
     web_services::{
         authentication::{validate_account, AuthResult},
-        manifest::vanilla::VanillaManifestVersion,
+        manifest::{vanilla::VanillaManifestVersion, path_to_utf8_str},
         resources::create_instance,
     },
 };
@@ -339,15 +341,30 @@ pub async fn get_screenshots(app_handle: AppHandle<Wry>) -> HashMap<String, Vec<
     instance_screenshots
 }
 
-#[derive(Debug, Serialize, Clone)]
-pub struct HistoricalLogs {
-    log_id: String,
-    log_lines: Vec<String>,
+fn read_log_file(path: &Path) -> io::Result<Vec<String>> {
+    let mut file = File::open(&path).unwrap();
+    let mut signature = [0u8; 2];
+    file.read_exact(&mut signature)?;
+    if signature == [0x1f, 0x8b] {
+        let mut archive = ZipArchive::new(file)?;
+        if archive.len() == 0 {
+            warn!("Gzip archive at {:#?} is empty.", path);
+            Ok(Vec::new())
+        } else {
+            let file = archive.by_index(0)?;
+            Ok(BufReader::new(file).lines().filter_map(|line| line.ok()).collect())
+        }
+    } else {
+        Ok(BufReader::new(file)
+            .lines()
+            .filter_map(|line| line.ok())
+            .collect())
+    }
 }
 
 #[tauri::command(async)]
-pub async fn get_logs(app_handle: AppHandle<Wry>) -> HashMap<String, HistoricalLogs> {
-    // TODO: Extract the compressed logs 
+pub async fn get_logs(app_handle: AppHandle<Wry>) -> HashMap<String, HashMap<String, Vec<String>>> {
+    // TODO: Extract the compressed logs
     debug!("Invoked get_logs");
     let instance_state: State<InstanceState> = app_handle
         .try_state()
@@ -362,12 +379,12 @@ pub async fn get_logs(app_handle: AppHandle<Wry>) -> HashMap<String, HistoricalL
             for path_res in paths {
                 let path = path_res.unwrap().path();
                 if path.is_file() {
-                    let file = File::open(&path).unwrap();
-                    let log_lines: Vec<String> = BufReader::new(file).lines().filter_map(|line| line.ok()).collect();
-                    map.insert(instance.clone(), HistoricalLogs {
-                        log_id: path.to_str().unwrap().into(),
-                        log_lines
-                    });
+                    if let Ok(log_lines) = read_log_file(&path) {
+                        map.insert(
+                            instance.clone(),
+                            HashMap::from([(path.file_name().unwrap().to_str().unwrap().into(), log_lines)]),
+                        );
+                    }
                 }
             }
         }

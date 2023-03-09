@@ -6,7 +6,7 @@
     import RightClickMenu from "./components/RightClickMenu.svelte";
     import { listen, UnlistenFn } from "@tauri-apps/api/event";
     import { onDestroy, onMount } from "svelte";
-    import { writableMap, LogInformation } from "./logstore";
+    import { writableMap } from "./logstore";
     import { invoke } from "@tauri-apps/api/tauri";
 
     interface Payload {
@@ -24,15 +24,23 @@
         unlistener = await listen("instance-logging", (event) => {
             let payload = event.payload as Payload;
             console.log("payload", payload);
-            if ($writableMap.has(payload.instance_name)) {
-                let current = $writableMap.get(payload.instance_name);
-                $writableMap = $writableMap.set(payload.instance_name, [...current, payload.line]);
+            if ($writableMap.has(payload.instance_name) && $writableMap.get(payload.instance_name).has("active")) {
+                let current = $writableMap.get(payload.instance_name).get("active");
+                $writableMap = $writableMap.set(payload.instance_name, new Map([["active", [...current, payload.line]]]));
             } else {
-                $writableMap = $writableMap.set(payload.instance_name, [payload.line]);
+                $writableMap = $writableMap.set(payload.instance_name, new Map([["active", [payload.line]]]));
             }
         });
 
-        let logs: Map<string, Map<string, string[]>> = await invoke("get_logs");
+        let logs: Map<string, Map<string, string[]>> = new Map();
+        for (let [key, value] of Object.entries(await invoke("get_logs"))) {
+            let inner = new Map();
+            for (let [k, v] of Object.entries(value)) {
+                inner.set(k, v);
+            }
+            logs.set(key, inner);
+        }
+        $writableMap = new Map([...logs, ...$writableMap]);
         // $writableMap = new Map([...$writableMap, ...logs]);
         // unlistener = await listen("auth_result", (event) => {
         //     console.log(event);
