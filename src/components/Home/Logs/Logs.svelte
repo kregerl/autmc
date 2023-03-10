@@ -3,23 +3,34 @@
 </script>
 
 <script lang="ts">
-    // TODO: Color warning and error logs different colors.
     import { afterUpdate, onMount } from "svelte";
     import { writableMap } from "../../../logstore";
     import DropdownMenu from "./DropdownMenu.svelte";
 
     // Parent scrollable div
     export let element: HTMLDivElement;
-    let selected: string;
+    let selectedInstance: string;
     let selectedLog: string;
 
-    $: if (selected || selectedLog) {
-        updateLogs($writableMap);
+    $: if (selectedInstance) {
+        console.log("Updated: ", $writableMap.get(selectedInstance).keys())
+        resetSelectedLog();
+    }
+
+    function resetSelectedLog() {
+        selectedLog = $writableMap.get(selectedInstance).keys().next().value;
+    }
+
+    $: if (selectedLog) {
+        updateLogs();
     }
 
     $: if (element) {
         scrollToBottom();
     }
+
+    $: logOptions = [...$writableMap.get(selectedInstance).keys()];
+    $: instanceOptions = [...$writableMap.keys()];
 
     afterUpdate(() => {
         scrollToBottom();
@@ -37,7 +48,7 @@
         return line.includes("/WARN]:");
     }
 
-    // TODO: Push and pop error colors so the error description can also be red.
+    // TODO: Push and pop error colors so the error description can also be colored.
     function getClassForLine(line) {
         if (isError(line)) {
             return "error";
@@ -47,51 +58,32 @@
         return "";
     }
 
-    function getInstanceOptions(): string[] {
-        return [...$writableMap.keys()];
-    }
     let logs: string[];
-    function getOptions(): string[] {
-        console.log("getOptions: selected", selected);
-        if (selected === undefined) {
-            selected = getInstanceOptions()[0];
-        }
-        let logOptions = [...$writableMap.get(selected).keys()];
-        logs = [...$writableMap.get(selected).get(logOptions[0])];
-        return logOptions;
-    }
-
-    function updateLogs(value: Map<string, Map<string, string[]>>) {
-        if (
-            selected !== undefined &&
-            selectedLog !== undefined &&
-            value.get(selected.trim()) !== undefined
-        ) {
-            logs = value.get(selected.trim()).get(selectedLog.trim());
-        }
+    function updateLogs() {
+        logs = $writableMap.get(selectedInstance).get(selectedLog);
     }
 
     writableMap.subscribe((value) => {
-        updateLogs(value);
-        console.log("Updated");
-    });
-
-    onMount(() => {
-        updateLogs($writableMap);
+        console.log("value", value)
+        selectedInstance = value.keys().next().value;
+        console.log("selectedInstance", selectedInstance);
+        selectedLog = value.get(selectedInstance).keys().next().value;
+        updateLogs();
     });
 </script>
 
 <div class="wrapper">
     <div class="header">
-        <DropdownMenu options={getInstanceOptions()} bind:selected />
-        <DropdownMenu options={getOptions()} bind:selected={selectedLog} />
+        <DropdownMenu
+            options={instanceOptions}
+            bind:selected={selectedInstance}
+        />
+        <DropdownMenu options={logOptions} bind:selected={selectedLog} />
     </div>
     <ul>
-        {#if selected && logs}
-            {#each logs as line}
-                <li class={getClassForLine(line)}>{line}</li>
-            {/each}
-        {/if}
+        {#each logs as line}
+            <li class={getClassForLine(line)}>{line}</li>
+        {/each}
     </ul>
 </div>
 
@@ -108,7 +100,6 @@
         background-image: linear-gradient(#444, #333);
         width: 100%;
         height: 60px;
-        /* border: 2px solid red; */
     }
 
     ul {
@@ -118,6 +109,7 @@
         margin: 0;
         list-style: none;
         overflow-y: scroll;
+        overflow-x: hidden;
     }
 
     ul > li {

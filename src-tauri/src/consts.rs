@@ -30,3 +30,5 @@ pub static XERR_HINTS: phf::Map<&'static str, &'static str> = phf_map! {
     "2148916237" => "2148916237: The account needs adult verification on Xbox page. (South Korea)",
     "2148916238" => "2148916238: The account is a child (under 18) and cannot proceed unless the account is added to a Family by an adult. This only seems to occur when using a custom Microsoft Azure application. When using the Minecraft launchers client id, this doesn't trigger."
 };
+
+pub const GZIP_SIGNATURE: [u8; 2] = [0x1f, 0x8b];

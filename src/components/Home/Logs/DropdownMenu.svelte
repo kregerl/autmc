@@ -3,15 +3,13 @@
     export let selected: string;
 </script>
 
-<select bind:value={selected}>
-    {console.log(options)}
+<select disabled={selected === undefined} bind:value={selected}>
     {#each options as option}
-        <option>
+        <option value={option}>
             {option}
         </option>
     {/each}
 </select>
 
 <style>
-    
 </style>

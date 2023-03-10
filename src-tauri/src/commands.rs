@@ -7,6 +7,8 @@ use std::{
     process::{Command, Stdio},
 };
 
+use flate2::read::GzDecoder;
+use image::EncodableLayout;
 use log::{debug, error, warn};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
@@ -14,7 +16,7 @@ use tauri::{AppHandle, Manager, State, Wry};
 use zip::ZipArchive;
 
 use crate::{
-    consts::{CLIENT_ID, MICROSOFT_LOGIN_URL},
+    consts::{CLIENT_ID, MICROSOFT_LOGIN_URL, GZIP_SIGNATURE},
     state::{
         account_manager::AccountState,
         instance_manager::InstanceState,
@@ -22,7 +24,7 @@ use crate::{
     },
     web_services::{
         authentication::{validate_account, AuthResult},
-        manifest::{vanilla::VanillaManifestVersion, path_to_utf8_str},
+        manifest::{path_to_utf8_str, vanilla::VanillaManifestVersion},
         resources::create_instance,
     },
 };
@@ -296,6 +298,7 @@ pub async fn open_folder(instance_name: String, app_handle: AppHandle<Wry>) {
         .expect("`InstanceState` should already be managed.");
     let instance_manager = instance_state.0.lock().await;
 
+    // Determine the command to open the default file explorer
     let command = match env::consts::OS {
         "linux" => "xdg-open",
         "macos" => "open",
@@ -306,6 +309,7 @@ pub async fn open_folder(instance_name: String, app_handle: AppHandle<Wry>) {
         ),
     };
 
+    // Spawn process of file explorer, can outlive parent.
     let result = Command::new(command)
         .arg(instance_manager.instances_dir().join(instance_name))
         .stdout(Stdio::null())
@@ -341,53 +345,66 @@ pub async fn get_screenshots(app_handle: AppHandle<Wry>) -> HashMap<String, Vec<
     instance_screenshots
 }
 
+// Read bytes of log file and extract lines, decompressing gzip'd fiels if necessary
 fn read_log_file(path: &Path) -> io::Result<Vec<String>> {
-    let mut file = File::open(&path).unwrap();
-    let mut signature = [0u8; 2];
-    file.read_exact(&mut signature)?;
-    if signature == [0x1f, 0x8b] {
-        let mut archive = ZipArchive::new(file)?;
-        if archive.len() == 0 {
-            warn!("Gzip archive at {:#?} is empty.", path);
-            Ok(Vec::new())
-        } else {
-            let file = archive.by_index(0)?;
-            Ok(BufReader::new(file).lines().filter_map(|line| line.ok()).collect())
-        }
+    let bytes = fs::read(path)?;
+    if &bytes[..2] == GZIP_SIGNATURE {
+        let mut decoder = GzDecoder::new(bytes.as_bytes());
+        let mut tmp_str = String::new();
+        decoder.read_to_string(&mut tmp_str)?;
+
+        Ok(tmp_str.lines().map(|line| line.into()).collect())
     } else {
-        Ok(BufReader::new(file)
+        Ok(BufReader::new(bytes.as_bytes())
             .lines()
             .filter_map(|line| line.ok())
             .collect())
     }
 }
 
+fn create_log_map(
+    instance_dir: &Path,
+    instance_names: &[String],
+) -> io::Result<HashMap<String, HashMap<String, Vec<String>>>> {
+    let mut result: HashMap<String, HashMap<String, Vec<String>>> = HashMap::new();
+
+    // Create map that maps instances to the log lines.
+    for instance in instance_names {
+        let directory_entries = fs::read_dir(instance_dir.join(&instance).join("logs"))?;
+        // Traverse every entry in the dir
+        for dir_entry in directory_entries {
+            let path = dir_entry?.path();
+            if path.is_file() {
+                let log_lines = read_log_file(&path)?;
+                let file_name = path.file_name().unwrap().to_str().unwrap().into();
+                // Append to existing map if key already exists.
+                if result.contains_key(*&instance) {
+                    let inner_map = result.get_mut(*&instance).unwrap();
+                    inner_map.insert(file_name, log_lines);
+                } else {
+                    result.insert(instance.clone(), HashMap::from([(file_name, log_lines)]));
+                }
+            }
+        }
+    }
+
+    Ok(result)
+}
+
+// FIXME: This nested map is not a great idea, could just send over the file names and have js access the lines. 
 #[tauri::command(async)]
 pub async fn get_logs(app_handle: AppHandle<Wry>) -> HashMap<String, HashMap<String, Vec<String>>> {
-    // TODO: Extract the compressed logs
-    debug!("Invoked get_logs");
     let instance_state: State<InstanceState> = app_handle
         .try_state()
         .expect("`InstanceState` should already be managed.");
     let instance_manager = instance_state.0.lock().await;
     let instance_dir = instance_manager.instances_dir();
 
-    let mut map = HashMap::new();
-    for instance in instance_manager.get_instance_names() {
-        let paths = fs::read_dir(instance_dir.join(&instance).join("logs"));
-        if let Ok(paths) = paths {
-            for path_res in paths {
-                let path = path_res.unwrap().path();
-                if path.is_file() {
-                    if let Ok(log_lines) = read_log_file(&path) {
-                        map.insert(
-                            instance.clone(),
-                            HashMap::from([(path.file_name().unwrap().to_str().unwrap().into(), log_lines)]),
-                        );
-                    }
-                }
-            }
+    match create_log_map(&instance_dir, &instance_manager.get_instance_names()) {
+        Ok(map) => map,
+        Err(e) => {
+            error!("Error creating logging maps: {}", e);
+            HashMap::new()
         }
     }
-    map
 }

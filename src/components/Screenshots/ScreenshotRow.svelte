@@ -1,7 +1,7 @@
 <script lang="ts">
     import { convertFileSrc } from "@tauri-apps/api/tauri";
     import { appConfigDir, join } from "@tauri-apps/api/path";
-    import { fly, TransitionConfig } from "svelte/transition";
+    import { fly, slide, TransitionConfig } from "svelte/transition";
     import ViewImageModal from "../Modal/ViewImageModal/ViewImageModal.svelte";
 
     export let key;
@@ -25,10 +25,11 @@
         hidden = !hidden;
     }
 
-    function conditionalFly(elemnt, args): TransitionConfig {
-        if (hidden && elemnt !== undefined) {
+    function conditionalSlide(element, args): TransitionConfig {
+        console.log("Update?");
+        if (hidden && element !== undefined) {
             console.log("animate");
-            return fly(elemnt, args);
+            return slide(element, args);
         }
     }
 
@@ -54,7 +55,7 @@
     <h3>{key}</h3>
 </div>
 {#if !hidden}
-    <div out:conditionalFly={{ y: -10, duration: 300 }} class="images-row">
+    <div out:conditionalSlide={{ duration: 350 }} class="images-row">
         {#each value as screenshot}
             {#await getPath(key, screenshot) then path}
                 <img

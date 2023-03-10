@@ -41,6 +41,7 @@
             logs.set(key, inner);
         }
         $writableMap = new Map([...logs, ...$writableMap]);
+        console.log("$writableMap", $writableMap);
         // $writableMap = new Map([...$writableMap, ...logs]);
         // unlistener = await listen("auth_result", (event) => {
         //     console.log(event);
