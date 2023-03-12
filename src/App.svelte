@@ -3,10 +3,11 @@
     import Login from "./components/Login.svelte";
     import Home from "./components/Home/Home.svelte";
     import NewInstance from "./components/Modal/NewInstanceModal/NewInstance.svelte";
-    import RightClickMenu from "./components/RightClickMenu.svelte";
+    import Loading from "./components/Loader/Loading.svelte";
     import { listen, UnlistenFn } from "@tauri-apps/api/event";
     import { onDestroy, onMount } from "svelte";
-    import { writableMap } from "./logstore";
+    import { logStore } from "./logstore";
+    import { screenshotStore } from "./screenshotstore";
     import { invoke } from "@tauri-apps/api/tauri";
 
     interface Payload {
@@ -24,11 +25,12 @@
         unlistener = await listen("instance-logging", (event) => {
             let payload = event.payload as Payload;
             console.log("payload", payload);
-            if ($writableMap.has(payload.instance_name) && $writableMap.get(payload.instance_name).has("active")) {
-                let current = $writableMap.get(payload.instance_name).get("active");
-                $writableMap = $writableMap.set(payload.instance_name, new Map([["active", [...current, payload.line]]]));
+            let currentMap = $logStore.get(payload.instance_name) ?? new Map();
+            if ($logStore.has(payload.instance_name) && $logStore.get(payload.instance_name).has("running")) {
+                let currentLines = currentMap.get("running");
+                $logStore = $logStore.set(payload.instance_name, currentMap.set("running", [...currentLines, payload.line]));
             } else {
-                $writableMap = $writableMap.set(payload.instance_name, new Map([["active", [payload.line]]]));
+                $logStore = $logStore.set(payload.instance_name, currentMap.set("running", [payload.line]));
             }
         });
 
@@ -40,9 +42,13 @@
             }
             logs.set(key, inner);
         }
-        $writableMap = new Map([...logs, ...$writableMap]);
-        console.log("$writableMap", $writableMap);
-        // $writableMap = new Map([...$writableMap, ...logs]);
+        $logStore = new Map([...logs, ...$logStore]);
+        console.log("$writableMap", $logStore);
+
+        // TODO: Use notify crate to emit event when screenshot is added to ss's dir.
+        $screenshotStore = await invoke("get_screenshots");
+        screenshotStore.sort();
+        console.log("$screenshotStore", $screenshotStore);
         // unlistener = await listen("auth_result", (event) => {
         //     console.log(event);
         //     console.log("Here");
@@ -57,13 +63,10 @@
 </script>
 
 <Router>
-    <Route path="/">
-        <Home />
-    </Route>
+    <Route path="/" component={Home} />
     <Route path="/login" component={Login} />
     <Route path="/new-instance" component={NewInstance} />
-    <!-- TODO: Only for testing, remove this -->
-    <Route path="/test" component={RightClickMenu} />
+    <Route path="/test" component={Loading}/>
 </Router>
 
 <style>

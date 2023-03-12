@@ -1,34 +1,19 @@
 <script lang="ts">
     import { convertFileSrc } from "@tauri-apps/api/tauri";
-    import { appConfigDir, join } from "@tauri-apps/api/path";
-    import { fly, slide, TransitionConfig } from "svelte/transition";
+    import { slide, TransitionConfig } from "svelte/transition";
     import ViewImageModal from "../Modal/ViewImageModal/ViewImageModal.svelte";
 
-    export let key;
-    export let value;
+    export let key: string;
+    export let value: string[];
+    $: formattedValues = value.map((value) => convertFileSrc(value));
 
-    $: console.log("Created with key: ", key);
-
-    async function getPath(
-        instanceName: string,
-        screenshotName: string
-    ): Promise<string> {
-        return convertFileSrc(
-            await join(
-                await appConfigDir(),
-                `instances/${instanceName}/screenshots/${screenshotName}`
-            )
-        );
-    }
     let hidden = false;
     function hideElements(_e: MouseEvent) {
         hidden = !hidden;
     }
 
     function conditionalSlide(element, args): TransitionConfig {
-        console.log("Update?");
         if (hidden && element !== undefined) {
-            console.log("animate");
             return slide(element, args);
         }
     }
@@ -56,15 +41,13 @@
 </div>
 {#if !hidden}
     <div out:conditionalSlide={{ duration: 350 }} class="images-row">
-        {#each value as screenshot}
-            {#await getPath(key, screenshot) then path}
-                <img
-                    src={path}
-                    alt={screenshot}
-                    on:click={openImageModal}
-                    on:keydown
-                />
-            {/await}
+        {#each formattedValues as screenshot}
+            <img
+                src={screenshot}
+                alt={screenshot}
+                on:click={openImageModal}
+                on:keydown
+            />
         {/each}
     </div>
 {/if}
@@ -94,7 +77,7 @@
     }
 
     .images-row > img:hover {
-        opacity: 0.7;
+        opacity: 0.8;
         cursor: pointer;
     }
 

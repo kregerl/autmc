@@ -1,3 +1,4 @@
 import { writable } from "svelte/store";
 
-export const writableMap = writable(new Map<string, Map<string, string[]>>());
+// <Instance name, <Logfile name, Lines in logfile>>
+export const logStore = writable(new Map<string, Map<string, string[]>>());

@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     env,
-    fs::{self, File},
+    fs::{self},
     io::{self, BufRead, BufReader, Read},
     path::{Path, PathBuf},
     process::{Command, Stdio},
@@ -13,10 +13,9 @@ use log::{debug, error, warn};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State, Wry};
-use zip::ZipArchive;
 
 use crate::{
-    consts::{CLIENT_ID, MICROSOFT_LOGIN_URL, GZIP_SIGNATURE},
+    consts::{CLIENT_ID, GZIP_SIGNATURE, MICROSOFT_LOGIN_URL},
     state::{
         account_manager::AccountState,
         instance_manager::InstanceState,
@@ -24,7 +23,7 @@ use crate::{
     },
     web_services::{
         authentication::{validate_account, AuthResult},
-        manifest::{path_to_utf8_str, vanilla::VanillaManifestVersion},
+        manifest::{vanilla::VanillaManifestVersion, path_to_utf8_str},
         resources::create_instance,
     },
 };
@@ -58,7 +57,6 @@ pub async fn show_microsoft_login_page(app_handle: tauri::AppHandle<Wry>) -> Aut
             ("scope", "XboxLive.signin offline_access"),
             (
                 "redirect_uri",
-                // TODO: Replace with REDIRECT_URL?
                 "https://login.microsoftonline.com/common/oauth2/nativeclient",
             ),
         ],
@@ -287,7 +285,9 @@ pub async fn launch_instance(instance_name: String, app_handle: AppHandle<Wry>) 
         &instance_name,
         account_manager.get_active_account().unwrap(),
     );
-    instance_manager.emit_logs_for_running_instance(instance_name.into(), app_handle.clone());
+    instance_manager.tick_instance(instance_name, app_handle.clone());
+    // instance_manager.emit_logs_for_running_instance(instance_name.into(), app_handle.clone());
+    // test_poll_children(app_handle.clone());
 }
 
 // FIXME: Instance names can be different from the directory name its stored in.
@@ -336,7 +336,9 @@ pub async fn get_screenshots(app_handle: AppHandle<Wry>) -> HashMap<String, Vec<
             let mut screenshots: Vec<String> = Vec::new();
             for path in paths {
                 let file_name = path.unwrap().file_name();
-                screenshots.push(file_name.to_str().unwrap().into());
+                let file_name_str = file_name.to_str().unwrap();
+                let path = app_handle.path_resolver().app_config_dir().unwrap().join(format!("instances/{}/screenshots/{}", &instance, file_name_str));
+                screenshots.push(path_to_utf8_str(&path).into());
             }
             instance_screenshots.insert(instance, screenshots);
         }
@@ -391,7 +393,7 @@ fn create_log_map(
     Ok(result)
 }
 
-// FIXME: This nested map is not a great idea, could just send over the file names and have js access the lines. 
+// FIXME: This nested map is not a great idea, could just send over the file names and have js access the lines.
 #[tauri::command(async)]
 pub async fn get_logs(app_handle: AppHandle<Wry>) -> HashMap<String, HashMap<String, Vec<String>>> {
     let instance_state: State<InstanceState> = app_handle

@@ -3,7 +3,7 @@
 </script>
 
 <script lang="ts">
-    import { invoke } from "@tauri-apps/api";
+    import { screenshotStore } from "../../screenshotstore";
 
     import ScreenshotRow from "./ScreenshotRow.svelte";
 
@@ -11,22 +11,12 @@
         console.log('here', this);
     }
 
-    function sortScreenshotMap(screenshotMap) {
-        let original = Object.entries(screenshotMap);
-        let sorted = new Map<string, string[]>();
-        for (const [key, values] of original) {
-            sorted.set(key, (values as string[]).sort().reverse());
-        }
-        return [...sorted];
-    }
 </script>
 
 <div class="images">
-    {#await invoke("get_screenshots") then screenshotMap}
-        {#each sortScreenshotMap(screenshotMap) as [key, value]}
-            <ScreenshotRow key={key} value={value} on:click={test}/>
-        {/each}
-    {/await}
+    {#each [...$screenshotStore] as [key, value]}
+        <ScreenshotRow key={key} value={value} on:click={test}/>
+    {/each}
 </div>
 <svelte:body on:contextmenu|preventDefault/>
 

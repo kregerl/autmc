@@ -113,9 +113,6 @@ fn rules_match(rules: &[Rule]) -> bool {
     result
 }
 
-// HACK: This key generation to get the java version is not optimal and could
-//       use to be redone. This uses architecture to map to known java manifest versions.
-//       If the manifest ever changes this function most likely needs to be updated.
 fn determine_key_for_java_manifest<'a>(
     java_version_manifest_map: &HashMap<String, JavaManifest>,
 ) -> &'a str {

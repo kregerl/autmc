@@ -4,21 +4,20 @@
 
 <script lang="ts">
     import { afterUpdate, onMount } from "svelte";
-    import { writableMap } from "../../../logstore";
+    import { logStore } from "../../../logstore";
     import DropdownMenu from "./DropdownMenu.svelte";
 
     // Parent scrollable div
-    export let element: HTMLDivElement;
+    let element: HTMLUListElement;
     let selectedInstance: string;
     let selectedLog: string;
 
     $: if (selectedInstance) {
-        console.log("Updated: ", $writableMap.get(selectedInstance).keys())
         resetSelectedLog();
     }
 
     function resetSelectedLog() {
-        selectedLog = $writableMap.get(selectedInstance).keys().next().value;
+        selectedLog = $logStore.get(selectedInstance).keys().next().value;
     }
 
     $: if (selectedLog) {
@@ -29,15 +28,16 @@
         scrollToBottom();
     }
 
-    $: logOptions = [...$writableMap.get(selectedInstance).keys()];
-    $: instanceOptions = [...$writableMap.keys()];
+    $: logOptions = [...$logStore.get(selectedInstance).keys()];
+    $: instanceOptions = [...$logStore.keys()];
 
     afterUpdate(() => {
         scrollToBottom();
     });
 
     function scrollToBottom() {
-        element.scroll({ top: element.scrollHeight, behavior: "smooth" });
+        if (selectedLog === "running")
+            element.scroll({ top: element.scrollHeight, behavior: "smooth" });
     }
 
     function isError(line) {
@@ -60,14 +60,19 @@
 
     let logs: string[];
     function updateLogs() {
-        logs = $writableMap.get(selectedInstance).get(selectedLog);
+        logs = $logStore.get(selectedInstance).get(selectedLog);
     }
 
-    writableMap.subscribe((value) => {
-        console.log("value", value)
-        selectedInstance = value.keys().next().value;
-        console.log("selectedInstance", selectedInstance);
-        selectedLog = value.get(selectedInstance).keys().next().value;
+    logStore.subscribe((value) => {
+        console.log("Value: ", value);
+        if (selectedInstance === undefined) {
+            selectedInstance = value.keys().next().value;
+            console.log("selectedInstance", selectedInstance);
+        }
+        if (selectedLog === undefined) {
+            selectedLog = value.get(selectedInstance).keys().next().value;
+            console.log("selectedLog", selectedInstance);
+        }
         updateLogs();
     });
 </script>
@@ -80,7 +85,7 @@
         />
         <DropdownMenu options={logOptions} bind:selected={selectedLog} />
     </div>
-    <ul>
+    <ul bind:this={element}>
         {#each logs as line}
             <li class={getClassForLine(line)}>{line}</li>
         {/each}
@@ -116,6 +121,7 @@
         padding: 8px;
         font-size: 1.25rem;
         background-color: #444;
+        word-wrap: break-word;
     }
 
     li.error {

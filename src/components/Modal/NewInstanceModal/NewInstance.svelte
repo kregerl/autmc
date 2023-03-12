@@ -105,7 +105,8 @@
             <h1>TODO</h1>
         {/if}
     </div>
-    <button class="next-button dropshadow" on:click={next}>Next</button>
+     <!--TODO: disable this button when the name already exists.  -->
+    <button class="next-button dropshadow" on:click={next} >Next</button>
 </div>
 
 <style>

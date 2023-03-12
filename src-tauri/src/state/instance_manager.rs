@@ -3,13 +3,17 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     fs::{self, File},
-    io::{self, BufRead, BufReader, Write},
+    io::{self, BufReader, Write},
     path::{Path, PathBuf},
-    process::{Child, Command, Stdio},
-    sync::{Arc, Mutex},
-    thread::{self, JoinHandle},
+    process::Stdio,
+    sync::Arc,
 };
-use tauri::{async_runtime::Mutex as AsyncMutex, AppHandle, Manager, Wry};
+use tauri::{
+    async_runtime::{JoinHandle, Mutex as AsyncMutex},
+    AppHandle, Manager, Wry,
+};
+use tokio::io::{AsyncBufReadExt, BufReader as AsyncBufReader};
+use tokio::process::{Child, Command};
 
 use crate::web_services::resources::substitute_account_specific_arguments;
 
@@ -36,7 +40,7 @@ pub struct InstanceManager {
     app_dir: PathBuf,
     instance_map: HashMap<String, InstanceConfiguration>,
     // <Instance name, child process>
-    children: HashMap<String, Arc<Mutex<Child>>>,
+    children: HashMap<String, Arc<AsyncMutex<Child>>>,
     logging_threads: HashMap<String, JoinHandle<()>>,
 }
 
@@ -121,53 +125,70 @@ impl InstanceManager {
                 command
                     .current_dir(working_dir)
                     .args(args)
-                    .stdout(Stdio::piped());
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped());
                 debug!("Command: {:#?}", command);
                 let child = command.spawn().expect("Could not spawn instance.");
                 self.children
-                    .insert(instance_name.into(), Arc::new(Mutex::new(child)));
+                    .insert(instance_name.into(), Arc::new(AsyncMutex::new(child)));
             }
             None => error!("Unknown instance name: {}", instance_name),
         }
     }
 
-    pub fn emit_logs_for_running_instance(
-        &mut self,
-        instance_name: String,
-        app_handle: AppHandle<Wry>,
-    ) {
+    pub fn tick_instance(&mut self, instance_name: String, app_handle: AppHandle<Wry>) {
         if let Some(instance) = self.get_running_instance() {
             let name = instance_name.clone();
-            // FIXME: Save thread handle in a map and when and instance is exited, 'join' the thread handle to get its status.
-            // https://doc.rust-lang.org/std/thread/
-            // To learn when a thread completes, it is necessary to capture the JoinHandle object that is
-            // returned by the call to spawn, which provides a join method that allows the caller to
-            // wait for the completion of the spawned thread:
-            let handle = thread::spawn(move || {
+            let handle = tauri::async_runtime::spawn(async move {
+                let mut child = instance.lock().await;
+                let stdout = child
+                    .stdout
+                    .take()
+                    .expect("Child did not have stdout handle.");
+                let stderr = child
+                    .stderr
+                    .take()
+                    .expect("Child did not have stderr handle.");
+
+                let mut stdout_reader = AsyncBufReader::new(stdout).lines();
+                let mut stderr_reader = AsyncBufReader::new(stderr).lines();
+
                 #[derive(Serialize, Clone)]
                 struct Logging {
                     instance_name: String,
                     category: String,
                     line: String,
                 }
-                if let Ok(mut child) = instance.lock() {
-                    let stdout = child.stdout.as_mut().unwrap();
-                    let reader = BufReader::new(stdout);
-                    for line in reader.lines() {
-                        match line {
-                            Ok(l) => app_handle
-                                .emit_all(
-                                    "instance-logging",
-                                    Logging {
-                                        instance_name: instance_name.clone(),
-                                        category: "Active".into(),
-                                        line: l,
-                                    },
-                                )
-                                .unwrap(),
-                            Err(error) => error!("Error reading child process's stdout: {}", error),
+
+                // TODO: Emit an event to the screenshot store when a screenshot is taken. use notifier crate. 
+                'thread: loop {
+                    tokio::select! {
+                        result = stdout_reader.next_line() => {
+                            match result {
+                                Ok(Some(line)) => {
+                                    app_handle.emit_all("instance-logging", Logging { instance_name: instance_name.clone(), category: "running".into(), line }).unwrap();
+                                },
+                                Err(_) => break,
+                                _ => (),
+                            }
                         }
-                    }
+                        result = stderr_reader.next_line() => {
+                            match result {
+                                Ok(Some(line)) => debug!("Emit stderr line: {}", line),
+                                Err(_) => break,
+                                _ => (),
+                            }
+                        }
+                        result = child.wait() => {
+                            match result {
+                                Ok(exit_status) => {
+                                    debug!("Child exited with exit code: {}", exit_status);
+                                    break 'thread;
+                                },
+                                Err(_) => break,
+                            }
+                        }
+                    };
                 }
             });
             self.logging_threads.insert(name, handle);
@@ -175,7 +196,7 @@ impl InstanceManager {
     }
 
     // FIXME: This is just getting a random running instance sine we only really support 1 running instance currently.
-    fn get_running_instance(&self) -> Option<Arc<Mutex<Child>>> {
+    fn get_running_instance(&self) -> Option<Arc<AsyncMutex<Child>>> {
         match self.children.iter().next() {
             Some(entry) => Some(entry.1.clone()),
             None => None,

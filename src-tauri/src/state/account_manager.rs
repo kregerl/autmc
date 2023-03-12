@@ -4,9 +4,10 @@ use std::{
     io::{BufReader, Error, Write},
     path::{Path, PathBuf},
     sync::Arc,
+    time::{SystemTime, UNIX_EPOCH},
 };
 
-use log::info;
+use log::{debug, info};
 use serde::{Deserialize, Serialize};
 use tauri::async_runtime::Mutex;
 
@@ -100,6 +101,16 @@ impl AccountManager {
     /// Add and activate an account, overwriting any existing accounts with the same uuid.
     pub fn add_and_activate_account(&mut self, account: Account) {
         self.activate_account(&account.uuid.clone());
+        let start = SystemTime::now();
+        let since_the_epoch = start
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards");
+        debug!(
+            "{} :: Account will need to be refreshed at MC:{} MS:{}",
+            since_the_epoch.as_secs(),
+            account.minecraft_access_token_expiry,
+            account.microsoft_access_token_expiry
+        );
         self.add_account(account);
         info!(
             "Added and activated account: {}",
