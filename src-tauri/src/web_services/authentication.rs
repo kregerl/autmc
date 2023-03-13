@@ -150,7 +150,7 @@ pub enum AuthMode {
     MinecraftRefresh {
         access_token: String,
         refresh_token: String,
-        access_token_expiry: i64,
+        access_token_expiry: u64,
     },
 }
 
@@ -295,7 +295,7 @@ pub async fn authenticate(auth_mode: AuthMode) -> AuthResult<Account> {
             let authorization_code = retrieve_authorization_code(&uri)?;
             let auth_mode = MicrosoftGrantType::Authorization(authorization_code);
             let microsoft_auth_response = obtain_microsoft_token(auth_mode).await?;
-            let expiry = now + (microsoft_auth_response.expires_in - 10) as i64;
+            let expiry = now as u64 + (microsoft_auth_response.expires_in - 10) as u64;
             (
                 microsoft_auth_response.access_token,
                 microsoft_auth_response.refresh_token,
@@ -306,7 +306,7 @@ pub async fn authenticate(auth_mode: AuthMode) -> AuthResult<Account> {
             // Use the refresh token to get a new access token.
             let microsoft_auth_response =
                 obtain_microsoft_token(MicrosoftGrantType::Refresh(refresh_token)).await?;
-            let expiry = now + (microsoft_auth_response.expires_in - 10) as i64;
+            let expiry = now as u64 + (microsoft_auth_response.expires_in - 10) as u64;
             (
                 microsoft_auth_response.access_token,
                 microsoft_auth_response.refresh_token,
@@ -328,7 +328,7 @@ pub async fn authenticate(auth_mode: AuthMode) -> AuthResult<Account> {
     let user_hash = xsts_auth_response.get_user_hash().unwrap();
     let minecraft_auth_response =
         obtain_minecraft_token(&xsts_auth_response.token, &user_hash).await?;
-    let minecraft_auth_expiry = now + (minecraft_auth_response.expires_in - 10) as i64;
+    let minecraft_auth_expiry = now as u64 + (minecraft_auth_response.expires_in - 10) as u64;
     debug!("Minecraft Token: {:#?}", minecraft_auth_response);
     // REVIEW: Since Xbox Game Pass users don't technically own the game, the entitlement endpoint will show as such.
     // It should be used to check the official public key from liblauncher.so but whats the point in checking if
@@ -351,7 +351,7 @@ pub async fn authenticate(auth_mode: AuthMode) -> AuthResult<Account> {
 }
 
 pub async fn validate_account(account: &Account) -> AuthResult<Account> {
-    let now = chrono::Local::now().timestamp();
+    let now = chrono::Local::now().timestamp() as u64;
     // Account expired.
     if account.minecraft_access_token_expiry <= now {
         debug!(

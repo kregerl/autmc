@@ -4,12 +4,15 @@ use std::{
     io::{BufReader, Error, Write},
     path::{Path, PathBuf},
     sync::Arc,
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use log::{debug, info};
+use log::{debug, error, info};
 use serde::{Deserialize, Serialize};
-use tauri::async_runtime::Mutex;
+use tauri::async_runtime::{JoinHandle, Mutex};
+use tokio::time::sleep;
+
+use crate::web_services::authentication::{authenticate, AuthMode};
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Account {
@@ -18,10 +21,10 @@ pub struct Account {
     // FIXME: Cache downloaded skins instead of saving url to download everytime.
     pub skin_url: String,
     pub microsoft_access_token: String,
-    pub microsoft_access_token_expiry: i64,
+    pub microsoft_access_token_expiry: u64,
     pub microsoft_refresh_token: String,
     pub minecraft_access_token: String,
-    pub minecraft_access_token_expiry: i64,
+    pub minecraft_access_token_expiry: u64,
 }
 
 #[derive(Debug)]
@@ -100,7 +103,7 @@ impl AccountManager {
 
     /// Add and activate an account, overwriting any existing accounts with the same uuid.
     pub fn add_and_activate_account(&mut self, account: Account) {
-        self.activate_account(&account.uuid.clone());
+        let uuid = &account.uuid.clone();
         let start = SystemTime::now();
         let since_the_epoch = start
             .duration_since(UNIX_EPOCH)
@@ -112,6 +115,7 @@ impl AccountManager {
             account.microsoft_access_token_expiry
         );
         self.add_account(account);
+        self.activate_account(uuid);
         info!(
             "Added and activated account: {}",
             self.active.as_ref().unwrap()
@@ -121,6 +125,26 @@ impl AccountManager {
     // Activate the account associated with uuid
     pub fn activate_account(&mut self, uuid: &str) {
         self.active = Some(uuid.to_owned());
+        // Can unwrap here since we just set `self.active`
+        let account = self.get_account(uuid).unwrap().clone();
+        // tauri::async_runtime::spawn(async move {
+        //     if account.minecraft_access_token_expiry < account.microsoft_access_token_expiry {
+        //         // sleep(Duration::from_secs(account.minecraft_access_token_expiry)).await;
+        //         sleep(Duration::from_secs(10)).await;
+        //         debug!("Refresh Minecraft");
+        //         // Minecraft
+        //     } else {
+        //         // sleep(Duration::from_secs(account.microsoft_access_token_expiry)).await;
+        //         sleep(Duration::from_secs(10)).await;
+        //         debug!("Refresh Microsoft");
+        //         let mode = AuthMode::MicrosoftRefresh(account.microsoft_refresh_token);
+        //         let account_res = authenticate(mode).await;
+        //         match account_res {
+        //             Ok(account) => self.add_and_activate_account(account),
+        //             Err(e) => error!("Issue re-authenticating with microsoft: {}", e.to_string()),
+        //         }
+        //     }
+        // });
     }
 
     /// Adds an account, overwriting any existing accounts with the same uuid.
