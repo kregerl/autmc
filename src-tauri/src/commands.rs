@@ -111,11 +111,11 @@ pub async fn obtain_manifests(app_handle: AppHandle<Wry>) -> ManifestResult<Vers
     let resource_state: State<ResourceState> = app_handle
         .try_state()
         .expect("`ResourceState` should already be managed.");
-    let resource_manager = resource_state.0.lock().await;
+    let mut resource_manager = resource_state.0.lock().await;
 
-    let vanilla_versions = resource_manager.get_vanilla_version_list();
-    let fabric_versions = resource_manager.get_fabric_version_list();
-    let forge_versions = resource_manager.get_forge_version_list();
+    let vanilla_versions = resource_manager.get_vanilla_version_list().await?;
+    let fabric_versions = resource_manager.get_fabric_version_list().await?;
+    let forge_versions = resource_manager.get_forge_version_list().await?;
 
     Ok(VersionManifest {
         vanilla_versions,

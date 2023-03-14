@@ -1,10 +1,11 @@
 <script lang="ts">
-    import {
-        getManifest,
-        isValidVersionForForge,
-        VersionEntry,
-        VersionManifest,
-    } from "../../../manifest";
+    import { isValidVersionForForge, manifestStore, VersionEntry, VersionManifest} from "../../../manifeststore";
+    // import {
+    //     getManifest,
+    //     isValidVersionForForge,
+    //     VersionEntry,
+    //     VersionManifest,
+    // } from "../../../manifest";
     import { updateSelectionClasses } from "../../../selectable";
     import VanillaVersionTable from "./VanillaVersionTable.svelte";
     import VersionTable, { Row } from "./VersionTable.svelte";
@@ -32,14 +33,12 @@
     $: if (
         selectedModloader === "Forge" &&
         selectedVanillaVersion !== undefined &&
-        !isValidVersionForForge(selectedVanillaVersion)
+        !isValidVersionForForge($manifestStore, selectedVanillaVersion)
     ) {
         console.log("Here: ", selectedVanillaVersion);
         selectedModloader = updateSelectionClasses("None", buttons);
     }
     $: modloaderFilters = getModloaderFilters(selectedModloader);
-
-    let getManifestPromise = getManifest();
 
     // TODO: Forge filters
     function getModloaderFilters(modloader: string) {
@@ -53,7 +52,7 @@
     function updateModloaderSelection() {
         if (this.classList.contains("disabled")) return;
         selectedModloader = updateSelectionClasses(this.id, buttons);
-        if (selectedModloader !== "None") getManifestPromise = getManifest();
+        // if (selectedModloader !== "None") getManifestPromise = getManifest();
     }
 
     function getBodyForModloaderTable(manifest: VersionManifest): Row[] {
@@ -108,15 +107,13 @@
         <div class="vanilla-header">
             <h3>Vanilla</h3>
         </div>
-        {#await getManifestPromise then manifest}
-            <VanillaVersionTable
-                versionEntries={applyVanillaVersionFilters(
-                    manifest.vanilla_versions,
-                    filters
-                )}
-                bind:selected={selectedVanillaVersion}
-            />
-        {/await}
+        <VanillaVersionTable
+            versionEntries={applyVanillaVersionFilters(
+                $manifestStore.vanilla_versions,
+                filters
+            )}
+            bind:selected={selectedVanillaVersion}
+        />
     </div>
 
     <div class="modloader-version">
@@ -126,7 +123,7 @@
                     id={button}
                     class="tab menu-button {i === 0 ? 'selected' : ''}
                     {button === 'Forge' &&
-                    !isValidVersionForForge(selectedVanillaVersion)
+                    !isValidVersionForForge($manifestStore, selectedVanillaVersion)
                         ? 'disabled'
                         : ''}"
                     on:click={updateModloaderSelection}
@@ -137,17 +134,15 @@
             {/each}
         </div>
         {#if selectedModloader !== "None"}
-            {#await getManifestPromise then manifest}
-                {#if getBodyForModloaderTable(manifest).length < 1}
-                    <h3>Nothing</h3>
-                {:else}
-                    <VersionTable
-                        headers={getHeadersForModloaderTable()}
-                        body={getBodyForModloaderTable(manifest)}
-                        bind:selected={selectedModloaderVersion}
-                    />
-                {/if}
-            {/await}
+            {#if getBodyForModloaderTable($manifestStore).length < 1}
+                <h3>Nothing</h3>
+            {:else}
+                <VersionTable
+                    headers={getHeadersForModloaderTable()}
+                    body={getBodyForModloaderTable($manifestStore)}
+                    bind:selected={selectedModloaderVersion}
+                />
+            {/if}
         {:else}
             <h3>No Modloader Selected</h3>
         {/if}

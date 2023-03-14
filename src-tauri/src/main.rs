@@ -143,16 +143,6 @@ fn setup(app: &mut App<Wry>) -> Result<(), Box<(dyn StdError + 'static)>> {
                 }
             }
         }
-
-        // Download manifests into the resource manager
-        let resource_state: tauri::State<ResourceState> = app_handle
-            .try_state()
-            .expect("`ResourceState` should already be managed.");
-        let mut resource_manager = resource_state.0.lock().await;
-        match resource_manager.download_manifests().await {
-            Ok(_) => {}
-            Err(error) => error!("Manifest Error: {:#?}", error),
-        }
     });
     Ok(())
 }

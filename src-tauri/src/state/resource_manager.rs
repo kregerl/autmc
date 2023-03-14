@@ -163,53 +163,72 @@ impl ResourceManager {
         self.app_dir.join("instances")
     }
 
-    pub async fn download_manifests(&mut self) -> ManifestResult<()> {
-        info!("Downloading manifests");
+    async fn download_fabric_manifest(&mut self) -> reqwest::Result<()> {
+        info!("Downloading fabric manifest");
         let client = reqwest::Client::new();
-        let vanilla_response = client.get(VANILLA_MANIFEST_URL).send().await?;
-        let vanilla_manifest = vanilla_response.json::<VanillaManifest>().await?;
-        self.vanilla_manifest = Some(vanilla_manifest);
-
-        let forge_response = client.get(FORGE_MANIFEST_URL).send().await?;
-        let forge_manifest = forge_response.json::<ForgeManifest>().await?;
-        self.forge_manifest = Some(forge_manifest);
-
         let fabric_manifest_url = format!("{}/{}", FABRIC_BASE_URL, "versions/loader");
         let fabric_response = client.get(fabric_manifest_url).send().await?;
         let fabric_manifest = fabric_response.json::<FabricLoaderManifest>().await?;
         self.fabric_manifest = Some(fabric_manifest);
-
         Ok(())
     }
 
+    async fn download_forge_manifest(&mut self) -> reqwest::Result<()> {
+        info!("Downloading forge manifest");
+        let client = reqwest::Client::new();
+        let forge_response = client.get(FORGE_MANIFEST_URL).send().await?;
+        let forge_manifest = forge_response.json::<ForgeManifest>().await?;
+        self.forge_manifest = Some(forge_manifest);
+        Ok(())
+    }
+
+    async fn download_vanilla_manifest(&mut self) -> reqwest::Result<()> {
+        info!("Downloading vanilla manifest");
+        let client = reqwest::Client::new();
+        let vanilla_response = client.get(VANILLA_MANIFEST_URL).send().await?;
+        let vanilla_manifest = vanilla_response.json::<VanillaManifest>().await?;
+        self.vanilla_manifest = Some(vanilla_manifest);
+        Ok(())
+    }
+
+
     /// Gets a list of all vanilla versions
-    pub fn get_vanilla_version_list(&self) -> Vec<VersionEntry> {
+    pub async fn get_vanilla_version_list(&mut self) -> reqwest::Result<Vec<VersionEntry>> {
         let mut result: Vec<VersionEntry> = Vec::new();
+        if self.vanilla_manifest.is_none() {
+            self.download_vanilla_manifest().await?;
+        }
         if let Some(manifest) = &self.vanilla_manifest {
             for (version, version_info) in &manifest.versions {
                 result.push(VersionEntry::new(version, version_info));
             }
         }
-        result
+        Ok(result)
     }
 
-    pub fn get_fabric_version_list(&self) -> Vec<String> {
+    pub async fn get_fabric_version_list(&mut self) -> reqwest::Result<Vec<String>> {
         let mut result = Vec::new();
+        if self.fabric_manifest.is_none() {
+            self.download_fabric_manifest().await?;
+        }
         if let Some(manifest) = &self.fabric_manifest {
             let FabricLoaderManifest(vec) = manifest;
             for entry in vec {
                 result.push(entry.version.to_owned());
             }
         }
-        result
+        Ok(result)
     }
 
-    pub fn get_forge_version_list(&self) -> HashMap<String, Vec<String>> {
-        if let Some(manifest) = &self.forge_manifest {
+    pub async fn get_forge_version_list(&mut self) -> reqwest::Result<HashMap<String, Vec<String>>> {
+        if self.forge_manifest.is_none() {
+            self.download_forge_manifest().await?;
+        }
+        Ok(if let Some(manifest) = &self.forge_manifest {
             manifest.0.to_owned()
         } else {
             HashMap::new()
-        }
+        })
     }
 
     /// Get the vanilla manifest for a given mc_version. Returns None if mc_version is invalid.

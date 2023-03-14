@@ -9,6 +9,7 @@
     import { logStore } from "./logstore";
     import { screenshotStore } from "./screenshotstore";
     import { invoke } from "@tauri-apps/api/tauri";
+    import { manifestStore } from "./manifeststore";
 
     interface Payload {
         instance_name: string;
@@ -26,11 +27,20 @@
             let payload = event.payload as Payload;
             console.log("payload", payload);
             let currentMap = $logStore.get(payload.instance_name) ?? new Map();
-            if ($logStore.has(payload.instance_name) && $logStore.get(payload.instance_name).has("running")) {
+            if (
+                $logStore.has(payload.instance_name) &&
+                $logStore.get(payload.instance_name).has("running")
+            ) {
                 let currentLines = currentMap.get("running");
-                $logStore = $logStore.set(payload.instance_name, currentMap.set("running", [...currentLines, payload.line]));
+                $logStore = $logStore.set(
+                    payload.instance_name,
+                    currentMap.set("running", [...currentLines, payload.line])
+                );
             } else {
-                $logStore = $logStore.set(payload.instance_name, currentMap.set("running", [payload.line]));
+                $logStore = $logStore.set(
+                    payload.instance_name,
+                    currentMap.set("running", [payload.line])
+                );
             }
         });
 
@@ -49,6 +59,9 @@
         $screenshotStore = await invoke("get_screenshots");
         screenshotStore.sort();
         console.log("$screenshotStore", $screenshotStore);
+
+        $manifestStore = await invoke("obtain_manifests");
+        console.log("$manifestStore", $manifestStore);
         // unlistener = await listen("auth_result", (event) => {
         //     console.log(event);
         //     console.log("Here");
@@ -66,7 +79,7 @@
     <Route path="/" component={Home} />
     <Route path="/login" component={Login} />
     <Route path="/new-instance" component={NewInstance} />
-    <Route path="/test" component={Loading}/>
+    <Route path="/test" component={Loading} />
 </Router>
 
 <style>
