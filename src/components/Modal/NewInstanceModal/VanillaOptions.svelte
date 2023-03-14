@@ -1,11 +1,5 @@
 <script lang="ts">
-    import { isValidVersionForForge, manifestStore, VersionEntry, VersionManifest} from "../../../manifeststore";
-    // import {
-    //     getManifest,
-    //     isValidVersionForForge,
-    //     VersionEntry,
-    //     VersionManifest,
-    // } from "../../../manifest";
+    import { isValidVersionForForge, manifestStore, VersionEntry, VersionManifest} from "../../../store/manifeststore";
     import { updateSelectionClasses } from "../../../selectable";
     import VanillaVersionTable from "./VanillaVersionTable.svelte";
     import VersionTable, { Row } from "./VersionTable.svelte";

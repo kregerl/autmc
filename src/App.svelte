@@ -6,10 +6,10 @@
     import Loading from "./components/Loader/Loading.svelte";
     import { listen, UnlistenFn } from "@tauri-apps/api/event";
     import { onDestroy, onMount } from "svelte";
-    import { logStore } from "./logstore";
-    import { screenshotStore } from "./screenshotstore";
+    import { logStore } from "./store/logstore";
+    import { screenshotStore } from "./store/screenshotstore";
     import { invoke } from "@tauri-apps/api/tauri";
-    import { manifestStore } from "./manifeststore";
+    import { manifestStore } from "./store/manifeststore";
 
     interface Payload {
         instance_name: string;

@@ -1,5 +1,5 @@
 <script lang="ts">
-    import type { VersionEntry } from "../../../manifeststore";
+    import type { VersionEntry } from "../../../store/manifeststore";
 
     export let versionEntries: VersionEntry[];
 
