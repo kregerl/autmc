@@ -3,7 +3,7 @@
 </script>
 
 <script lang="ts">
-    import { screenshotStore } from "../../screenshotstore";
+    import { screenshotStore } from "../../store/screenshotstore";
 
     import ScreenshotRow from "./ScreenshotRow.svelte";
 

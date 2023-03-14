@@ -4,11 +4,10 @@
 
 <script lang="ts">
     import { invoke } from "@tauri-apps/api/tauri";
+    import { instanceStore } from "../../store/instancestore";
     import NewInstance from "../Modal/NewInstanceModal/NewInstance.svelte";
     import RightClickMenu from "../RightClickMenu.svelte";
 
-    // FIXME: All instances are hidden briefly when this gets changed since its being awaited on. 
-    let promise = getInstances();
     let showNewInstanceModal = false;
 
     function createNewInstance() {
@@ -23,41 +22,18 @@
         await invoke("launch_instance", { instanceName: this.id });
         console.log(this);
     }
-
-    async function getInstances(): Promise<string[]> {
-        return invoke("load_instances");
-    }
 </script>
-
 
 <div class="header">
     <button class="new-instance" on:click={createNewInstance}>
-        <svg
-            fill="#FFF"
-            version="1.1"
-            id="Layer_1"
-            xmlns="http://www.w3.org/2000/svg"
-            xmlns:xlink="http://www.w3.org/1999/xlink"
-            x="0px"
-            y="0px"
-            viewBox="0 0 512 512"
-            style="enable-background:new 0 0 512 512;"
-            xml:space="preserve">
-            <g>
-                <g>
-                    <polygon
-                        points="289.391,222.609 289.391,0 222.609,0 222.609,222.609 0,222.609 0,289.391 222.609,289.391 222.609,512 
-			289.391,512 289.391,289.391 512,289.391 512,222.609 		"
-                    />
-                </g>
-            </g>
-        </svg>
+        <img src="svg/PlusSign.svg" alt="New instance" />
     </button>
     <input type="text" placeholder="Search Instances" />
 </div>
 <div class="instance-grid">
-    {#await promise then instances}
-        {#each instances as instance}
+    <!-- FIXME: Remove this undefined check. -->
+    {#if $instanceStore !== undefined}
+        {#each $instanceStore as instance}
             <div
                 id={instance}
                 class="instance"
@@ -67,14 +43,13 @@
                 {instance}
             </div>
         {/each}
-    {/await}
+    {/if}
 </div>
 
-<!-- TODO: Use this  -->
-<RightClickMenu validClasses={["instance"]}/>
+<RightClickMenu validClasses={["instance"]} />
 
 {#if showNewInstanceModal}
-    <NewInstance on:close={closeModal} bind:instances={promise}/>
+    <NewInstance on:close={closeModal} />
 {/if}
 
 <style>
@@ -83,10 +58,7 @@
         align-items: center;
         position: sticky;
         top: 0;
-        background-image: linear-gradient(
-            #444,
-            #333
-        );
+        background-image: linear-gradient(#444, #333);
         width: 100%;
         height: 60px;
     }
@@ -108,13 +80,13 @@
         cursor: pointer;
     }
 
-    svg {
+    img {
         width: 20px;
         height: 20px;
     }
 
     .new-instance {
-        background-color: #4E4E4E;
+        background-color: #4e4e4e;
         border: 0px;
         width: 50px;
         height: 50px;
@@ -124,11 +96,11 @@
     }
 
     .new-instance:hover {
-        background-color: #5E5E5E;
+        background-color: #5e5e5e;
     }
 
     .new-instance:active {
-        background-color: #6E6E6E;
+        background-color: #6e6e6e;
     }
 
     input[type="text"] {

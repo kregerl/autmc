@@ -80,8 +80,8 @@
         position: absolute;
         left: 50%;
         top: 50%;
-        width: calc(100vw - 20%);
-        height: calc(100vh - 20%);
+        width: calc(100vw - 12%);
+        height: calc(100vh - 12%);
         transform: translate(-50%, -50%);
         box-shadow: 5px 5px 16px 2px rgba(0, 0, 0, 0.75);
         z-index: 100;

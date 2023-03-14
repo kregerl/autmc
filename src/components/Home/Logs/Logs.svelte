@@ -4,7 +4,7 @@
 
 <script lang="ts">
     import { afterUpdate, onMount } from "svelte";
-    import { logStore } from "../../../logstore";
+    import { logStore } from "../../../store/logstore";
     import DropdownMenu from "./DropdownMenu.svelte";
 
     // Parent scrollable div

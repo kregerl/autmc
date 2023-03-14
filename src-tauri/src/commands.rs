@@ -3,7 +3,7 @@ use std::{
     env,
     fs::{self},
     io::{self, BufRead, BufReader, Read},
-    path::{Path, PathBuf},
+    path::{Path},
     process::{Command, Stdio},
 };
 
@@ -131,7 +131,7 @@ pub async fn obtain_version(
     modloader_version: String,
     instance_name: String,
     app_handle: AppHandle<Wry>,
-) -> ManifestResult<Vec<String>> {
+) -> ManifestResult<()> {
     debug!(
         "Creating instance {} from mc:{} ml:{} mlv:{}",
         instance_name, vanilla_version, modloader_type, modloader_version
@@ -140,7 +140,7 @@ pub async fn obtain_version(
         vanilla_version,
         modloader_type,
         modloader_version,
-        instance_name,
+        instance_name.clone(),
         &app_handle,
     )
     .await?;
@@ -150,18 +150,8 @@ pub async fn obtain_version(
     let mut instance_manager = instance_state.0.lock().await;
 
     instance_manager.deserialize_instances();
-    Ok(instance_manager.get_instance_names())
-}
-
-#[tauri::command(async)]
-pub async fn get_instance_path(name: String, app_handle: AppHandle<Wry>) -> PathBuf {
-    debug!("Name: {}", name);
-    let resource_state: State<ResourceState> = app_handle
-        .try_state()
-        .expect("`ResourceState` should already be managed.");
-    let resource_manager = resource_state.0.lock().await;
-
-    resource_manager.instances_dir().join(name)
+    app_handle.emit_all("new-instance", instance_name).unwrap();
+    Ok(())
 }
 
 #[derive(Debug, Serialize)]

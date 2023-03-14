@@ -16,6 +16,10 @@
 
     const buttons = [INSTANCE_ID, "Servers", SCREENSHOTS_ID, LOGS_ID];
 
+    function openDevTools() {
+        invoke("open_dev_tools");
+    }
+
     function switchUser() {
         navigate("/login");
     }
@@ -32,7 +36,7 @@
 
 <nav>
     <div class="launcher-header">
-        <div class="title">
+        <div class="title" on:click={openDevTools}>
             <h1 class="header dropshadow">{launcherName}</h1>
             <span>v{launcherVersion}</span>
         </div>

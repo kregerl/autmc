@@ -118,7 +118,8 @@
 {#if show}
     <div
         class="menu"
-        style="top: {pos.y}px; left:{pos.x}px"
+        style:--x-pos="{pos.x}px"
+        style:--y-pos="{pos.y}px"
         use:clickOutside={close}
     >
         {#each buttons as button}
@@ -156,6 +157,8 @@
         border-radius: 4px;
         background-color: #272727;
         width: 8vw;
+        top: var(--y-pos);
+        left: var(--x-pos);
     }
 
     .button {

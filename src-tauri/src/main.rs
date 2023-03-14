@@ -11,7 +11,7 @@ mod tests;
 mod web_services;
 
 use commands::show_microsoft_login_page;
-use log::{error, info, warn};
+use log::{error, info, warn, debug};
 use regex::Regex;
 use serde::ser::StdError;
 use state::{account_manager::AccountState, redirect};
@@ -27,8 +27,8 @@ use web_services::authentication::{authenticate, validate_account, AuthMode};
 
 use crate::{
     commands::{
-        get_account_skin, get_accounts, get_instance_path, launch_instance, load_instances,
-        login_to_account, obtain_manifests, obtain_version, open_folder, get_screenshots, get_logs,
+        get_account_skin, get_accounts, get_logs, get_screenshots, launch_instance, load_instances,
+        login_to_account, obtain_manifests, obtain_version, open_folder,
     },
     state::{instance_manager::InstanceState, resource_manager::ResourceState},
 };
@@ -53,7 +53,6 @@ fn main() {
             show_microsoft_login_page,
             obtain_manifests,
             obtain_version,
-            get_instance_path,
             load_instances,
             get_account_skin,
             launch_instance,
@@ -165,7 +164,7 @@ fn autmc_uri_scheme(
     tauri::async_runtime::spawn(async move {
         let auth_mode = AuthMode::Full(url);
         let authentication_result = authenticate(auth_mode).await;
-        
+
         // If the result if an error, emit error to user
         if let Err(authentication_error) = &authentication_result {
             if let Err(error) = handle.emit_to(

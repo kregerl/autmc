@@ -46,7 +46,6 @@
     function updateModloaderSelection() {
         if (this.classList.contains("disabled")) return;
         selectedModloader = updateSelectionClasses(this.id, buttons);
-        // if (selectedModloader !== "None") getManifestPromise = getManifest();
     }
 
     function getBodyForModloaderTable(manifest: VersionManifest): Row[] {

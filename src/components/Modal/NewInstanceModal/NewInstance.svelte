@@ -1,11 +1,11 @@
 <script lang="ts">
+    import { invoke, path } from "@tauri-apps/api";
+    import { appConfigDir } from '@tauri-apps/api/path';
     import { updateSelectionClasses } from "../../../selectable";
     import { createEventDispatcher } from "svelte";
-    import { invoke } from "@tauri-apps/api";
     import VanillaOptions from "./VanillaOptions.svelte";
+    import { instanceStore } from "../../../store/instancestore";
 
-    export let instances: Promise<string[]>;
-    
     let modal;
     const dispatch = createEventDispatcher();
     const buttons = ["Vanilla", "Curseforge", "Modrinth", "Import Zip"];
@@ -15,7 +15,8 @@
     let selectedModloaderVersion;
     let selectedModloader;
 
-    $: instanceName = "Minecraft " + selectedVanillaVersion;
+    $: instanceName = `Minecraft ` + (selectedModloader === "None" ? "" : selectedModloader + " ") + `${selectedVanillaVersion}`;
+    $: instancePath = getInstancePath(instanceName);
 
     function close() {
         dispatch("close");
@@ -53,12 +54,17 @@
         selectedInstanceType = updateSelectionClasses(this.id, buttons);
     }
 
+    async function getInstancePath(name: string): Promise<string> {
+        const appDir = await appConfigDir();
+        return path.join(appDir, "instances", name);
+    }
+
     function next() {
         // TODO: Make this go to another modal that has some jvm options. 
         console.log("Vanilla:", selectedVanillaVersion);
         console.log("Modloader Type:", selectedModloader);
         console.log("Modloader:", selectedModloaderVersion);
-        instances = invoke("obtain_version", { vanillaVersion: selectedVanillaVersion, modloaderType: selectedModloader, modloaderVersion: selectedModloaderVersion ?? "", instanceName: instanceName });
+        invoke("obtain_version", { vanillaVersion: selectedVanillaVersion, modloaderType: selectedModloader, modloaderVersion: selectedModloaderVersion ?? "", instanceName: instanceName });
         close();
     }
 </script>
@@ -88,8 +94,8 @@
             {/each}
         </div>
         <div class="instance-name flex-column">
-            <input type="text" placeholder="Instance Name" bind:value={instanceName}/>
-            {#await invoke("get_instance_path", {name: instanceName}) then path}
+            <input type="text" placeholder="Instance Name" class={$instanceStore.includes(instanceName) ? "invalid" : ""} bind:value={instanceName}/>
+            {#await instancePath then path}
                 <p>{path}</p>
             {/await}
         </div>
@@ -106,7 +112,7 @@
         {/if}
     </div>
      <!--TODO: disable this button when the name already exists.  -->
-    <button class="next-button dropshadow" on:click={next} >Next</button>
+    <button class="next-button" on:click={next} disabled={$instanceStore.includes(instanceName)}>Next</button>
 </div>
 
 <style>
@@ -182,6 +188,10 @@
         margin: 0px;
     }
 
+    input[type="text"].invalid {
+        border: 2px solid red;
+    }
+
     .instance-name {
         color: white;
         align-items: start;
@@ -222,11 +232,16 @@
         border: none;
     }
 
-    .next-button:hover {
+    .next-button:disabled {
+        color: rgb(70, 70, 70);
+        cursor: not-allowed;
+    }
+
+    .next-button:enabled:hover {
         background-color: #5E5E5E;
     }
 
-    .next-button:active {
+    .next-button:enabled:active {
         background-color: #6E6E6E;
     }
 </style>
