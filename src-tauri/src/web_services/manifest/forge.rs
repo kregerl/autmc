@@ -11,8 +11,6 @@ use serde::Deserialize;
 #[cfg(test)]
 use tempdir::TempDir;
 
-use zip::read::ZipFile;
-
 use crate::{
     consts::{FORGE_FILES_BASE_URL, FORGE_MAVEN_BASE_URL},
     state::resource_manager::{ManifestError, ManifestResult},
@@ -26,7 +24,7 @@ use crate::{
 
 use super::{
     get_directory_separator, maven_to_vec, path_to_utf8_str,
-    vanilla::{LaunchArguments, Library},
+    vanilla::{LaunchArguments, Library}, bytes_from_zip_file,
 };
 
 #[derive(Debug, Deserialize)]
@@ -118,15 +116,6 @@ pub struct InstallerArgumentPaths {
 pub async fn download_forge_hashes(forge_version: &str) -> DownloadResult<ForgeHashes> {
     let url = format!("{}/{}/meta.json", FORGE_FILES_BASE_URL, forge_version);
     Ok(download_json_object::<ForgeHashes>(&url).await?)
-}
-
-fn bytes_from_zip_file(file: ZipFile) -> Vec<u8> {
-    file.bytes()
-        .filter_map(|byte| match byte {
-            Ok(b) => Some(b),
-            Err(_) => None,
-        })
-        .collect()
 }
 
 pub async fn download_forge_version(

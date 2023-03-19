@@ -1,6 +1,7 @@
-use std::path::Path;
+use std::{path::Path, io::Read};
 
 use log::error;
+use zip::read::ZipFile;
 
 pub mod vanilla;
 pub mod forge;
@@ -57,6 +58,15 @@ pub fn path_to_utf8_str(path: &Path) -> &str {
             "__INVALID_UTF8_STRING__"
         }
     }
+}
+
+pub(crate) fn bytes_from_zip_file(file: ZipFile) -> Vec<u8> {
+    file.bytes()
+        .filter_map(|byte| match byte {
+            Ok(b) => Some(b),
+            Err(_) => None,
+        })
+        .collect()
 }
 
 #[cfg(target_family = "unix")]

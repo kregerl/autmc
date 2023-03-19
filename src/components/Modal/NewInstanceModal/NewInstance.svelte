@@ -1,10 +1,11 @@
 <script lang="ts">
     import { invoke, path } from "@tauri-apps/api";
-    import { appConfigDir } from '@tauri-apps/api/path';
+    import { appConfigDir } from "@tauri-apps/api/path";
     import { updateSelectionClasses } from "../../../selectable";
     import { createEventDispatcher } from "svelte";
     import VanillaOptions from "./VanillaOptions.svelte";
     import { instanceStore } from "../../../store/instancestore";
+    import ImportZip from "./ImportZip.svelte";
 
     let modal;
     const dispatch = createEventDispatcher();
@@ -15,7 +16,12 @@
     let selectedModloaderVersion;
     let selectedModloader;
 
-    $: instanceName = `Minecraft ` + (selectedModloader === "None" ? "" : selectedModloader + " ") + `${selectedVanillaVersion}`;
+    let zipPath;
+
+    $: instanceName =
+        `Minecraft ` +
+        (selectedModloader === "None" ? "" : selectedModloader + " ") +
+        `${selectedVanillaVersion}`;
     $: instancePath = getInstancePath(instanceName);
 
     function close() {
@@ -49,7 +55,7 @@
     function tabKeyDown() {
         // TODO: Implement "Enter" updating selection of tabs.
     }
-    
+
     function updateSelections() {
         selectedInstanceType = updateSelectionClasses(this.id, buttons);
     }
@@ -60,11 +66,22 @@
     }
 
     function next() {
-        // TODO: Make this go to another modal that has some jvm options. 
-        console.log("Vanilla:", selectedVanillaVersion);
-        console.log("Modloader Type:", selectedModloader);
-        console.log("Modloader:", selectedModloaderVersion);
-        invoke("obtain_version", { vanillaVersion: selectedVanillaVersion, modloaderType: selectedModloader, modloaderVersion: selectedModloaderVersion ?? "", instanceName: instanceName });
+        if (selectedInstanceType == "Vanilla") {
+            console.log("Vanilla:", selectedVanillaVersion);
+            console.log("Modloader Type:", selectedModloader);
+            console.log("Modloader:", selectedModloaderVersion);
+            invoke("obtain_version", {
+                vanillaVersion: selectedVanillaVersion,
+                modloaderType: selectedModloader,
+                modloaderVersion: selectedModloaderVersion ?? "",
+                instanceName: instanceName,
+            });
+        } else {
+            // Import from zip.
+            invoke("import_zip", {zipPath: zipPath});
+        }
+
+        // TODO: Make this go to another modal that has some jvm options.
         close();
     }
 </script>
@@ -94,7 +111,12 @@
             {/each}
         </div>
         <div class="instance-name flex-column">
-            <input type="text" placeholder="Instance Name" class={$instanceStore.includes(instanceName) ? "invalid" : ""} bind:value={instanceName}/>
+            <input
+                type="text"
+                placeholder="Instance Name"
+                class={$instanceStore.includes(instanceName) ? "invalid" : ""}
+                bind:value={instanceName}
+            />
             {#await instancePath then path}
                 <p>{path}</p>
             {/await}
@@ -102,17 +124,25 @@
     </div>
     <div class="modal-content flex-column">
         {#if selectedInstanceType === "Vanilla"}
-            <VanillaOptions bind:selectedModloader bind:selectedModloaderVersion bind:selectedVanillaVersion/>
+            <VanillaOptions
+                bind:selectedModloader
+                bind:selectedModloaderVersion
+                bind:selectedVanillaVersion
+            />
         {:else if selectedInstanceType === "Curseforge"}
             <h1>TODO</h1>
         {:else if selectedInstanceType === "Modrinth"}
             <h1>TODO</h1>
         {:else}
-            <h1>TODO</h1>
+            <ImportZip bind:zipPath={zipPath}/>
         {/if}
     </div>
-     <!--TODO: disable this button when the name already exists.  -->
-    <button class="next-button" on:click={next} disabled={$instanceStore.includes(instanceName)}>Next</button>
+    <!--TODO: disable this button when the name already exists.  -->
+    <button
+        class="next-button"
+        on:click={next}
+        disabled={$instanceStore.includes(instanceName)}>Next</button
+    >
 </div>
 
 <style>
@@ -147,7 +177,7 @@
         background-color: #333;
         transform: translate(-50%, -50%);
         border-radius: 1em;
-        box-shadow: 5px 5px 16px 2px rgba(0,0,0,0.75);
+        box-shadow: 5px 5px 16px 2px rgba(0, 0, 0, 0.75);
     }
 
     .header {
@@ -238,10 +268,10 @@
     }
 
     .next-button:enabled:hover {
-        background-color: #5E5E5E;
+        background-color: #5e5e5e;
     }
 
     .next-button:enabled:active {
-        background-color: #6E6E6E;
+        background-color: #6e6e6e;
     }
 </style>

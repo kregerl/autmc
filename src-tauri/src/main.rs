@@ -28,7 +28,7 @@ use web_services::authentication::{authenticate, validate_account, AuthMode};
 use crate::{
     commands::{
         get_account_skin, get_accounts, get_logs, get_screenshots, launch_instance, load_instances,
-        login_to_account, obtain_manifests, obtain_version, open_folder,
+        login_to_account, obtain_manifests, obtain_version, open_folder, import_zip,
     },
     state::{instance_manager::InstanceState, resource_manager::ResourceState},
 };
@@ -60,7 +60,8 @@ fn main() {
             login_to_account,
             open_folder,
             get_screenshots,
-            get_logs
+            get_logs,
+            import_zip
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

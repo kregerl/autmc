@@ -1,12 +1,15 @@
+use std::{path::Path, fs::File, io::{self, Read}};
+
 use reqwest::header::HeaderMap;
 use serde::Deserialize;
 #[cfg(test)]
 use tauri::async_runtime::block_on;
+use zip::{ZipArchive, result::ZipError};
 
-use crate::consts::CURSEFORGE_API_URL;
+use crate::{consts::CURSEFORGE_API_URL, web_services::manifest::bytes_from_zip_file};
 
 #[derive(Debug, Deserialize)]
-struct CurseforgeManifest {
+pub struct CurseforgeManifest {
     minecraft: CurseforgeGameInformation,
     #[serde(rename = "manifestType")]
     manifest_type: String,
@@ -20,14 +23,14 @@ struct CurseforgeManifest {
 }
 
 #[derive(Debug, Deserialize)]
-struct CurseforgeGameInformation {
+pub struct CurseforgeGameInformation {
     version: String,
     #[serde(rename = "modLoaders")]
     modloaders: Vec<Modloader>,
 }
 
 #[derive(Debug, Deserialize)]
-struct Modloader {
+pub struct Modloader {
     id: String,
     primary: bool,
 }
@@ -40,6 +43,15 @@ struct CurseforgeFile {
     file_id: u32,
     required: bool,
 }
+
+pub fn deserialize_curseforge_zip(path: &Path) -> Result<CurseforgeManifest, io::Error> {
+    let zip_file = File::open(&path)?;
+    let mut archive = ZipArchive::new(&zip_file)?;
+
+    let manifest_bytes = bytes_from_zip_file(archive.by_name("manifest.json")?);
+    Ok(serde_json::from_slice(&manifest_bytes)?)
+}
+
 
 #[derive(Debug, Deserialize)]
 struct CurseforgeSearchResult {

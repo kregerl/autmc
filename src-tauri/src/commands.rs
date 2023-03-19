@@ -3,7 +3,7 @@ use std::{
     env,
     fs::{self},
     io::{self, BufRead, BufReader, Read},
-    path::{Path},
+    path::{Path, PathBuf},
     process::{Command, Stdio},
 };
 
@@ -399,4 +399,11 @@ pub async fn get_logs(app_handle: AppHandle<Wry>) -> HashMap<String, HashMap<Str
             HashMap::new()
         }
     }
+}
+
+#[tauri::command(async)]
+pub async fn import_zip(zip_path: String, app_handle: AppHandle<Wry>)  {
+    let path = PathBuf::from(&zip_path);
+
+    debug!("Invoked import_zip: {}", zip_path);
 }
