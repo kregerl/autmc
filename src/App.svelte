@@ -9,7 +9,7 @@
     import { logStore } from "./store/logstore";
     import { screenshotStore } from "./store/screenshotstore";
     import { invoke } from "@tauri-apps/api/tauri";
-    import { manifestStore } from "./store/manifeststore";
+    import { manifestStore, VersionManifest } from "./store/manifeststore";
     import { instanceStore } from "./store/instancestore";
 
     interface Payload {
@@ -84,6 +84,7 @@
 
         // Manifests are last and the least important
         $manifestStore = await invoke("obtain_manifests");
+        $manifestStore.forge_versions = new Map(Object.entries($manifestStore.forge_versions));
         console.log("$manifestStore", $manifestStore);
     }
 

@@ -16,7 +16,7 @@ use xmltree::{Element, XMLNode};
 use zip::ZipArchive;
 
 use crate::{
-    consts::{JAVA_VERSION_MANIFEST, LAUNCHER_NAME, LAUNCHER_VERSION},
+    consts::{JAVA_VERSION_MANIFEST_URL, LAUNCHER_NAME, LAUNCHER_VERSION},
     state::{
         account_manager::Account,
         instance_manager::{InstanceConfiguration, InstanceState},
@@ -675,7 +675,7 @@ async fn download_java_from_runtime_manifest(
 async fn download_java_version(java_dir: &Path, java: JavaVersion) -> ManifestResult<PathBuf> {
     info!("Downloading java version manifest");
     let java_version_manifest: HashMap<String, JavaManifest> =
-        download_json_object(JAVA_VERSION_MANIFEST).await?;
+        download_json_object(JAVA_VERSION_MANIFEST_URL).await?;
     let manifest_key = determine_key_for_java_manifest(&java_version_manifest);
 
     let java_manifest = &java_version_manifest.get(manifest_key).unwrap();

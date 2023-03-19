@@ -13,7 +13,7 @@ export interface VersionManifest {
 }
 
 export function isValidVersionForForge(manifest: VersionManifest, vanillaVersion: string): boolean {
-    return new Map(Object.entries(manifest.forge_versions)).has(vanillaVersion);
+    return manifest.forge_versions.has(vanillaVersion);
 } 
 
 export const manifestStore = writable<VersionManifest>();

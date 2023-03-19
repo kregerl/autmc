@@ -11,7 +11,7 @@ mod tests;
 mod web_services;
 
 use commands::show_microsoft_login_page;
-use log::{error, info, warn, debug};
+use log::{error, info, warn};
 use regex::Regex;
 use serde::ser::StdError;
 use state::{account_manager::AccountState, redirect};
