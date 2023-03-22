@@ -1,8 +1,4 @@
-use std::{
-    fs::File,
-    io::{self, Read},
-    path::Path,
-};
+use std::{path::Path, fs::File, io::{self}};
 
 use reqwest::header::HeaderMap;
 use serde::Deserialize;
@@ -10,7 +6,7 @@ use serde_json::json;
 use tauri::{AppHandle, Wry};
 #[cfg(test)]
 use tauri::async_runtime::block_on;
-use zip::{result::ZipError, ZipArchive};
+use zip::{ZipArchive};
 
 use crate::{consts::CURSEFORGE_API_URL, web_services::manifest::bytes_from_zip_file};
 

@@ -554,7 +554,6 @@ where
         Link { target: String },
     }
     let jrt_map: HashMap<String, TmpJavaRuntimeType> = Deserialize::deserialize(deserializer)?;
-    println!("HERE: {:#?}", jrt_map);
     let mut result = Vec::with_capacity(jrt_map.len());
     for (path, tmp_jrt) in jrt_map {
         result.push(match tmp_jrt {

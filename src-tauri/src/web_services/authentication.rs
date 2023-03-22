@@ -13,8 +13,6 @@ use crate::consts::{
     XTXS_AUTHENTICATE_URL,
 };
 
-// REVIEW: Remove '_' prefix from unused fields when they're used. Just there to make the compilier happy. :)
-// REVIEW: Many unused fields, serde will ignore unknown fields while deserializing... Remove these and the #[allow(unused)]?
 #[allow(unused)]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MicrosoftTokenSuccess {
@@ -120,7 +118,7 @@ impl MinecraftProfileSuccess {
                 return &skin;
             }
         }
-        // FIXME: Not sure if possible, but probably shouldnt unwrap here
+        // Unwrap here since it should be impossible to get an empty vec of skins.
         self.skins.get(0).unwrap()
     }
 }
@@ -162,7 +160,6 @@ enum MicrosoftGrantType {
 }
 
 #[derive(Debug)]
-// TODO: Implement Display for this error type.
 pub enum AuthenticationError {
     MicrosoftError {
         error_type: String,

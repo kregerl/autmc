@@ -275,10 +275,8 @@ pub async fn launch_instance(instance_name: String, app_handle: AppHandle<Wry>) 
     instance_manager.launch_instance(
         &instance_name,
         account_manager.get_active_account().unwrap(),
+        app_handle.clone()
     );
-    instance_manager.tick_instance(instance_name, app_handle.clone());
-    // instance_manager.emit_logs_for_running_instance(instance_name.into(), app_handle.clone());
-    // test_poll_children(app_handle.clone());
 }
 
 // FIXME: Instance names can be different from the directory name its stored in.
