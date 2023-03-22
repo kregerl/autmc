@@ -106,7 +106,12 @@ impl InstanceManager {
             .collect()
     }
 
-    pub fn launch_instance(&mut self, instance_name: &str, active_account: &Account) {
+    pub fn launch_instance(
+        &mut self,
+        instance_name: &str,
+        active_account: &Account,
+        app_handle: AppHandle<Wry>,
+    ) {
         debug!("Instance Name: {}", instance_name);
         let instance_config = self.instance_map.get(instance_name);
         match instance_config {
@@ -129,77 +134,74 @@ impl InstanceManager {
                     .stderr(Stdio::piped());
                 debug!("Command: {:#?}", command);
                 let child = command.spawn().expect("Could not spawn instance.");
-                self.children
-                    .insert(instance_name.into(), Arc::new(AsyncMutex::new(child)));
+
+                let child_handle = Arc::new(AsyncMutex::new(child));
+                self.tick_instance(instance_name.into(), child_handle.clone(), app_handle);
+                self.children.insert(instance_name.into(), child_handle);
             }
             None => error!("Unknown instance name: {}", instance_name),
         }
     }
 
-    pub fn tick_instance(&mut self, instance_name: String, app_handle: AppHandle<Wry>) {
-        if let Some(instance) = self.get_running_instance() {
-            let name = instance_name.clone();
-            let handle = tauri::async_runtime::spawn(async move {
-                let mut child = instance.lock().await;
-                let stdout = child
-                    .stdout
-                    .take()
-                    .expect("Child did not have stdout handle.");
-                let stderr = child
-                    .stderr
-                    .take()
-                    .expect("Child did not have stderr handle.");
+    fn tick_instance(
+        &mut self,
+        instance_name: String,
+        child_handle: Arc<AsyncMutex<Child>>,
+        app_handle: AppHandle<Wry>,
+    ) {
+        let name = instance_name.clone();
+        let handle = tauri::async_runtime::spawn(async move {
+            let mut child = child_handle.lock().await;
+            let stdout = child
+                .stdout
+                .take()
+                .expect("Child did not have stdout handle.");
+            let stderr = child
+                .stderr
+                .take()
+                .expect("Child did not have stderr handle.");
 
-                let mut stdout_reader = AsyncBufReader::new(stdout).lines();
-                let mut stderr_reader = AsyncBufReader::new(stderr).lines();
+            let mut stdout_reader = AsyncBufReader::new(stdout).lines();
+            let mut stderr_reader = AsyncBufReader::new(stderr).lines();
 
-                #[derive(Serialize, Clone)]
-                struct Logging {
-                    instance_name: String,
-                    category: String,
-                    line: String,
-                }
+            #[derive(Serialize, Clone)]
+            struct Logging {
+                instance_name: String,
+                category: String,
+                line: String,
+            }
 
-                // TODO: Emit an event to the screenshot store when a screenshot is taken. use notifier crate. 
-                'thread: loop {
-                    tokio::select! {
-                        result = stdout_reader.next_line() => {
-                            match result {
-                                Ok(Some(line)) => {
-                                    app_handle.emit_all("instance-logging", Logging { instance_name: instance_name.clone(), category: "running".into(), line }).unwrap();
-                                },
-                                Err(_) => break,
-                                _ => (),
-                            }
+            // TODO: Emit an event to the screenshot store when a screenshot is taken. use notifier crate.
+            loop {
+                tokio::select! {
+                    result = stdout_reader.next_line() => {
+                        match result {
+                            Ok(Some(line)) => {
+                                app_handle.emit_all("instance-logging", Logging { instance_name: instance_name.clone(), category: "running".into(), line }).unwrap();
+                            },
+                            Err(_) => break,
+                            _ => (),
                         }
-                        result = stderr_reader.next_line() => {
-                            match result {
-                                Ok(Some(line)) => debug!("Emit stderr line: {}", line),
-                                Err(_) => break,
-                                _ => (),
-                            }
+                    }
+                    result = stderr_reader.next_line() => {
+                        match result {
+                            Ok(Some(line)) => debug!("Emit stderr line: {}", line),
+                            Err(_) => break,
+                            _ => (),
                         }
-                        result = child.wait() => {
-                            match result {
-                                Ok(exit_status) => {
-                                    debug!("Child exited with exit code: {}", exit_status);
-                                    break 'thread;
-                                },
-                                Err(_) => break,
-                            }
+                    }
+                    result = child.wait() => {
+                        match result {
+                            Ok(exit_status) => {
+                                debug!("Child exited with exit code: {}", exit_status);
+                                break;
+                            },
+                            Err(_) => break,
                         }
-                    };
-                }
-            });
-            self.logging_threads.insert(name, handle);
-        }
-    }
-
-    // FIXME: This is just getting a random running instance sine we only really support 1 running instance currently.
-    fn get_running_instance(&self) -> Option<Arc<AsyncMutex<Child>>> {
-        match self.children.iter().next() {
-            Some(entry) => Some(entry.1.clone()),
-            None => None,
-        }
+                    }
+                };
+            }
+        });
+        self.logging_threads.insert(name, handle);
     }
 }
