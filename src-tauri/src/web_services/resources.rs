@@ -10,6 +10,7 @@ use std::{
 use bytes::Bytes;
 use futures::future::BoxFuture;
 use log::{debug, error, info, warn};
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State, Wry};
 use tempdir::TempDir;
 use xmltree::{Element, XMLNode};
@@ -912,9 +913,26 @@ fn apply_library_rules(libraries: Vec<Library>) -> Vec<Library> {
         .collect()
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+pub enum ModloaderType {
+    Forge,
+    Fabric,
+    None
+}
+
+impl From<&str> for ModloaderType {
+    fn from(s: &str) -> Self {
+        match s.to_lowercase().as_str() {
+            "forge" => ModloaderType::Forge,
+            "fabric" => ModloaderType::Fabric,
+            _ => ModloaderType::None,
+        }
+    }
+}
+
 pub async fn create_instance(
     vanilla_version: String,
-    modloader_type: String,
+    modloader_type: ModloaderType,
     modloader_version: String,
     instance_name: String,
     app_handle: &AppHandle<Wry>,
@@ -966,8 +984,8 @@ pub async fn create_instance(
     // Temp dir for extracting forge installer into, closed/deleted at end of function.
     let tmp_dir = TempDir::new("temp")?;
 
-    let modloader_launch_arguments = match modloader_type.as_str() {
-        "Fabric" => {
+    let modloader_launch_arguments = match modloader_type {
+        ModloaderType::Fabric => {
             let profile = download_fabric_profile(&vanilla_version, &modloader_version).await?;
             main_class = profile.main_class;
             for fabric_library in obtain_fabric_library_hashes(&profile.libraries).await? {
@@ -975,7 +993,7 @@ pub async fn create_instance(
             }
             Some(profile.arguments)
         }
-        "Forge" => {
+        ModloaderType::Forge => {
             let forge_hashes = download_forge_hashes(&modloader_version).await?;
             let forge_profile = download_forge_version(
                 &modloader_version,

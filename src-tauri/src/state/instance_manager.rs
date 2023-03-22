@@ -15,7 +15,7 @@ use tauri::{
 use tokio::io::{AsyncBufReadExt, BufReader as AsyncBufReader};
 use tokio::process::{Child, Command};
 
-use crate::web_services::resources::substitute_account_specific_arguments;
+use crate::web_services::resources::{substitute_account_specific_arguments, ModloaderType};
 
 use super::account_manager::Account;
 
@@ -24,7 +24,7 @@ pub struct InstanceConfiguration {
     pub instance_name: String,
     pub jvm_path: PathBuf,
     pub arguments: Vec<String>,
-    pub modloader_type: String,
+    pub modloader_type: ModloaderType,
     pub modloader_version: String,
 }
 

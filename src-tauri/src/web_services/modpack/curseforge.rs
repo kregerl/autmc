@@ -1,10 +1,16 @@
-use std::{path::Path, fs::File, io::{self, Read}};
+use std::{
+    fs::File,
+    io::{self, Read},
+    path::Path,
+};
 
 use reqwest::header::HeaderMap;
 use serde::Deserialize;
+use serde_json::json;
+use tauri::{AppHandle, Wry};
 #[cfg(test)]
 use tauri::async_runtime::block_on;
-use zip::{ZipArchive, result::ZipError};
+use zip::{result::ZipError, ZipArchive};
 
 use crate::{consts::CURSEFORGE_API_URL, web_services::manifest::bytes_from_zip_file};
 
@@ -18,8 +24,22 @@ pub struct CurseforgeManifest {
     name: String,
     version: String,
     author: String,
-    files: Vec<CurseforgeFile>,
+    pub files: Vec<CurseforgeFile>,
     overrides: String,
+}
+
+impl CurseforgeManifest {
+    pub fn get_vanilla_version(&self) -> &str {
+        &self.minecraft.version
+    }
+
+    pub fn get_modloaders(&self) -> &[Modloader] {
+        &self.minecraft.modloaders
+    }
+
+    pub fn get_modpack_name(&self) -> &str {
+        &self.name
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -31,12 +51,12 @@ pub struct CurseforgeGameInformation {
 
 #[derive(Debug, Deserialize)]
 pub struct Modloader {
-    id: String,
-    primary: bool,
+    pub id: String,
+    pub primary: bool,
 }
 
 #[derive(Debug, Deserialize)]
-struct CurseforgeFile {
+pub struct CurseforgeFile {
     #[serde(rename = "projectID")]
     project_id: u32,
     #[serde(rename = "fileID")]
@@ -52,6 +72,39 @@ pub fn deserialize_curseforge_zip(path: &Path) -> Result<CurseforgeManifest, io:
     Ok(serde_json::from_slice(&manifest_bytes)?)
 }
 
+pub async fn download_mods_from_curseforge(
+    files: &[CurseforgeFile],
+    instance_name: &str,
+    app_handle: &AppHandle<Wry>,
+) -> reqwest::Result<()> {
+    let mut header_map = HeaderMap::new();
+    // TODO: Get own API-key
+    header_map.insert(
+        "X-API-KEY",
+        "$2a$10$5BgCleD8.rLQ5Ix17Xm2lOjgfoeTJV26a1BXmmpwrOemgI517.nuC"
+            .parse()
+            .unwrap(),
+    );
+    header_map.insert("Content-Type", "application/json".parse().unwrap());
+    header_map.insert("Accept", "application/json".parse().unwrap());
+
+    let file_ids: Vec<u32> = files.into_iter().map(|file| file.file_id).collect();
+
+    let url = format!("{}/mods/files", CURSEFORGE_API_URL);
+    let client = reqwest::Client::new();
+    let response = client.post(url)
+    .headers(header_map)
+    .body(
+        json!({
+            "fileIds": file_ids 
+        })
+        .to_string(),
+    ).send().await?;
+    
+    let result = response.json::<CurseforgeSearchResult>().await?;
+    println!("result: {:#?}", result);
+    Ok(())
+}
 
 #[derive(Debug, Deserialize)]
 struct CurseforgeSearchResult {
@@ -229,7 +282,12 @@ struct CurseforgeSearchPagination {
 async fn search_curseforge_modpacks() -> reqwest::Result<CurseforgeSearchResult> {
     let mut header_map = HeaderMap::new();
     // TODO: Get own API-key
-    header_map.insert("X-API-KEY", "$2a$10$5BgCleD8.rLQ5Ix17Xm2lOjgfoeTJV26a1BXmmpwrOemgI517.nuC".parse().unwrap());
+    header_map.insert(
+        "X-API-KEY",
+        "$2a$10$5BgCleD8.rLQ5Ix17Xm2lOjgfoeTJV26a1BXmmpwrOemgI517.nuC"
+            .parse()
+            .unwrap(),
+    );
     header_map.insert("Content-Type", "application/json".parse().unwrap());
 
     let client = reqwest::Client::new();
@@ -252,5 +310,6 @@ async fn search_curseforge_modpacks() -> reqwest::Result<CurseforgeSearchResult>
 
 #[test]
 fn test_curseforge_search() {
-    block_on(search_curseforge_modpacks()).unwrap();
+    let x = block_on(search_curseforge_modpacks()).unwrap();
+    println!("Here: {:#?}", x);
 }

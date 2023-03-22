@@ -23,8 +23,9 @@ use crate::{
     },
     web_services::{
         authentication::{validate_account, AuthResult},
-        manifest::{vanilla::VanillaManifestVersion, path_to_utf8_str},
-        resources::create_instance,
+        manifest::{path_to_utf8_str, vanilla::{VanillaManifestVersion, self}},
+        modpack::curseforge::{deserialize_curseforge_zip, download_mods_from_curseforge},
+        resources::{create_instance, ModloaderType},
     },
 };
 
@@ -138,7 +139,7 @@ pub async fn obtain_version(
     );
     create_instance(
         vanilla_version,
-        modloader_type,
+        ModloaderType::from(modloader_type.as_str()),
         modloader_version,
         instance_name.clone(),
         &app_handle,
@@ -327,7 +328,14 @@ pub async fn get_screenshots(app_handle: AppHandle<Wry>) -> HashMap<String, Vec<
             for path in paths {
                 let file_name = path.unwrap().file_name();
                 let file_name_str = file_name.to_str().unwrap();
-                let path = app_handle.path_resolver().app_config_dir().unwrap().join(format!("instances/{}/screenshots/{}", &instance, file_name_str));
+                let path = app_handle
+                    .path_resolver()
+                    .app_config_dir()
+                    .unwrap()
+                    .join(format!(
+                        "instances/{}/screenshots/{}",
+                        &instance, file_name_str
+                    ));
                 screenshots.push(path_to_utf8_str(&path).into());
             }
             instance_screenshots.insert(instance, screenshots);
@@ -402,8 +410,40 @@ pub async fn get_logs(app_handle: AppHandle<Wry>) -> HashMap<String, HashMap<Str
 }
 
 #[tauri::command(async)]
-pub async fn import_zip(zip_path: String, app_handle: AppHandle<Wry>)  {
+pub async fn import_zip(zip_path: String, app_handle: AppHandle<Wry>) {
     let path = PathBuf::from(&zip_path);
+    let curseforge_manifest = deserialize_curseforge_zip(&path).unwrap();
 
+    let vanilla_version = curseforge_manifest.get_vanilla_version();
+    let instance_name = curseforge_manifest.get_modpack_name();
+
+    let primary_modloader = curseforge_manifest
+        .get_modloaders()
+        .iter()
+        .find(|modloader| modloader.primary);
+    let (modloader_type, modloader_version) = match primary_modloader {
+        Some(modloader) => {
+            let splits = modloader.id.split('-').collect::<Vec<&str>>();
+            (splits[0], splits[1])
+        }
+        None => {
+            error!("Error getting primary modloader from manifes, does one exist?");
+            ("", "")
+        }
+    };
+
+    let full_modloader_version = format!("{}-{}", vanilla_version, modloader_version);
+
+    create_instance(
+        vanilla_version.into(),
+        modloader_type.into(),
+        full_modloader_version.into(),
+        instance_name.into(),
+        &app_handle,
+    ).await.unwrap();
+
+    download_mods_from_curseforge(&curseforge_manifest.files, instance_name, &app_handle).await.unwrap();
+
+    debug!("Manifest: {:#?}", curseforge_manifest);
     debug!("Invoked import_zip: {}", zip_path);
 }
