@@ -16,6 +16,7 @@
     }
 </script>
 
+<!-- FIXME: Replace this with the faster "svelte-virtual-list" -->
 <table>
     <thead>
         <tr>

@@ -9,7 +9,7 @@ use std::{
 
 use flate2::read::GzDecoder;
 use image::EncodableLayout;
-use log::{debug, error, warn};
+use log::{debug, error, warn, info};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State, Wry};
@@ -24,7 +24,7 @@ use crate::{
     web_services::{
         authentication::{validate_account, AuthResult},
         manifest::{path_to_utf8_str, vanilla::{VanillaManifestVersion, self}},
-        modpack::curseforge::{deserialize_curseforge_zip, download_mods_from_curseforge},
+        modpack::curseforge::{extract_curseforge_zip, download_mods_from_curseforge},
         resources::{create_instance, ModloaderType},
     },
 };
@@ -339,7 +339,7 @@ pub async fn get_screenshots(app_handle: AppHandle<Wry>) -> HashMap<String, Vec<
             instance_screenshots.insert(instance, screenshots);
         }
     }
-
+    info!("Found {} screenshots across all intances",  instance_screenshots.len());
     instance_screenshots
 }
 
@@ -410,7 +410,7 @@ pub async fn get_logs(app_handle: AppHandle<Wry>) -> HashMap<String, HashMap<Str
 #[tauri::command(async)]
 pub async fn import_zip(zip_path: String, app_handle: AppHandle<Wry>) {
     let path = PathBuf::from(&zip_path);
-    let curseforge_manifest = deserialize_curseforge_zip(&path).unwrap();
+    let curseforge_manifest = extract_curseforge_zip(&path).unwrap();
 
     let vanilla_version = curseforge_manifest.get_vanilla_version();
     let instance_name = curseforge_manifest.get_modpack_name();
@@ -425,7 +425,7 @@ pub async fn import_zip(zip_path: String, app_handle: AppHandle<Wry>) {
             (splits[0], splits[1])
         }
         None => {
-            error!("Error getting primary modloader from manifes, does one exist?");
+            error!("Error getting primary modloader from manifest, does one exist?");
             ("", "")
         }
     };
@@ -442,6 +442,6 @@ pub async fn import_zip(zip_path: String, app_handle: AppHandle<Wry>) {
 
     download_mods_from_curseforge(&curseforge_manifest.files, instance_name, &app_handle).await.unwrap();
 
-    debug!("Manifest: {:#?}", curseforge_manifest);
+    // debug!("Manifest: {:#?}", curseforge_manifest);
     debug!("Invoked import_zip: {}", zip_path);
 }

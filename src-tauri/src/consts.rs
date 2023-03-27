@@ -23,7 +23,7 @@ pub const JAVA_VERSION_MANIFEST_URL: &str = "https://launchermeta.mojang.com/v1/
 pub const CURSEFORGE_API_URL: &str = "https://api.curseforge.com/v1";
 pub const CURSEFORGE_MODPACK_CLASS_ID: u32 = 4471;
 pub const CURSEFORGE_MODS_CLASS_ID: u32 = 6;
-
+pub const CURSEFORGE_FORGECDN_URL: &str = "https://edge.forgecdn.net/files";
 
 pub const LAUNCHER_NAME: &str = "Autmc";
 pub const LAUNCHER_VERSION: &str = "1.0.0";
