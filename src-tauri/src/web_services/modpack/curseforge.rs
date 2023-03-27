@@ -1,6 +1,6 @@
 use core::arch;
 use std::{
-    fs::File,
+    fs::{File, self},
     io::{self, Write},
     path::{Path, PathBuf},
 };
@@ -13,13 +13,16 @@ use serde_json::json;
 use tauri::async_runtime::block_on;
 use tauri::{AppHandle, Manager, State, Wry};
 use tempdir::TempDir;
-use zip::{ZipArchive, read::ZipFile};
+use zip::{read::ZipFile, ZipArchive};
 
 use crate::{
     consts::{CURSEFORGE_API_URL, CURSEFORGE_FORGECDN_URL},
     state::instance_manager::InstanceState,
     web_services::{
-        downloader::{boxed_buffered_download_stream, Downloadable, validate_hash_sha1, DownloadError, DownloadResult},
+        downloader::{
+            boxed_buffered_download_stream, validate_hash_sha1, DownloadError, DownloadResult,
+            Downloadable,
+        },
         manifest::bytes_from_zip_file,
     },
 };
@@ -76,21 +79,34 @@ pub struct CurseforgeFile {
     required: bool,
 }
 
-pub fn extract_curseforge_zip(instance_path: &Path) -> io::Result<CurseforgeManifest> {
-    let zip_file = File::open(&instance_path)?;
-    let mut archive = ZipArchive::new(&zip_file)?;
-
+pub fn extract_curseforge_zip(archive: &mut ZipArchive<&File>) -> io::Result<CurseforgeManifest> {
     let manifest_bytes = bytes_from_zip_file(archive.by_name("manifest.json")?);
-
-    extract_overrides(instance_path, archive.by_name("overrides")?)?;
 
     Ok(serde_json::from_slice(&manifest_bytes)?)
 }
 
-fn extract_overrides(instance_path: &Path, overrides: ZipFile) -> io::Result<()> {
-    let override_bytes = bytes_from_zip_file(overrides);
-    let overrides_path = instance_path.join("overrides");
+pub fn extract_overrides(instance_path: &Path, archive: &mut ZipArchive<&File>) -> io::Result<()> {
+    debug!("Extracting overrides into {:#?}", instance_path);
+    for i in 0..archive.len() {
+        let zip_file = archive.by_index(i)?;
+        let name = zip_file.enclosed_name().unwrap().to_path_buf();
+        if name.starts_with("overrides") && zip_file.is_file() {
+            let base_path = name.strip_prefix("overrides").unwrap();
+            debug!("Writing file to {:#?}", base_path);
+            let path = instance_path.join(base_path);
+            let bytes = bytes_from_zip_file(zip_file);
 
+            let parent = path.parent();
+            if let Some(parent_dir) = parent {
+                if !parent_dir.exists() {
+                    fs::create_dir_all(parent_dir)?;
+                }
+            }
+            let mut file = File::create(&path)?;
+            file.write_all(&bytes)?;
+        }
+
+    }
     Ok(())
 }
 
@@ -137,8 +153,9 @@ struct CurseforgeDependency {
 pub async fn download_mods_from_curseforge(
     files: &[CurseforgeFile],
     instance_name: &str,
-    app_handle: &AppHandle<Wry>,
+    instances_dir: &Path,
 ) -> DownloadResult<()> {
+    debug!("download_mods_from_curseforge");
     // Send request with headers and body content.
     let mut header_map = HeaderMap::new();
     header_map.insert(
@@ -182,11 +199,7 @@ pub async fn download_mods_from_curseforge(
     }
     // FIXME: Get the downloadurls from the dependencies list using
     // https://api.curseforge.com/v1/mods/{modid}
-    let instance_state: State<InstanceState> = app_handle
-        .try_state()
-        .expect("`InstanceState` should already be managed.");
-    let instance_manager = instance_state.0.lock().await;
-    let mods_dir = instance_manager.instances_dir().join(instance_name).join("mods");
+    let mods_dir = instances_dir.join(instance_name).join("mods");
 
     // Download all the files
     boxed_buffered_download_stream(&download_queue, &mods_dir, |bytes, downloadable| {
@@ -200,7 +213,8 @@ pub async fn download_mods_from_curseforge(
         let mut file = File::create(&path)?;
         file.write_all(&bytes)?;
         Ok(())
-    }).await?;
+    })
+    .await?;
 
     Ok(())
 }
@@ -247,8 +261,11 @@ impl Downloadable for CurseforgeFilesData {
             None => {
                 let num_str = self.id.to_string();
                 let parts = num_str.split_at(4);
-                format!("{}/{}/{}/{}", CURSEFORGE_FORGECDN_URL, parts.0, parts.1, self.file_name)
-            },
+                format!(
+                    "{}/{}/{}/{}",
+                    CURSEFORGE_FORGECDN_URL, parts.0, parts.1, self.file_name
+                )
+            }
         }
     }
 

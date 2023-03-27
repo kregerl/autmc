@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     env,
-    fs::{self},
+    fs::{self, File},
     io::{self, BufRead, BufReader, Read},
     path::{Path, PathBuf},
     process::{Command, Stdio},
@@ -13,6 +13,7 @@ use log::{debug, error, warn, info};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State, Wry};
+use zip::ZipArchive;
 
 use crate::{
     consts::{CLIENT_ID, GZIP_SIGNATURE, MICROSOFT_LOGIN_URL},
@@ -24,7 +25,7 @@ use crate::{
     web_services::{
         authentication::{validate_account, AuthResult},
         manifest::{path_to_utf8_str, vanilla::{VanillaManifestVersion, self}},
-        modpack::curseforge::{extract_curseforge_zip, download_mods_from_curseforge},
+        modpack::curseforge::{extract_curseforge_zip, download_mods_from_curseforge, extract_overrides},
         resources::{create_instance, ModloaderType},
     },
 };
@@ -410,7 +411,11 @@ pub async fn get_logs(app_handle: AppHandle<Wry>) -> HashMap<String, HashMap<Str
 #[tauri::command(async)]
 pub async fn import_zip(zip_path: String, app_handle: AppHandle<Wry>) {
     let path = PathBuf::from(&zip_path);
-    let curseforge_manifest = extract_curseforge_zip(&path).unwrap();
+
+    let zip_file = File::open(&path).unwrap();
+    let mut archive = ZipArchive::new(&zip_file).unwrap();
+    
+    let curseforge_manifest = extract_curseforge_zip(&mut archive).unwrap();
 
     let vanilla_version = curseforge_manifest.get_vanilla_version();
     let instance_name = curseforge_manifest.get_modpack_name();
@@ -440,7 +445,15 @@ pub async fn import_zip(zip_path: String, app_handle: AppHandle<Wry>) {
         &app_handle,
     ).await.unwrap();
 
-    download_mods_from_curseforge(&curseforge_manifest.files, instance_name, &app_handle).await.unwrap();
+    let instance_state: State<InstanceState> = app_handle
+        .try_state()
+        .expect("`InstanceState` should already be managed.");
+    let instance_manager = instance_state.0.lock().await;
+    let instances_dir = instance_manager.instances_dir();
+
+    download_mods_from_curseforge(&curseforge_manifest.files, instance_name, &instances_dir).await.unwrap();
+
+    extract_overrides(&instances_dir.join(instance_name), &mut archive).unwrap();
 
     // debug!("Manifest: {:#?}", curseforge_manifest);
     debug!("Invoked import_zip: {}", zip_path);
