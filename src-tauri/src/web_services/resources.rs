@@ -629,7 +629,7 @@ async fn download_java_from_runtime_manifest(
                 file.set_permissions(permissions)?;
             }
         }
-        file.write_all(&bytes)?;
+        file.write_all(bytes)?;
         Ok(())
     })
     .await?;
@@ -695,12 +695,12 @@ async fn download_java_version(java_dir: &Path, java: JavaVersion) -> ManifestRe
     match runtime_opt {
         Some(runtime) => {
             // let runtime_manifest = &runtime.manifest;
-            Ok(download_java_from_runtime_manifest(&java_dir, &runtime).await?)
+            Ok(download_java_from_runtime_manifest(java_dir, runtime).await?)
         }
         None => {
             let s = format!("Java runtime is empty for component {}", &java.component);
             error!("{}", s);
-            return Err(ManifestError::VersionRetrievalError(s));
+            Err(ManifestError::VersionRetrievalError(s))
         }
     }
 }
@@ -709,20 +709,20 @@ type PatchingResult<T> = Result<T, PatchingError>;
 
 #[derive(Debug)]
 enum PatchingError {
-    XmlParseError(xmltree::ParseError),
-    XmlWriteError(xmltree::Error),
-    XmlElementAccessError(String),
+    ParseError(xmltree::ParseError),
+    WriteError(xmltree::Error),
+    ElementAccessError(String),
 }
 
 impl From<xmltree::ParseError> for PatchingError {
     fn from(error: xmltree::ParseError) -> Self {
-        PatchingError::XmlParseError(error)
+        PatchingError::ParseError(error)
     }
 }
 
 impl From<xmltree::Error> for PatchingError {
     fn from(error: xmltree::Error) -> Self {
-        PatchingError::XmlWriteError(error)
+        PatchingError::WriteError(error)
     }
 }
 
@@ -735,7 +735,7 @@ fn patch_logging_configuration(bytes: &Bytes) -> PatchingResult<Bytes> {
         .get_child("Appenders")
         .and_then(|element| element.get_child("RollingRandomAccessFile"))
         .and_then(|element| element.get_child("PatternLayout"))
-        .ok_or(PatchingError::XmlElementAccessError(
+        .ok_or(PatchingError::ElementAccessError(
             "Error trying to access PatternLayout in logging configuration".into(),
         ))?
         .clone();
@@ -743,7 +743,7 @@ fn patch_logging_configuration(bytes: &Bytes) -> PatchingResult<Bytes> {
     let console = root
         .get_mut_child("Appenders")
         .and_then(|element| element.get_mut_child("Console"))
-        .ok_or(PatchingError::XmlElementAccessError(
+        .ok_or(PatchingError::ElementAccessError(
             "Error trying to access Console in logging configuration".into(),
         ))?;
 
@@ -766,7 +766,7 @@ async fn download_logging_configurations(
         "Downloading logging configuration {}",
         client_logger.file_id()
     );
-    let original_bytes = download_bytes_from_url(&client_logger.file_url()).await?;
+    let original_bytes = download_bytes_from_url(client_logger.file_url()).await?;
 
     let patched_bytes = match patch_logging_configuration(&original_bytes) {
         Ok(b) => b,
@@ -778,9 +778,9 @@ async fn download_logging_configurations(
     let hash = hash_bytes_sha1(&patched_bytes);
     let first_two_chars = hash.split_at(2);
     let objects_dir = &asset_objects_dir.join(first_two_chars.0);
-    fs::create_dir_all(&objects_dir)?;
+    fs::create_dir_all(objects_dir)?;
 
-    let path = objects_dir.join(format!("{}", &client_logger.file_id()));
+    let path = objects_dir.join(&client_logger.file_id().to_string());
     let mut file = File::create(&path)?;
     file.write_all(&patched_bytes)?;
     Ok((client_logger.argument.clone(), path))
@@ -808,27 +808,27 @@ async fn download_assets(
 
     let start = Instant::now();
 
-    fs::create_dir_all(&asset_objects_dir)?;
+    fs::create_dir_all(asset_objects_dir)?;
 
-    let x = buffered_download_stream(&asset_object.objects, &asset_objects_dir, |bytes, asset| {
-        if !validate_hash_sha1(&bytes, &asset.hash()) {
+    let x = buffered_download_stream(&asset_object.objects, asset_objects_dir, |bytes, asset| {
+        if !validate_hash_sha1(bytes, asset.hash()) {
             let err = format!(
                 "Error downloading asset {}, expected {} but got {}",
                 &asset.name(),
                 &asset.hash(),
-                hash_bytes_sha1(&bytes)
+                hash_bytes_sha1(bytes)
             );
             error!("{}", err);
             return Err(DownloadError::InvalidFileHashError(err));
         }
-        fs::create_dir_all(&asset.path(&asset_objects_dir).parent().unwrap())?;
+        fs::create_dir_all(asset.path(asset_objects_dir).parent().unwrap())?;
 
         debug!(
             "Bulk Download asset path: {:#?}",
-            &asset.path(&asset_objects_dir)
+            &asset.path(asset_objects_dir)
         );
-        let mut file = File::create(&asset.path(&asset_objects_dir))?;
-        file.write_all(&bytes)?;
+        let mut file = File::create(asset.path(asset_objects_dir))?;
+        file.write_all(bytes)?;
         Ok(())
     })
     .await;
@@ -898,7 +898,7 @@ fn apply_library_rules(libraries: Vec<Library>) -> Vec<Library> {
             // If we have any rules...
             if let Some(rules) = &lib.rules {
                 // and the rules dont match
-                if !rules_match(&rules) {
+                if !rules_match(rules) {
                     // remove
                     None
                 } else {
@@ -1008,7 +1008,7 @@ pub async fn create_instance(
             let forge_profile = download_forge_version(
                 &modloader_version,
                 &vanilla_version,
-                &forge_hashes.installer_hash(),
+                forge_hashes.installer_hash(),
                 &resource_manager.version_dir(),
                 tmp_dir.path(),
             )
@@ -1121,7 +1121,7 @@ pub async fn create_instance(
     let instance_manager = instance_state.0.lock().await;
 
     instance_manager.add_instance(InstanceConfiguration {
-        instance_name: instance_name.into(),
+        instance_name: instance_name,
         jvm_path: java_path.clone(),
         arguments: persitent_arguments,
         modloader_type,

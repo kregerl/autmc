@@ -6,7 +6,7 @@ use std::{
     time::Instant,
 };
 
-use log::{debug, error};
+use log::{debug, error, info};
 use reqwest::header::HeaderMap;
 use serde::Deserialize;
 use serde_json::json;
@@ -88,6 +88,7 @@ pub struct CurseforgeFile {
 
 /// Extract the manifest from the curseforge zip.
 pub fn extract_manifest_from_curseforge_zip(archive: &mut ZipArchive<&File>) -> io::Result<CurseforgeManifest> {
+    info!("Extracting manifest from curseforge modpack zip");
     let manifest_bytes = bytes_from_zip_file(archive.by_name("manifest.json")?);
 
     Ok(serde_json::from_slice(&manifest_bytes)?)
@@ -99,7 +100,7 @@ pub fn extract_overrides(
     archive: &mut ZipArchive<&File>,
     overrides: &str,
 ) -> io::Result<()> {
-    debug!("Extracting overrides into {:#?}", instance_path);
+    info!("Extracting overrides into {:#?}", instance_path);
     for i in 0..archive.len() {
         let zip_file = archive.by_index(i)?;
         let name = zip_file.enclosed_name().unwrap().to_path_buf();
@@ -183,7 +184,7 @@ pub async fn download_mods_from_curseforge(
     instances_dir: &Path,
     info: CurseforgeManifestInfo,
 ) -> DownloadResult<()> {
-    debug!("download_mods_from_curseforge");
+    info!("Requesting curseforge files");
     // Send request with headers and body content.
     let mut header_map = HeaderMap::new();
     header_map.insert(
@@ -246,7 +247,8 @@ pub async fn download_mods_from_curseforge(
     }
 
     let mods_dir = instances_dir.join(info.instance_name).join("mods");
-
+    
+    info!("Downloading {} mods from curseforge", download_vec.len());
     // Download all the files
     buffered_download_stream(&download_vec, &mods_dir, |bytes, file_data| {
         if !validate_hash_sha1(&bytes, &file_data.hash()) {
@@ -319,6 +321,7 @@ async fn download_mod_from_modid(
     modloader_type: &ModloaderType,
     modid: u32,
 ) -> reqwest::Result<Option<CurseforgeFilesData>> {
+    info!("Downloading mod file");
     let url = format!("{}/mods/{}/files", CURSEFORGE_API_URL, modid);
     let mut header_map = HeaderMap::new();
     header_map.insert(
