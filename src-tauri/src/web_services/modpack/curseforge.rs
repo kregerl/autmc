@@ -2,7 +2,7 @@ use core::arch;
 use std::{
     fs::{File, self},
     io::{self, Write},
-    path::{Path, PathBuf},
+    path::{Path, PathBuf}, time::Instant,
 };
 
 use log::{debug, error};
@@ -91,8 +91,9 @@ pub fn extract_overrides(instance_path: &Path, archive: &mut ZipArchive<&File>) 
         let zip_file = archive.by_index(i)?;
         let name = zip_file.enclosed_name().unwrap().to_path_buf();
         if name.starts_with("overrides") && zip_file.is_file() {
+            let timer = Instant::now();
+
             let base_path = name.strip_prefix("overrides").unwrap();
-            debug!("Writing file to {:#?}", base_path);
             let path = instance_path.join(base_path);
             let bytes = bytes_from_zip_file(zip_file);
 
@@ -104,6 +105,8 @@ pub fn extract_overrides(instance_path: &Path, archive: &mut ZipArchive<&File>) 
             }
             let mut file = File::create(&path)?;
             file.write_all(&bytes)?;
+            // TODO: speed up background.png extraction speed
+            debug!("Extracting {:#?} took {}ms for {} bytes", path, timer.elapsed().as_millis(), bytes.len());
         }
 
     }
