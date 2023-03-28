@@ -21,7 +21,7 @@ use crate::{
     web_services::{
         downloader::{
             boxed_buffered_download_stream, validate_hash_sha1, DownloadError, DownloadResult,
-            Downloadable,
+            Downloadable, download_json_object, download_json_object_with_headers,
         },
         manifest::bytes_from_zip_file,
     },
@@ -217,6 +217,40 @@ pub async fn download_mods_from_curseforge(
     .await?;
 
     Ok(())
+}
+
+async fn download_dependencies_recursively(modid: u32) -> reqwest::Result<()> {
+    let search_entry = download_mod_from_modid(modid).await?;
+
+    Ok(())
+}
+
+
+async fn download_mod_from_modid(modid: u32) -> reqwest::Result<CurseforgeSearchEntry> {
+    // TODO: Change this endpoint to `mods/{modid}/files to use pagination and get the first file with the matching game version
+    let url = format!("{}/mods/{}", CURSEFORGE_API_URL, modid);
+    let mut header_map = HeaderMap::new();
+    header_map.insert(
+        "X-API-KEY",
+        "$2a$10$5BgCleD8.rLQ5Ix17Xm2lOjgfoeTJV26a1BXmmpwrOemgI517.nuC"
+            .parse()
+            .unwrap(),
+    );
+    header_map.insert("Content-Type", "application/json".parse().unwrap());
+    header_map.insert("Accept", "application/json".parse().unwrap());
+
+    #[derive(Debug, Deserialize)]
+    struct SingleModSearch {
+        data: CurseforgeSearchEntry
+    }
+
+    let x = download_json_object_with_headers::<SingleModSearch>(&url, header_map).await?;
+    Ok(x.data)
+}
+
+#[test]
+fn test_download_mod_from_modid() {
+    block_on(download_mod_from_modid(320926)).unwrap();
 }
 
 #[derive(Debug, Deserialize)]

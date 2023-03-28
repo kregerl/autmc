@@ -5,9 +5,10 @@ use std::{
 };
 
 use bytes::Bytes;
-use crypto::{digest::Digest, sha1::Sha1, md5::Md5};
+use crypto::{digest::Digest, md5::Md5, sha1::Sha1};
 use futures::StreamExt;
 use log::{debug, error, info};
+use reqwest::header::HeaderMap;
 use serde::de::DeserializeOwned;
 
 const BUFFER_SIZE: usize = 8;
@@ -78,7 +79,6 @@ async fn boxed_download_single(
     Ok(())
 }
 
-
 pub async fn buffered_download_stream<T>(
     items: &[T],
     base_dir: &Path,
@@ -129,6 +129,18 @@ where
 {
     let client = reqwest::Client::new();
     let response = client.get(url).send().await?;
+    Ok(response.json().await?)
+}
+
+pub async fn download_json_object_with_headers<T>(
+    url: &str,
+    headers: HeaderMap,
+) -> reqwest::Result<T>
+where
+    T: DeserializeOwned,
+{
+    let client = reqwest::Client::new();
+    let response = client.get(url).headers(headers).send().await?;
     Ok(response.json().await?)
 }
 
