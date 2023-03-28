@@ -16,7 +16,7 @@ use crate::{
     state::resource_manager::{ManifestError, ManifestResult},
     web_services::{
         downloader::{
-            download_bytes_from_url, download_json_object, validate_hash_md5, DownloadResult,
+            download_bytes_from_url, download_json_object, validate_hash_md5, DownloadResult, download_json_object_from_url,
         },
         manifest::get_classpath_separator,
     },
@@ -115,7 +115,7 @@ pub struct InstallerArgumentPaths {
 
 pub async fn download_forge_hashes(forge_version: &str) -> DownloadResult<ForgeHashes> {
     let url = format!("{}/{}/meta.json", FORGE_FILES_BASE_URL, forge_version);
-    Ok(download_json_object::<ForgeHashes>(&url).await?)
+    Ok(download_json_object_from_url::<ForgeHashes>(&url).await?)
 }
 
 pub async fn download_forge_version(

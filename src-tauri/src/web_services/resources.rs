@@ -26,7 +26,7 @@ use crate::{
     web_services::{
         downloader::{
             boxed_buffered_download_stream, buffered_download_stream, download_bytes_from_url,
-            download_json_object, validate_hash_sha1, DownloadError, Downloadable,
+            validate_hash_sha1, DownloadError, Downloadable, download_json_object_from_url,
         },
         manifest::{
             fabric::{download_fabric_profile, obtain_fabric_library_hashes},
@@ -588,7 +588,7 @@ async fn download_java_from_runtime_manifest(
 ) -> ManifestResult<PathBuf> {
     info!("Downloading java runtime manifset");
     let version_manifest: JavaRuntimeManifest =
-        download_json_object(&manifest.manifest.url()).await?;
+    download_json_object_from_url(&manifest.manifest.url()).await?;
     let base_path = &java_dir.join(&manifest.version.name);
 
     let mut files: Vec<JavaRuntimeFile> = Vec::new();
@@ -676,7 +676,7 @@ async fn download_java_from_runtime_manifest(
 async fn download_java_version(java_dir: &Path, java: JavaVersion) -> ManifestResult<PathBuf> {
     info!("Downloading java version manifest");
     let java_version_manifest: HashMap<String, JavaManifest> =
-        download_json_object(JAVA_VERSION_MANIFEST_URL).await?;
+    download_json_object_from_url(JAVA_VERSION_MANIFEST_URL).await?;
     let manifest_key = determine_key_for_java_manifest(&java_version_manifest);
 
     let java_manifest = &java_version_manifest.get(manifest_key).unwrap();
@@ -793,7 +793,7 @@ async fn download_assets(
     asset_index: &AssetIndex,
 ) -> ManifestResult<String> {
     let metadata = &asset_index.metadata;
-    let asset_object: AssetObject = download_json_object(metadata.url()).await?;
+    let asset_object: AssetObject = download_json_object_from_url(metadata.url()).await?;
     let asset_index_dir = asset_dir.join("indexes");
     let index_bytes = download_bytes_from_url(metadata.url()).await?;
     fs::create_dir_all(&asset_index_dir)?;
@@ -926,6 +926,16 @@ impl From<&str> for ModloaderType {
             "forge" => ModloaderType::Forge,
             "fabric" => ModloaderType::Fabric,
             _ => ModloaderType::None,
+        }
+    }
+}
+
+impl ToString for ModloaderType {
+    fn to_string(&self) -> String {
+        match &self {
+            ModloaderType::Forge => "forge".into(),
+            ModloaderType::Fabric => "fabric".into(),
+            ModloaderType::None => "".into(),
         }
     }
 }

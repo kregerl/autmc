@@ -4,15 +4,12 @@ use std::{
     io::{BufReader, Error, Write},
     path::{Path, PathBuf},
     sync::Arc,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{ SystemTime, UNIX_EPOCH},
 };
 
-use log::{debug, error, info};
+use log::{debug,  info};
 use serde::{Deserialize, Serialize};
-use tauri::async_runtime::{JoinHandle, Mutex};
-use tokio::time::sleep;
-
-use crate::web_services::authentication::{authenticate, AuthMode};
+use tauri::async_runtime::{Mutex};
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Account {

@@ -9,7 +9,7 @@ use crypto::{digest::Digest, md5::Md5, sha1::Sha1};
 use futures::StreamExt;
 use log::{debug, error, info};
 use reqwest::header::HeaderMap;
-use serde::de::DeserializeOwned;
+use serde::{de::DeserializeOwned, Serialize};
 
 const BUFFER_SIZE: usize = 8;
 
@@ -123,25 +123,35 @@ where
     Ok(())
 }
 
-pub async fn download_json_object<T>(url: &str) -> reqwest::Result<T>
-where
-    T: DeserializeOwned,
-{
-    let client = reqwest::Client::new();
-    let response = client.get(url).send().await?;
-    Ok(response.json().await?)
-}
-
-pub async fn download_json_object_with_headers<T>(
+pub async fn download_json_object<T, Q>(
     url: &str,
-    headers: HeaderMap,
+    header_map: Option<HeaderMap>,
+    query_params: Option<&Q>
 ) -> reqwest::Result<T>
 where
     T: DeserializeOwned,
+    Q: Serialize + ?Sized
 {
     let client = reqwest::Client::new();
-    let response = client.get(url).headers(headers).send().await?;
+    let mut builder = client.get(url);
+    
+    if let Some(headers) = header_map {
+        builder = builder.headers(headers);
+    }
+
+    if let Some(params) = query_params {
+        builder = builder.query(params);
+    }
+
+    let response = builder.send().await?;
     Ok(response.json().await?)
+}
+
+pub async fn download_json_object_from_url<T>(url: &str) -> reqwest::Result<T>
+where
+    T: DeserializeOwned,
+{
+    download_json_object::<T, ()>(url, None, None).await
 }
 
 /// Download the bytes for a file at the specified `url`

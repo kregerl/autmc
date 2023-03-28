@@ -1,8 +1,9 @@
-use core::arch;
 use std::{
-    fs::{File, self},
+    collections::VecDeque,
+    fs::{self, File},
     io::{self, Write},
-    path::{Path, PathBuf}, time::Instant,
+    path::{Path, PathBuf},
+    time::Instant,
 };
 
 use log::{debug, error};
@@ -11,19 +12,17 @@ use serde::Deserialize;
 use serde_json::json;
 #[cfg(test)]
 use tauri::async_runtime::block_on;
-use tauri::{AppHandle, Manager, State, Wry};
-use tempdir::TempDir;
-use zip::{read::ZipFile, ZipArchive};
+use zip::ZipArchive;
 
 use crate::{
-    consts::{CURSEFORGE_API_URL, CURSEFORGE_FORGECDN_URL},
-    state::instance_manager::InstanceState,
+    consts::{CURSEFORGE_API_URL, CURSEFORGE_FORGECDN_URL, CURSEFORGE_MODPACK_CLASS_ID},
     web_services::{
         downloader::{
-            boxed_buffered_download_stream, validate_hash_sha1, DownloadError, DownloadResult,
-            Downloadable, download_json_object, download_json_object_with_headers,
+            buffered_download_stream, download_json_object, validate_hash_sha1, DownloadError,
+            DownloadResult, Downloadable,
         },
         manifest::bytes_from_zip_file,
+        resources::ModloaderType,
     },
 };
 
@@ -39,21 +38,29 @@ pub struct CurseforgeManifest {
     name: String,
     version: String,
     author: String,
-    pub files: Vec<CurseforgeFile>,
+    files: Vec<CurseforgeFile>,
     overrides: String,
 }
 
 impl CurseforgeManifest {
-    pub fn get_vanilla_version(&self) -> &str {
+    pub fn vanilla_version(&self) -> &str {
         &self.minecraft.version
     }
 
-    pub fn get_modloaders(&self) -> &[Modloader] {
+    pub fn modloaders(&self) -> &[Modloader] {
         &self.minecraft.modloaders
     }
 
-    pub fn get_modpack_name(&self) -> &str {
+    pub fn modpack_name(&self) -> &str {
         &self.name
+    }
+
+    pub fn overrides(&self) -> &str {
+        &self.overrides
+    }
+
+    pub fn files(&self) -> &[CurseforgeFile] {
+        &self.files
     }
 }
 
@@ -79,21 +86,27 @@ pub struct CurseforgeFile {
     required: bool,
 }
 
-pub fn extract_curseforge_zip(archive: &mut ZipArchive<&File>) -> io::Result<CurseforgeManifest> {
+/// Extract the manifest from the curseforge zip.
+pub fn extract_manifest_from_curseforge_zip(archive: &mut ZipArchive<&File>) -> io::Result<CurseforgeManifest> {
     let manifest_bytes = bytes_from_zip_file(archive.by_name("manifest.json")?);
 
     Ok(serde_json::from_slice(&manifest_bytes)?)
 }
 
-pub fn extract_overrides(instance_path: &Path, archive: &mut ZipArchive<&File>) -> io::Result<()> {
+/// Extract overrides into the instance's directory
+pub fn extract_overrides(
+    instance_path: &Path,
+    archive: &mut ZipArchive<&File>,
+    overrides: &str,
+) -> io::Result<()> {
     debug!("Extracting overrides into {:#?}", instance_path);
     for i in 0..archive.len() {
         let zip_file = archive.by_index(i)?;
         let name = zip_file.enclosed_name().unwrap().to_path_buf();
-        if name.starts_with("overrides") && zip_file.is_file() {
+        if name.starts_with(overrides) && zip_file.is_file() {
             let timer = Instant::now();
 
-            let base_path = name.strip_prefix("overrides").unwrap();
+            let base_path = name.strip_prefix(overrides).unwrap();
             let path = instance_path.join(base_path);
             let bytes = bytes_from_zip_file(zip_file);
 
@@ -106,9 +119,13 @@ pub fn extract_overrides(instance_path: &Path, archive: &mut ZipArchive<&File>) 
             let mut file = File::create(&path)?;
             file.write_all(&bytes)?;
             // TODO: speed up background.png extraction speed
-            debug!("Extracting {:#?} took {}ms for {} bytes", path, timer.elapsed().as_millis(), bytes.len());
+            debug!(
+                "Extracting {:#?} took {}ms for {} bytes",
+                path,
+                timer.elapsed().as_millis(),
+                bytes.len()
+            );
         }
-
     }
     Ok(())
 }
@@ -145,6 +162,13 @@ struct CurseforgeDependency {
     relation_type: u32,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct CurseforgeManifestInfo {
+    pub instance_name: String,
+    pub game_version: String,
+    pub modloader_type: ModloaderType,
+}
+
 // -----------------------------
 // END: Common Curseforge Structs
 // -----------------------------
@@ -153,10 +177,11 @@ struct CurseforgeDependency {
 // START: Curseforge API Files Search
 // -----------------------------
 
+/// Download all mods from `files` into the instance's `mods` directory.
 pub async fn download_mods_from_curseforge(
     files: &[CurseforgeFile],
-    instance_name: &str,
     instances_dir: &Path,
+    info: CurseforgeManifestInfo,
 ) -> DownloadResult<()> {
     debug!("download_mods_from_curseforge");
     // Send request with headers and body content.
@@ -170,6 +195,7 @@ pub async fn download_mods_from_curseforge(
     header_map.insert("Content-Type", "application/json".parse().unwrap());
     header_map.insert("Accept", "application/json".parse().unwrap());
 
+    // extract just the file ids from `files`
     let file_ids: Vec<u32> = files.into_iter().map(|file| file.file_id).collect();
 
     let url = format!("{}/mods/files", CURSEFORGE_API_URL);
@@ -182,8 +208,13 @@ pub async fn download_mods_from_curseforge(
         .await?;
 
     let response = response.json::<CurseforgeFilesResponse>().await?;
-    let mut download_queue: Vec<Box<dyn Downloadable + Send + Sync>> = Vec::new();
+    // Files to download.
+    let mut download_vec: Vec<CurseforgeFilesData> = Vec::new();
+    // Vec of dependencies to gather after processing manifest modids.
     let mut dependencies: Vec<u32> = Vec::new();
+
+    // Store existing modids so dependencies can be skipped if already listed in the manifest.
+    let existing_modids: Vec<_> = response.data.iter().map(|entry| entry.mod_id).collect();
     for files_data in response.data {
         for possible_dependency in &files_data.dependencies {
             // Possible enum values:
@@ -194,25 +225,37 @@ pub async fn download_mods_from_curseforge(
             // 5=Incompatible
             // 6=Include
             // If we have a required dependency then add it to dependencies list.
-            if possible_dependency.relation_type == 3 {
+            if possible_dependency.relation_type == 3
+                && !existing_modids.contains(&possible_dependency.mod_id)
+            {
                 dependencies.push(possible_dependency.mod_id);
             }
         }
-        download_queue.push(Box::new(files_data));
+        download_vec.push(files_data);
     }
-    // FIXME: Get the downloadurls from the dependencies list using
-    // https://api.curseforge.com/v1/mods/{modid}
-    let mods_dir = instances_dir.join(instance_name).join("mods");
+
+    for dependency_modid in dependencies {
+        download_vec.extend(
+            download_dependencies_recursively(
+                &info.game_version,
+                &info.modloader_type,
+                dependency_modid,
+            )
+            .await?,
+        );
+    }
+
+    let mods_dir = instances_dir.join(info.instance_name).join("mods");
 
     // Download all the files
-    boxed_buffered_download_stream(&download_queue, &mods_dir, |bytes, downloadable| {
-        if !validate_hash_sha1(&bytes, &downloadable.hash()) {
-            let err = format!("Error downloading {}, invalid hash.", &downloadable.url());
+    buffered_download_stream(&download_vec, &mods_dir, |bytes, file_data| {
+        if !validate_hash_sha1(&bytes, &file_data.hash()) {
+            let err = format!("Error downloading {}, invalid hash.", &file_data.url());
             error!("{}", err);
             return Err(DownloadError::InvalidFileHashError(err));
         }
-        debug!("Downloading mod: {}", downloadable.name());
-        let path = downloadable.path(&mods_dir);
+        debug!("Downloading mod: {}", file_data.name());
+        let path = file_data.path(&mods_dir);
         let mut file = File::create(&path)?;
         file.write_all(&bytes)?;
         Ok(())
@@ -222,16 +265,61 @@ pub async fn download_mods_from_curseforge(
     Ok(())
 }
 
-async fn download_dependencies_recursively(modid: u32) -> reqwest::Result<()> {
-    let search_entry = download_mod_from_modid(modid).await?;
+/// Resursively download a mod and its dependencies at `modid`, filtered by `game_version` and `modloader_type` 
+#[async_recursion::async_recursion]
+async fn download_dependencies_recursively(
+    game_version: &str,
+    modloader_type: &ModloaderType,
+    modid: u32,
+) -> reqwest::Result<Vec<CurseforgeFilesData>> {
+    let mut dependencies = Vec::new();
 
-    Ok(())
+    let search_entry = download_mod_from_modid(game_version, modloader_type, modid).await?;
+
+    // If there is no entry response, then the modid doesn't exist or there is no file that matches the
+    // `game_version` and `modloader_version` filters.
+    match search_entry {
+        Some(file_data) => {
+            // If there are any required dependencies for this dependency, recurse.
+            let required_dependencies = file_data
+                .dependencies
+                .iter()
+                .filter(|dependency| dependency.relation_type == 3)
+                .collect::<Vec<_>>();
+            for required_dependency in required_dependencies {
+                dependencies.extend(
+                    download_dependencies_recursively(
+                        game_version,
+                        modloader_type,
+                        required_dependency.mod_id,
+                    )
+                    .await?,
+                );
+            }
+
+            dependencies.push(file_data)
+        }
+        None => {
+            error!("File with modid {} could not be found", modid);
+            debug!(
+                "Filtering by game_version: {} and modloader_type: {}",
+                game_version,
+                modloader_type.to_string()
+            );
+        }
+    }
+
+    Ok(dependencies)
 }
 
-
-async fn download_mod_from_modid(modid: u32) -> reqwest::Result<CurseforgeSearchEntry> {
-    // TODO: Change this endpoint to `mods/{modid}/files to use pagination and get the first file with the matching game version
-    let url = format!("{}/mods/{}", CURSEFORGE_API_URL, modid);
+/// Download the file data about a given `modid`, filtered by `game_version` and `modloader_type` or 
+/// None if the `modid` doesn't exist
+async fn download_mod_from_modid(
+    game_version: &str,
+    modloader_type: &ModloaderType,
+    modid: u32,
+) -> reqwest::Result<Option<CurseforgeFilesData>> {
+    let url = format!("{}/mods/{}/files", CURSEFORGE_API_URL, modid);
     let mut header_map = HeaderMap::new();
     header_map.insert(
         "X-API-KEY",
@@ -242,23 +330,51 @@ async fn download_mod_from_modid(modid: u32) -> reqwest::Result<CurseforgeSearch
     header_map.insert("Content-Type", "application/json".parse().unwrap());
     header_map.insert("Accept", "application/json".parse().unwrap());
 
-    #[derive(Debug, Deserialize)]
-    struct SingleModSearch {
-        data: CurseforgeSearchEntry
-    }
+    // Download a curseforge files response with files filtered to `game_version` and `modloader_version`
+    let mut response: CurseforgeFilesResponse = download_json_object(
+        &url,
+        Some(header_map),
+        Some(&[
+            ("gameVersion", game_version),
+            (
+                "modLoaderVersion",
+                modloader_id_from_version(modloader_type),
+            ),
+        ]),
+    )
+    .await?;
 
-    let x = download_json_object_with_headers::<SingleModSearch>(&url, header_map).await?;
-    Ok(x.data)
+    // Take the first element from data since they are already ordered by date and filtered during the request.
+    Ok(response.data.pop_front())
+}
+
+/// Convert a [ModloaderType] to the `modLoaderVersion` query parameter
+fn modloader_id_from_version(modloader_type: &ModloaderType) -> &str {
+    match modloader_type {
+        ModloaderType::Forge => "1",
+        // Cauldron => 2
+        // LiteLoader => 3
+        ModloaderType::Fabric => "4",
+        // Quilt => 5
+        ModloaderType::None => "0",
+    }
 }
 
 #[test]
 fn test_download_mod_from_modid() {
-    block_on(download_mod_from_modid(320926)).unwrap();
+    let x = block_on(download_mod_from_modid(
+        "1.19.2",
+        &ModloaderType::Forge,
+        320926,
+    ))
+    .unwrap();
+    println!("Here: {:#?}", x);
 }
 
 #[derive(Debug, Deserialize)]
 struct CurseforgeFilesResponse {
-    data: Vec<CurseforgeFilesData>,
+    data: VecDeque<CurseforgeFilesData>,
+    pagination: Option<CurseforgeSearchPagination>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -466,7 +582,7 @@ async fn search_curseforge_modpacks() -> reqwest::Result<CurseforgeSearchRespons
             ("index", "0"),
             ("sortField", "1"),
             ("sortOrder", "desc"),
-            ("classId", "4471"),
+            ("classId", &CURSEFORGE_MODPACK_CLASS_ID.to_string()),
         ])
         .send()
         .await?;

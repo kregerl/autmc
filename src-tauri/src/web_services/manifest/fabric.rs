@@ -5,7 +5,7 @@ use serde::{Deserialize};
 use crate::{
     consts::FABRIC_BASE_URL,
     state::resource_manager::ManifestResult,
-    web_services::downloader::{download_bytes_from_url, download_json_object, Downloadable},
+    web_services::downloader::{download_bytes_from_url, Downloadable, download_json_object_from_url},
 };
 
 use super::{vanilla::{LaunchArguments}, get_directory_separator};
@@ -78,7 +78,7 @@ pub async fn download_fabric_profile(
         "{}/versions/loader/{}/{}/profile/json",
         FABRIC_BASE_URL, minecraft_version, fabric_version
     );
-    Ok(download_json_object::<FabricProfile>(&url).await?)
+    Ok(download_json_object_from_url::<FabricProfile>(&url).await?)
 }
 
 pub async fn obtain_fabric_library_hashes(
@@ -91,7 +91,6 @@ pub async fn obtain_fabric_library_hashes(
             library.url,
             maven_to_fabric_endpoint(&library.name, Some(".sha1"))
         );
-        println!("Hash Url: {}", hash_url);
         let bytes = download_bytes_from_url(&hash_url).await?;
         let hash = String::from_utf8(bytes.to_vec())?;
         result.push(DownloadableFabricLibrary {

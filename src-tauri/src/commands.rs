@@ -9,7 +9,7 @@ use std::{
 
 use flate2::read::GzDecoder;
 use image::EncodableLayout;
-use log::{debug, error, warn, info};
+use log::{debug, error, info, warn};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State, Wry};
@@ -24,8 +24,11 @@ use crate::{
     },
     web_services::{
         authentication::{validate_account, AuthResult},
-        manifest::{path_to_utf8_str, vanilla::{VanillaManifestVersion, self}},
-        modpack::curseforge::{extract_curseforge_zip, download_mods_from_curseforge, extract_overrides},
+        manifest::{path_to_utf8_str, vanilla::VanillaManifestVersion},
+        modpack::curseforge::{
+            download_mods_from_curseforge, extract_manifest_from_curseforge_zip, extract_overrides,
+            CurseforgeManifestInfo,
+        },
         resources::{create_instance, ModloaderType},
     },
 };
@@ -276,7 +279,7 @@ pub async fn launch_instance(instance_name: String, app_handle: AppHandle<Wry>) 
     instance_manager.launch_instance(
         &instance_name,
         account_manager.get_active_account().unwrap(),
-        app_handle.clone()
+        app_handle.clone(),
     );
 }
 
@@ -340,7 +343,10 @@ pub async fn get_screenshots(app_handle: AppHandle<Wry>) -> HashMap<String, Vec<
             instance_screenshots.insert(instance, screenshots);
         }
     }
-    info!("Found {} screenshots across all intances",  instance_screenshots.len());
+    info!(
+        "Found {} screenshots across all intances",
+        instance_screenshots.len()
+    );
     instance_screenshots
 }
 
@@ -369,9 +375,14 @@ fn create_log_map(
 
     // Create map that maps instances to the log lines.
     for instance in instance_names {
-        let directory_entries = fs::read_dir(instance_dir.join(&instance).join("logs"))?;
+        let directory_entries = fs::read_dir(instance_dir.join(&instance).join("logs"));
+        if let Err(_) = directory_entries {
+            result.insert(instance.clone(), HashMap::new());
+            continue;
+        } 
+
         // Traverse every entry in the dir
-        for dir_entry in directory_entries {
+        for dir_entry in directory_entries.unwrap() {
             let path = dir_entry?.path();
             if path.is_file() {
                 let log_lines = read_log_file(&path)?;
@@ -412,16 +423,19 @@ pub async fn get_logs(app_handle: AppHandle<Wry>) -> HashMap<String, HashMap<Str
 pub async fn import_zip(zip_path: String, app_handle: AppHandle<Wry>) {
     let path = PathBuf::from(&zip_path);
 
+    // Open the zip archive at `zip_path`
     let zip_file = File::open(&path).unwrap();
     let mut archive = ZipArchive::new(&zip_file).unwrap();
-    
-    let curseforge_manifest = extract_curseforge_zip(&mut archive).unwrap();
 
-    let vanilla_version = curseforge_manifest.get_vanilla_version();
-    let instance_name = curseforge_manifest.get_modpack_name();
+    // Pull out the manifest.json from the zip
+    let curseforge_manifest = extract_manifest_from_curseforge_zip(&mut archive).unwrap();
 
+    let vanilla_version = curseforge_manifest.vanilla_version();
+    let instance_name = curseforge_manifest.modpack_name();
+
+    // Get the modloader with 'primary: true'
     let primary_modloader = curseforge_manifest
-        .get_modloaders()
+        .modloaders()
         .iter()
         .find(|modloader| modloader.primary);
     let (modloader_type, modloader_version) = match primary_modloader {
@@ -435,6 +449,7 @@ pub async fn import_zip(zip_path: String, app_handle: AppHandle<Wry>) {
         }
     };
 
+    // Create corrected modloader version string for instance creation
     let full_modloader_version = format!("{}-{}", vanilla_version, modloader_version);
 
     create_instance(
@@ -443,7 +458,9 @@ pub async fn import_zip(zip_path: String, app_handle: AppHandle<Wry>) {
         full_modloader_version.into(),
         instance_name.into(),
         &app_handle,
-    ).await.unwrap();
+    )
+    .await
+    .unwrap();
 
     let instance_state: State<InstanceState> = app_handle
         .try_state()
@@ -451,10 +468,24 @@ pub async fn import_zip(zip_path: String, app_handle: AppHandle<Wry>) {
     let instance_manager = instance_state.0.lock().await;
     let instances_dir = instance_manager.instances_dir();
 
-    download_mods_from_curseforge(&curseforge_manifest.files, instance_name, &instances_dir).await.unwrap();
+    let info = CurseforgeManifestInfo {
+        instance_name: instance_name.into(),
+        game_version: curseforge_manifest.vanilla_version().into(),
+        modloader_type: modloader_type.into(),
+    };
 
-    extract_overrides(&instances_dir.join(instance_name), &mut archive).unwrap();
+    // After instance is created, download the mods from curseforge
+    download_mods_from_curseforge(curseforge_manifest.files(), &instances_dir, info)
+        .await
+        .unwrap();
 
-    // debug!("Manifest: {:#?}", curseforge_manifest);
+    // Finally extract overrides into the instance dir
+    extract_overrides(
+        &instances_dir.join(instance_name),
+        &mut archive,
+        curseforge_manifest.overrides(),
+    )
+    .unwrap();
+
     debug!("Invoked import_zip: {}", zip_path);
 }
