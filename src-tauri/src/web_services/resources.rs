@@ -1008,7 +1008,7 @@ pub async fn create_instance(
             let forge_profile = download_forge_version(
                 &modloader_version,
                 &vanilla_version,
-                forge_hashes.classifiers.installer,
+                &forge_hashes.installer_hash(),
                 &resource_manager.version_dir(),
                 tmp_dir.path(),
             )

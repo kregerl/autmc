@@ -16,7 +16,7 @@ use crate::{
     state::resource_manager::{ManifestError, ManifestResult},
     web_services::{
         downloader::{
-            download_bytes_from_url, download_json_object, validate_hash_md5, DownloadResult, download_json_object_from_url,
+            download_bytes_from_url, validate_hash_md5, DownloadResult, download_json_object_from_url,
         },
         manifest::get_classpath_separator,
     },
@@ -32,7 +32,13 @@ pub struct ForgeManifest(pub HashMap<String, Vec<String>>);
 
 #[derive(Debug, Deserialize)]
 pub struct ForgeHashes {
-    pub classifiers: ForgeHashClassifiers,
+    classifiers: ForgeHashClassifiers,
+}
+
+impl ForgeHashes {
+    pub fn installer_hash(&self) -> &ForgeFileHash {
+        &self.classifiers.installer
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -42,7 +48,7 @@ pub struct ForgeHashClassifiers {
     changelog: ForgeFileHash, // .txt
     userdev: ForgeFileHash,
     universal: ForgeFileHash,
-    pub installer: ForgeFileHash,
+    installer: ForgeFileHash,
 }
 
 // Forge hashes are md5 NOT sha1
@@ -50,6 +56,14 @@ pub struct ForgeHashClassifiers {
 pub struct ForgeFileHash {
     #[serde(rename = "jar", alias = "txt", alias = "zip")]
     hash: String,
+}
+
+impl From<&str> for ForgeFileHash {
+    fn from(s: &str) -> Self {
+        Self {
+            hash: s.into()
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -121,7 +135,7 @@ pub async fn download_forge_hashes(forge_version: &str) -> DownloadResult<ForgeH
 pub async fn download_forge_version(
     forge_version: &str,
     minecraft_version: &str,
-    valid_hash: ForgeFileHash,
+    valid_hash: &ForgeFileHash,
     version_path: &Path,
     tmp_dir: &Path,
 ) -> ManifestResult<ForgeProfile> {
@@ -428,9 +442,7 @@ pub fn test_download_forge_version() {
         let x = download_forge_version(
             forge_version,
             "1.19.3",
-            ForgeFileHash {
-                hash: "268bde630c51b1e94257d76377ec2424".into(),
-            },
+            &"268bde630c51b1e94257d76377ec2424".into(),
             Path::new("/home/loucas/.config/com.autm.launcher/versions"),
             tmp_dir.path(),
         )
@@ -449,12 +461,12 @@ pub fn test_download_forge_version() {
             tmp_dir: tmp_dir.path().to_path_buf(),
         };
 
-        let y = patch_forge(
+        patch_forge(
             Path::new("/home/loucas/.config/com.autm.launcher/java/17.0.3/bin/java"),
             fp.profile.processors,
             fp.profile.data,
             fp.profile.libraries,
             paths,
-        );
+        ).unwrap();
     });
 }

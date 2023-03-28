@@ -33,11 +33,11 @@ use crate::{
 #[serde(rename_all = "camelCase")]
 pub struct CurseforgeManifest {
     minecraft: CurseforgeGameInformation,
-    manifest_type: String,
-    manifest_version: u32,
+    // manifest_type: String,
+    // manifest_version: u32,
     name: String,
-    version: String,
-    author: String,
+    // version: String,
+    // author: String,
     files: Vec<CurseforgeFile>,
     overrides: String,
 }
@@ -79,11 +79,11 @@ pub struct Modloader {
 
 #[derive(Debug, Deserialize)]
 pub struct CurseforgeFile {
-    #[serde(rename = "projectID")]
-    project_id: u32,
+    // #[serde(rename = "projectID")]
+    // project_id: u32,
     #[serde(rename = "fileID")]
     file_id: u32,
-    required: bool,
+    // required: bool,
 }
 
 /// Extract the manifest from the curseforge zip.
