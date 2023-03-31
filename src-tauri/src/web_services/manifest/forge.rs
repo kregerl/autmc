@@ -107,7 +107,7 @@ pub struct ForgeInstall {
     // path: Option<String>,
     minecraft: String,
     #[serde(rename = "serverJarPath")]
-    server_jar_path: String,
+    server_jar_path: Option<String>,
     pub data: HashMap<String, ForgeData>,
     pub processors: Vec<ForgeProcessor>,
     pub libraries: Vec<Library>,
