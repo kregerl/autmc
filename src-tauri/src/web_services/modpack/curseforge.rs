@@ -199,7 +199,7 @@ pub async fn download_mods_from_curseforge(
     header_map.insert("Accept", "application/json".parse().unwrap());
 
     // extract just the file ids from `files`
-    let file_ids: Vec<u32> = files.into_iter().map(|file| file.file_id).collect();
+    let file_ids: Vec<u32> = files.iter().map(|file| file.file_id).collect();
 
     let url = format!("{}/mods/files", CURSEFORGE_API_URL);
     let client = reqwest::Client::new();
@@ -253,15 +253,15 @@ pub async fn download_mods_from_curseforge(
     info!("Downloading {} mods from curseforge", download_vec.len());
     // Download all the files
     buffered_download_stream(&download_vec, &mods_dir, |bytes, file_data| {
-        if !validate_hash_sha1(&bytes, &file_data.hash()) {
+        if !validate_hash_sha1(bytes, file_data.hash()) {
             let err = format!("Error downloading {}, invalid hash.", &file_data.url());
             error!("{}", err);
-            return Err(DownloadError::InvalidFileHashError(err));
+            return Err(DownloadError::InvalidFileHash(err));
         }
         debug!("Downloading mod: {}", file_data.name());
         let path = file_data.path(&mods_dir);
-        let mut file = File::create(&path)?;
-        file.write_all(&bytes)?;
+        let mut file = File::create(path)?;
+        file.write_all(bytes)?;
         Ok(())
     })
     .await?;

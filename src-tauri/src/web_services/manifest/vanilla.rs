@@ -340,10 +340,7 @@ impl Library {
         if classifiers.contains_key(key) {
             Some(DownloadableClassifier {
                 classifier: classifiers.get(key).unwrap().clone(),
-                extraction_rule: match &self.extract {
-                    Some(rule) => Some(rule.clone()),
-                    None => None,
-                },
+                extraction_rule: self.extract.as_ref().cloned(),
             })
         } else {
             error!(
@@ -484,7 +481,7 @@ where
         Ok(None)
     } else {
         // We know we have one element, get it
-        Ok(runtimes.into_iter().nth(0))
+        Ok(runtimes.into_iter().next())
     }
 }
 

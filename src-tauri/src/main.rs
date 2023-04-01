@@ -27,8 +27,8 @@ use web_services::authentication::{authenticate, validate_account, AuthMode};
 
 use crate::{
     commands::{
-        get_account_skin, get_accounts, get_logs, get_screenshots, launch_instance, load_instances,
-        login_to_account, obtain_manifests, obtain_version, open_folder, import_zip,
+        get_account_skin, get_accounts, get_logs, get_screenshots, import_zip, launch_instance,
+        load_instances, login_to_account, obtain_manifests, obtain_version, open_folder,
     },
     state::{instance_manager::InstanceState, resource_manager::ResourceState},
 };
@@ -37,17 +37,17 @@ const MAX_LOGS: usize = 20;
 fn main() {
     tauri::Builder::default()
         .setup(|app| {
-            Ok(match setup(app) {
+            match setup(app) {
                 Ok(_) => {}
                 Err(e) => println!("Error: {:#?}", e),
-            })
+            };
+            Ok(())
         })
         .register_uri_scheme_protocol("autmc", autmc_uri_scheme)
-        .on_window_event(|event| match event.event() {
-            tauri::WindowEvent::CloseRequested { .. } => {
+        .on_window_event(|event| {
+            if let tauri::WindowEvent::CloseRequested { .. } = event.event() {
                 info!("Closing");
             }
-            _ => {}
         })
         .invoke_handler(tauri::generate_handler![
             show_microsoft_login_page,
@@ -134,7 +134,6 @@ fn setup(app: &mut App<Wry>) -> Result<(), Box<(dyn StdError + 'static)>> {
                         "Could not properly serialize account information: {}",
                         error
                     );
-                    return;
                 }
             }
             None => {
@@ -191,7 +190,6 @@ fn autmc_uri_scheme(
                 "Could not properly serialize account information: {}",
                 error
             );
-            return;
         }
     });
     let body: Vec<u8> = "<h1>Hello World!</h1>".as_bytes().to_vec();
@@ -202,9 +200,9 @@ fn autmc_uri_scheme(
 fn init_logger(log_dir: &PathBuf) -> Result<(), fern::InitError> {
     let datetime = chrono::Local::now().format("%Y-%m-%dT%H-%M-%S");
     if !log_dir.is_dir() {
-        fs::create_dir(&log_dir)?;
+        fs::create_dir(log_dir)?;
     }
-    purge_old_logs(&log_dir)?;
+    purge_old_logs(log_dir)?;
     let log_path = log_dir.join(format!("launcher_log_{}.log", datetime));
     // let log_path = log_dir.join("launcher_log.log");
     println!("Log path: {:#?}", log_path);

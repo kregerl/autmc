@@ -28,7 +28,7 @@ pub struct Account {
 pub struct AccountState(pub Arc<Mutex<AccountManager>>);
 
 impl AccountState {
-    pub fn new(app_dir: &PathBuf) -> Self {
+    pub fn new(app_dir: &Path) -> Self {
         Self(Arc::new(Mutex::new(AccountManager::new(app_dir))))
     }
 }
@@ -56,7 +56,7 @@ impl AccountManager {
     /// Deserialize account information into `app_dir/accounts.json`
     pub fn deserialize_accounts(&mut self) -> Result<(), Error> {
         let path = &self.path.join("accounts.json");
-        let file = File::open(&path)?;
+        let file = File::open(path)?;
         let reader = BufReader::new(file);
         let deserialized_account_manager =
             serde_json::from_reader::<BufReader<File>, AccountManager>(reader)?;

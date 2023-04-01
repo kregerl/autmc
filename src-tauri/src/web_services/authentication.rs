@@ -115,7 +115,7 @@ impl MinecraftProfileSuccess {
     pub fn active_skin(&self) -> &MinecraftProfileSkin {
         for skin in &self.skins {
             if skin.state == "ACTIVE" {
-                return &skin;
+                return skin;
             }
         }
         // Unwrap here since it should be impossible to get an empty vec of skins.
@@ -188,7 +188,7 @@ impl Serialize for AuthenticationError {
     where
         S: serde::Serializer,
     {
-        Ok(match self {
+        match self {
             AuthenticationError::MicrosoftError {
                 error_type,
                 error_description,
@@ -233,7 +233,7 @@ impl Serialize for AuthenticationError {
                 state.serialize_field("error_message", &error_message)?;
                 state.end()
             }
-            AuthenticationError::UnknownQueryParameter(error) => serializer.serialize_str(&error),
+            AuthenticationError::UnknownQueryParameter(error) => serializer.serialize_str(error),
             AuthenticationError::UrlParseError(error) => {
                 serializer.serialize_str(&error.to_string())
             }
@@ -244,7 +244,7 @@ impl Serialize for AuthenticationError {
             AuthenticationError::HttpResponseError(status_code) => {
                 serializer.serialize_str(&format!("Status code: {}", status_code))
             }
-        }?)
+        }
     }
 }
 
@@ -588,7 +588,7 @@ async fn check_xbox_error(response: reqwest::Response) -> AuthResult<XboxTokenSu
                 let hint = *XERR_HINTS.get(&xerr.to_string()).unwrap();
                 Err(AuthenticationError::XboxError {
                     xerr: xerr.to_string(),
-                    message: message.into(),
+                    message,
                     hint: hint.into(),
                 })
             }

@@ -17,20 +17,20 @@ pub type DownloadResult<T> = Result<T, DownloadError>;
 
 #[derive(Debug)]
 pub enum DownloadError {
-    RequestError(reqwest::Error),
-    FileWriteError(io::Error),
-    InvalidFileHashError(String),
+    Request(reqwest::Error),
+    FileWrite(io::Error),
+    InvalidFileHash(String),
 }
 
 impl From<reqwest::Error> for DownloadError {
     fn from(err: reqwest::Error) -> Self {
-        DownloadError::RequestError(err)
+        DownloadError::Request(err)
     }
 }
 
 impl From<io::Error> for DownloadError {
     fn from(error: io::Error) -> Self {
-        DownloadError::FileWriteError(error)
+        DownloadError::FileWrite(error)
     }
 }
 
@@ -48,7 +48,7 @@ pub async fn boxed_buffered_download_stream(
 ) -> DownloadResult<()> {
     let mut futures = Vec::new();
     for item in items {
-        futures.push(boxed_download_single(item, &base_dir, &callback));
+        futures.push(boxed_download_single(item, base_dir, &callback));
     }
     let x = futures::stream::iter(futures)
         .buffer_unordered(BUFFER_SIZE)
@@ -89,7 +89,7 @@ where
 {
     let mut futures = Vec::new();
     for item in items {
-        futures.push(download_single(item, &base_dir, &callback));
+        futures.push(download_single(item, base_dir, &callback));
     }
     let x = futures::stream::iter(futures)
         .buffer_unordered(BUFFER_SIZE)
@@ -143,7 +143,7 @@ where
         builder = builder.query(params);
     }
     let response = builder.send().await?;
-    Ok(response.json().await?)
+    response.json().await
 }
 
 pub async fn download_json_object_from_url<T>(url: &str) -> reqwest::Result<T>
@@ -157,7 +157,7 @@ where
 pub async fn download_bytes_from_url(url: &str) -> reqwest::Result<Bytes> {
     let client = reqwest::Client::new();
     let response = client.get(url).send().await?;
-    Ok(response.bytes().await?)
+    response.bytes().await
 }
 
 /// Validates that the SHA1 hash of `bytes` matches the `valid_hash`
@@ -192,7 +192,7 @@ pub fn validate_file_hash(path: &Path, valid_hash: &str) -> bool {
     }
     let result = read_bytes_from_file(path);
     if let Ok(bytes) = result {
-        let valid = validate_hash_sha1(&bytes, &valid_hash);
+        let valid = validate_hash_sha1(&bytes, valid_hash);
         info!("REMOVEME: Is file valid: {}", valid);
         valid
     } else {
@@ -202,9 +202,9 @@ pub fn validate_file_hash(path: &Path, valid_hash: &str) -> bool {
 
 /// Reads and returns bytes from the file specified in `path`
 fn read_bytes_from_file(path: &Path) -> io::Result<Bytes> {
-    let mut file = File::open(&path)?;
+    let mut file = File::open(path)?;
     let metadata = file.metadata()?;
     let mut buffer = vec![0; metadata.len() as usize];
-    file.read(&mut buffer)?;
+    file.read_exact(&mut buffer)?;
     Ok(Bytes::from(buffer))
 }

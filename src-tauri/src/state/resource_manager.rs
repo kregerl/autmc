@@ -56,9 +56,9 @@ impl Serialize for ManifestError {
             ManifestError::JsonSerializationError(error) => {
                 serializer.serialize_str(&error.to_string())
             }
-            ManifestError::VersionRetrievalError(error) => serializer.serialize_str(&error),
-            ManifestError::ResourceError(error) => serializer.serialize_str(&error),
-            ManifestError::MismatchedFileHash(error) => serializer.serialize_str(&error),
+            ManifestError::VersionRetrievalError(error) => serializer.serialize_str(error),
+            ManifestError::ResourceError(error) => serializer.serialize_str(error),
+            ManifestError::MismatchedFileHash(error) => serializer.serialize_str(error),
             ManifestError::FileExtractionError(error) => {
                 serializer.serialize_str(&error.to_string())
             }
@@ -93,9 +93,9 @@ impl From<serde_json::Error> for ManifestError {
 impl From<DownloadError> for ManifestError {
     fn from(error: DownloadError) -> Self {
         match error {
-            DownloadError::RequestError(e) => ManifestError::HttpError(e),
-            DownloadError::FileWriteError(e) => ManifestError::SerializationFilesystemError(e),
-            DownloadError::InvalidFileHashError(e) => ManifestError::MismatchedFileHash(e),
+            DownloadError::Request(e) => ManifestError::HttpError(e),
+            DownloadError::FileWrite(e) => ManifestError::SerializationFilesystemError(e),
+            DownloadError::InvalidFileHash(e) => ManifestError::MismatchedFileHash(e),
         }
     }
 }
@@ -109,7 +109,7 @@ impl From<ZipError> for ManifestError {
 pub struct ResourceState(pub Arc<Mutex<ResourceManager>>);
 
 impl ResourceState {
-    pub fn new(app_dir: &PathBuf) -> Self {
+    pub fn new(app_dir: &Path) -> Self {
         Self(Arc::new(Mutex::new(ResourceManager::new(app_dir))))
     }
 }
@@ -262,7 +262,7 @@ impl ResourceManager {
                     validate_hash_sha1(&bytes, "");
 
                     info!("REMOVEME: Serializing vanilla version {}", version_id);
-                    self.serialize_version(&version_id, &bytes)?;
+                    self.serialize_version(version_id, &bytes)?;
 
                     info!("REMOVEME: Reading vanilla version struct from string");
                     // TODO: Replace this string conversion and directly read bytes into json using serde_json::from_slice()
@@ -272,10 +272,10 @@ impl ResourceManager {
                     Ok(vanilla_version)
                 }
             } else {
-                return Err(ManifestError::VersionRetrievalError(format!(
+                Err(ManifestError::VersionRetrievalError(format!(
                     "Cannot find version with id: {}",
                     version_id
-                )));
+                )))
             }
         } else {
             Err(ManifestError::ResourceError(
@@ -305,7 +305,7 @@ impl ResourceManager {
     fn serialize_version(&self, version_id: &str, bytes: &Bytes) -> Result<(), io::Error> {
         info!("REMOVEME: Serializing version json.");
         if !&self.version_dir().exists() {
-            fs::create_dir(&self.version_dir())?;
+            fs::create_dir(self.version_dir())?;
         }
         let dir_path = &self.version_dir().join(version_id);
         fs::create_dir_all(dir_path)?;

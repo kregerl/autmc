@@ -44,12 +44,10 @@ use crate::{
 
 use super::{
     downloader::{hash_bytes_sha1, validate_file_hash},
-    manifest::{
-        vanilla::{
-            AssetIndex, DownloadMetadata, JarType, JavaManifest, JavaRuntime, JavaVersion,
-            LaunchArguments, LaunchArguments113, Library, Logging, Rule, RuleType,
-            VanillaManifestVersion,
-        },
+    manifest::vanilla::{
+        AssetIndex, DownloadMetadata, JarType, JavaManifest, JavaRuntime, JavaVersion,
+        LaunchArguments, LaunchArguments113, Library, Logging, Rule, RuleType,
+        VanillaManifestVersion,
     },
 };
 
@@ -179,7 +177,7 @@ fn construct_jvm_arguments113(
         match jvm_arg {
             // For normal arguments, check if it has something that should be replaced and replace it
             Argument::Arg(value) => {
-                let sub_arg = substitute_jvm_arguments(&value, mc_version, &argument_paths);
+                let sub_arg = substitute_jvm_arguments(value, mc_version, argument_paths);
                 formatted_arguments.push(match sub_arg {
                     Some(argument) => argument,
                     None => value.into(),
@@ -187,11 +185,11 @@ fn construct_jvm_arguments113(
             }
             // For conditional args, check their rules before adding to formatted_arguments vec
             Argument::ConditionalArg { rules, values } => {
-                if !rules_match(&rules) {
+                if !rules_match(rules) {
                     continue;
                 }
                 for value in values {
-                    let sub_arg = substitute_jvm_arguments(&value, mc_version, &argument_paths);
+                    let sub_arg = substitute_jvm_arguments(value, mc_version, argument_paths);
                     formatted_arguments.push(match sub_arg {
                         Some(argument) => argument,
                         None => value.into(),
@@ -208,21 +206,16 @@ fn construct_jvm_arguments112(
     mc_version: &str,
     argument_paths: &LaunchArgumentPaths,
 ) -> Vec<String> {
-    let mut formatted_arguments = Vec::new();
-
-    formatted_arguments.push(
+    vec![
         substitute_jvm_arguments(
             "-Djava.library.path=${natives_directory}",
             mc_version,
-            &argument_paths,
+            argument_paths,
         )
         .unwrap(),
-    );
-    formatted_arguments.push("-cp".into());
-    formatted_arguments
-        .push(substitute_jvm_arguments("${classpath}", mc_version, &argument_paths).unwrap());
-
-    formatted_arguments
+        "-cp".to_string(),
+        substitute_jvm_arguments("${classpath}", mc_version, argument_paths).unwrap(),
+    ]
 }
 
 fn construct_arguments(
@@ -260,7 +253,7 @@ fn construct_arguments(
                 &argument_paths,
                 &mc_version.id,
             ));
-            arguments.game.iter().map(|arg| arg.clone()).collect()
+            arguments.game.to_vec()
         }
     });
 
@@ -285,7 +278,7 @@ fn construct_arguments(
                     &argument_paths,
                     &mc_version.id,
                 ));
-                arguments.game.iter().map(|arg| arg.clone()).collect()
+                arguments.game.to_vec()
             }
         });
     }
@@ -308,7 +301,7 @@ fn construct_arguments(
             // For normal arguments, check if it has something that should be replaced and replace it
             Argument::Arg(value) => {
                 let sub_arg =
-                    substitute_game_arguments(&value, &mc_version, asset_index, &argument_paths);
+                    substitute_game_arguments(value, mc_version, asset_index, &argument_paths);
                 formatted_arguments.push(match sub_arg {
                     Some(argument) => argument,
                     None => value.into(),
@@ -316,16 +309,12 @@ fn construct_arguments(
             }
             // For conditional args, check their rules before adding to formatted_arguments vec
             Argument::ConditionalArg { rules, values } => {
-                if !rules_match(&rules) {
+                if !rules_match(rules) {
                     continue;
                 }
                 for value in values {
-                    let sub_arg = substitute_game_arguments(
-                        &value,
-                        &mc_version,
-                        asset_index,
-                        &argument_paths,
-                    );
+                    let sub_arg =
+                        substitute_game_arguments(value, mc_version, asset_index, &argument_paths);
                     formatted_arguments.push(match sub_arg {
                         Some(argument) => argument,
                         None => value.into(),
@@ -359,9 +348,10 @@ fn substitute_jvm_arguments(
     argument_paths: &LaunchArgumentPaths,
 ) -> Option<String> {
     debug!("substitute_jvm_arguments: {}", arg);
-    let classpath_strs: Vec<&str> = (&argument_paths.library_paths)
-        .into_iter()
-        .map(|path| path_to_utf8_str(&path))
+    let classpath_strs: Vec<&str> = argument_paths
+        .library_paths
+        .iter()
+        .map(|path| path_to_utf8_str(path))
         .collect();
 
     let mut formatted_argument: Option<String> = None;
@@ -373,17 +363,14 @@ fn substitute_jvm_arguments(
             arg
         };
 
-        let substring = get_arg_substring(&arg_to_replace);
+        let substring = get_arg_substring(arg_to_replace);
 
         if let Some(substr) = substring {
             info!("Substituting {} for jvm arguments", &substr);
             formatted_argument = match substr {
                 "${natives_directory}" => Some(arg_to_replace.replace(
                     substr,
-                    &format!(
-                        "{}",
-                        path_to_utf8_str(&argument_paths.instance_path.join("natives"))
-                    ),
+                    path_to_utf8_str(&argument_paths.instance_path.join("natives")),
                 )),
                 "${launcher_name}" => Some(arg_to_replace.replace(substr, LAUNCHER_NAME)),
                 "${launcher_version}" => Some(arg_to_replace.replace(substr, LAUNCHER_VERSION)),
@@ -411,7 +398,7 @@ fn substitute_jvm_arguments(
                 "${classpath_separator}" => {
                     Some(arg_to_replace.replace(substr, &get_classpath_separator()))
                 }
-                "${version_name}" => Some(arg_to_replace.replace(substr, &mc_version)),
+                "${version_name}" => Some(arg_to_replace.replace(substr, mc_version)),
                 _ => formatted_argument,
             };
             debug!("Got: {:#?}", formatted_argument);
@@ -434,15 +421,13 @@ fn substitute_game_arguments(
         info!("Substituting {} for game arguments", &substr);
         match substr {
             "${version_name}" => Some(arg.replace(substr, &mc_version.id)),
-            "${game_directory}" => Some(arg.replace(
-                substr,
-                &format!("{}", path_to_utf8_str(&argument_paths.instance_path)),
-            )),
-            "${assets_root}" => Some(arg.replace(
-                substr,
-                &format!("{}", path_to_utf8_str(&argument_paths.asset_dir_path)),
-            )),
-            "${assets_index_name}" => Some(arg.replace(substr, &asset_index)),
+            "${game_directory}" => {
+                Some(arg.replace(substr, path_to_utf8_str(&argument_paths.instance_path)))
+            }
+            "${assets_root}" => {
+                Some(arg.replace(substr, path_to_utf8_str(&argument_paths.asset_dir_path)))
+            }
+            "${assets_index_name}" => Some(arg.replace(substr, asset_index)),
             "${user_type}" => Some(arg.replace(substr, "mojang")),
             "${version_type}" => Some(arg.replace(substr, &mc_version.version_type)),
             "${resolution_width}" => None, // TODO: Launcher option specific
@@ -519,22 +504,22 @@ async fn download_libraries(
 ) -> ManifestResult<Vec<PathBuf>> {
     info!("Downloading {} libraries...", libraries.len());
     if !libraries_dir.exists() {
-        fs::create_dir(&libraries_dir)?;
+        fs::create_dir(libraries_dir)?;
     }
     let start = Instant::now();
     // Perform one buffered download for all libraries, including classifiers
-    boxed_buffered_download_stream(&libraries, &libraries_dir, |bytes, artifact| {
-        if !validate_hash_sha1(&bytes, &artifact.hash()) {
+    boxed_buffered_download_stream(libraries, libraries_dir, |bytes, artifact| {
+        if !validate_hash_sha1(bytes, artifact.hash()) {
             let err = format!("Error downloading {}, invalid hash.", &artifact.url());
             error!("{}", err);
-            return Err(DownloadError::InvalidFileHashError(err));
+            return Err(DownloadError::InvalidFileHash(err));
         }
         debug!("Downloading library: {}", artifact.name());
         // Windows only?
         // let artifact_path = str::replace(artifact.name(), "/", "\\");
-        let path = artifact.path(&libraries_dir);
-        let mut file = File::create(&path)?;
-        file.write_all(&bytes)?;
+        let path = artifact.path(libraries_dir);
+        let mut file = File::create(path)?;
+        file.write_all(bytes)?;
         Ok(())
     })
     .await?;
@@ -544,7 +529,7 @@ async fn download_libraries(
     );
     let mut file_paths: Vec<PathBuf> = Vec::with_capacity(libraries.len());
     for library in libraries {
-        file_paths.push(library.path(&libraries_dir));
+        file_paths.push(library.path(libraries_dir));
     }
 
     Ok(file_paths)
@@ -590,7 +575,7 @@ async fn download_java_from_runtime_manifest(
 ) -> ManifestResult<PathBuf> {
     info!("Downloading java runtime manifset");
     let version_manifest: JavaRuntimeManifest =
-        download_json_object_from_url(&manifest.manifest.url()).await?;
+        download_json_object_from_url(manifest.manifest.url()).await?;
     let base_path = &java_dir.join(&manifest.version.name);
 
     let mut files: Vec<JavaRuntimeFile> = Vec::new();
@@ -612,14 +597,14 @@ async fn download_java_from_runtime_manifest(
     // FIXME: Currently downloading `raw` files, switch to lzma and decompress locally.
     info!("Downloading all java files.");
     let start = Instant::now();
-    buffered_download_stream(&files, &base_path, |bytes, jrt| {
-        if !validate_hash_sha1(&bytes, &jrt.hash()) {
+    buffered_download_stream(&files, base_path, |bytes, jrt| {
+        if !validate_hash_sha1(bytes, jrt.hash()) {
             let err = format!("Error downloading {}, invalid hash.", &jrt.url());
             error!("{}", err);
-            return Err(DownloadError::InvalidFileHashError(err));
+            return Err(DownloadError::InvalidFileHash(err));
         }
-        let path = jrt.path(&base_path);
-        let mut file = File::create(&path)?;
+        let path = jrt.path(base_path);
+        let mut file = File::create(path)?;
         #[cfg(target_family = "unix")]
         {
             use std::os::unix::prelude::PermissionsExt;
@@ -711,20 +696,20 @@ type PatchingResult<T> = Result<T, PatchingError>;
 
 #[derive(Debug)]
 enum PatchingError {
-    ParseError(xmltree::ParseError),
-    WriteError(xmltree::Error),
-    ElementAccessError(String),
+    Parse(xmltree::ParseError),
+    Write(xmltree::Error),
+    ElementAccess(String),
 }
 
 impl From<xmltree::ParseError> for PatchingError {
     fn from(error: xmltree::ParseError) -> Self {
-        PatchingError::ParseError(error)
+        PatchingError::Parse(error)
     }
 }
 
 impl From<xmltree::Error> for PatchingError {
     fn from(error: xmltree::Error) -> Self {
-        PatchingError::WriteError(error)
+        PatchingError::Write(error)
     }
 }
 
@@ -737,7 +722,7 @@ fn patch_logging_configuration(bytes: &Bytes) -> PatchingResult<Bytes> {
         .get_child("Appenders")
         .and_then(|element| element.get_child("RollingRandomAccessFile"))
         .and_then(|element| element.get_child("PatternLayout"))
-        .ok_or(PatchingError::ElementAccessError(
+        .ok_or(PatchingError::ElementAccess(
             "Error trying to access PatternLayout in logging configuration".into(),
         ))?
         .clone();
@@ -745,7 +730,7 @@ fn patch_logging_configuration(bytes: &Bytes) -> PatchingResult<Bytes> {
     let console = root
         .get_mut_child("Appenders")
         .and_then(|element| element.get_mut_child("Console"))
-        .ok_or(PatchingError::ElementAccessError(
+        .ok_or(PatchingError::ElementAccess(
             "Error trying to access Console in logging configuration".into(),
         ))?;
 
@@ -782,7 +767,7 @@ async fn download_logging_configurations(
     let objects_dir = &asset_objects_dir.join(first_two_chars.0);
     fs::create_dir_all(objects_dir)?;
 
-    let path = objects_dir.join(&client_logger.file_id().to_string());
+    let path = objects_dir.join(client_logger.file_id());
     let mut file = File::create(&path)?;
     file.write_all(&patched_bytes)?;
     Ok((client_logger.argument.clone(), path))
@@ -821,7 +806,7 @@ async fn download_assets(
                 hash_bytes_sha1(bytes)
             );
             error!("{}", err);
-            return Err(DownloadError::InvalidFileHashError(err));
+            return Err(DownloadError::InvalidFileHash(err));
         }
         fs::create_dir_all(asset.path(asset_objects_dir).parent().unwrap())?;
 
@@ -945,7 +930,7 @@ impl ToString for ModloaderType {
 }
 
 /// Seperates libraries with empty url into a different vec.
-/// Returns a tuple of (<empty url>, <remaining libraries>) 
+/// Returns a tuple of (<empty url>, <remaining libraries>)
 fn seperate_nondownloadables(libraries: Vec<Library>) -> (Vec<Library>, Vec<Library>) {
     // Pull out forge libraries with empty url's so they can be extracted from the installer
     libraries.into_iter().partition(|library| {
@@ -1037,29 +1022,27 @@ pub async fn create_instance(
             // Filter out log4j-core and log4j-api versions from minecraft.
             // This fixes an issue with forge providing different versions of log4j-core and log4j-api which
             // conflict with the forge log4j libraries in the classpath.
-            all_libraries = all_libraries
-                .into_iter()
-                .filter(|library| {
-                    let url = library.url();
-                    if url.contains("log4j") && url.contains("libraries.minecraft.net") {
-                        false
-                    } else {
-                        true
-                    }
-                })
-                .collect();
+            all_libraries.retain(|library| {
+                let url = library.url();
+                !(url.contains("log4j") && url.contains("libraries.minecraft.net"))
+            });
 
             // Pull out forge libraries with empty url's so they can be extracted from the installer
-            let (forge_version_jars, remaining_version_libraries) = seperate_nondownloadables(forge_version.libraries);
-            let (forge_profile_jars, remaining_profile_libraries) = seperate_nondownloadables(forge_installer_profile.profile.libraries);
-            
+            let (forge_version_jars, remaining_version_libraries) =
+                seperate_nondownloadables(forge_version.libraries);
+            let (forge_profile_jars, remaining_profile_libraries) =
+                seperate_nondownloadables(forge_installer_profile.profile.libraries);
+
             // Find the path to the forge universal jar from the profile jars list
             let forge_universal_path = forge_profile_jars
                 .iter()
                 .map(|library| library.name.clone())
                 .find(|name| name.starts_with("net.minecraftforge:forge:"));
 
-            for jar in forge_version_jars.into_iter().chain(forge_profile_jars.into_iter()) {
+            for jar in forge_version_jars
+                .into_iter()
+                .chain(forge_profile_jars.into_iter())
+            {
                 // Can unwrap here since the option was checked in the partition above
                 let artifact = jar.downloads.artifact.unwrap();
                 // Create path to jar in the extracted installer
@@ -1169,7 +1152,7 @@ pub async fn create_instance(
     let instance_manager = instance_state.0.lock().await;
 
     instance_manager.add_instance(InstanceConfiguration {
-        instance_name: instance_name,
+        instance_name,
         jvm_path: java_path.clone(),
         arguments: persitent_arguments,
         modloader_type,

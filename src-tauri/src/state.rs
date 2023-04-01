@@ -9,7 +9,7 @@ pub mod instance_manager;
 /// Specify endpoint without a leading `/`.  
 pub fn redirect(app_handle: &tauri::AppHandle<Wry>, endpoint: &str) -> tauri::Result<()> {
     let window_name = "main";
-    let main_window = app_handle.get_window(&window_name);
+    let main_window = app_handle.get_window(window_name);
     debug!("Redirecting {} window to /{}", window_name, endpoint);
     match main_window {
         // If main window exists, try to redirect

@@ -49,7 +49,7 @@ impl Downloadable for DownloadableFabricLibrary {
     }
 
     fn path(&self, base_dir: &Path) -> PathBuf {
-        let path = maven_to_fabric_endpoint(&self.name, None).replace("/", &get_directory_separator());
+        let path = maven_to_fabric_endpoint(&self.name, None).replace('/', &get_directory_separator());
         base_dir.join(path)
     }
 }
@@ -108,15 +108,15 @@ pub async fn obtain_fabric_library_hashes(
 }
 
 fn maven_to_fabric_endpoint(maven_artifact: &str, force_extension: Option<&str>) -> String {
-    let splits: Vec<&str> = maven_artifact.split(":").collect();
+    let splits: Vec<&str> = maven_artifact.split(':').collect();
     let file_name_ending = if splits.get(3).is_some() {
         format!("{}-{}", splits[2], splits[3])
     } else {
         splits[2].into()
     };
 
-    let full_file_name = if file_name_ending.contains("@") {
-        file_name_ending.replace("@", ".")
+    let full_file_name = if file_name_ending.contains('@') {
+        file_name_ending.replace('@', ".")
     } else {
         format!(
             "{}.jar{}",
@@ -130,9 +130,9 @@ fn maven_to_fabric_endpoint(maven_artifact: &str, force_extension: Option<&str>)
     };
 
     let mut result = Vec::new();
-    result.append(&mut splits[0].split(".").collect::<Vec<&str>>());
+    result.append(&mut splits[0].split('.').collect::<Vec<&str>>());
     result.push(splits[1]);
-    result.push(splits[2].split("@").collect::<Vec<&str>>()[0]);
+    result.push(splits[2].split('@').collect::<Vec<&str>>()[0]);
     let final_name = format!("{}-{}", splits[1], full_file_name);
     result.push(&final_name);
 

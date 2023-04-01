@@ -228,7 +228,6 @@ pub async fn login_to_account(uuid: String, app_handle: AppHandle<Wry>) {
                     "Could not properly serialize account information: {}",
                     error
                 );
-                return;
             }
         }
         None => {
@@ -353,7 +352,7 @@ pub async fn get_screenshots(app_handle: AppHandle<Wry>) -> HashMap<String, Vec<
 // Read bytes of log file and extract lines, decompressing gzip'd fiels if necessary
 fn read_log_file(path: &Path) -> io::Result<Vec<String>> {
     let bytes = fs::read(path)?;
-    if &bytes[..2] == GZIP_SIGNATURE {
+    if bytes[..2] == GZIP_SIGNATURE {
         let mut decoder = GzDecoder::new(bytes.as_bytes());
         let mut tmp_str = String::new();
         decoder.read_to_string(&mut tmp_str)?;
@@ -375,8 +374,8 @@ fn create_log_map(
 
     // Create map that maps instances to the log lines.
     for instance in instance_names {
-        let directory_entries = fs::read_dir(instance_dir.join(&instance).join("logs"));
-        if let Err(_) = directory_entries {
+        let directory_entries = fs::read_dir(instance_dir.join(instance).join("logs"));
+        if directory_entries.is_err() {
             result.insert(instance.clone(), HashMap::new());
             continue;
         } 
@@ -388,8 +387,8 @@ fn create_log_map(
                 let log_lines = read_log_file(&path)?;
                 let file_name = path.file_name().unwrap().to_str().unwrap().into();
                 // Append to existing map if key already exists.
-                if result.contains_key(*&instance) {
-                    let inner_map = result.get_mut(*&instance).unwrap();
+                if result.contains_key(instance) {
+                    let inner_map = result.get_mut(instance).unwrap();
                     inner_map.insert(file_name, log_lines);
                 } else {
                     result.insert(instance.clone(), HashMap::from([(file_name, log_lines)]));
@@ -455,7 +454,7 @@ pub async fn import_zip(zip_path: String, app_handle: AppHandle<Wry>) {
     create_instance(
         vanilla_version.into(),
         modloader_type.into(),
-        full_modloader_version.into(),
+        full_modloader_version,
         instance_name.into(),
         &app_handle,
     )

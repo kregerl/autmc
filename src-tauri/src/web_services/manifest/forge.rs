@@ -271,7 +271,7 @@ pub fn patch_forge(
             .iter()
             .map(|argument| {
                 replace_arg_if_possible(
-                    &argument,
+                    argument,
                     &forge_data_map,
                     &forge_installers_path,
                     &game_version_path,
@@ -349,13 +349,13 @@ fn replace_arg_if_possible(
     argument_paths: &InstallerArgumentPaths,
 ) -> String {
     // Early return the argument if there is no formatting to be done
-    if !arg.contains("{") {
+    if !arg.contains('{') {
         return arg.into();
     }
 
     let mut formatted_arg = arg
         .replace("{SIDE}", "client")
-        .replace("{ROOT}", path_to_utf8_str(&forge_installers_path)) // Dirname of ${app_dir}/versions/<version>/forgeInstallers/<loaderVersion>.jar
+        .replace("{ROOT}", path_to_utf8_str(forge_installers_path)) // Dirname of ${app_dir}/versions/<version>/forgeInstallers/<loaderVersion>.jar
         .replace(
             "{MINECRAFT_JAR}",
             path_to_utf8_str(
@@ -392,10 +392,10 @@ fn replace_arg_if_possible(
 }
 
 fn compute_path_if_possible(arg: &str, libraries_path: &Path) -> String {
-    if arg.starts_with("[") {
+    if arg.starts_with('[') {
         // Create path from maven with '[]' around them.
         let mut path = libraries_path.to_path_buf();
-        for piece in maven_to_vec(&arg.replace("[", "").replace("]", ""), None, None) {
+        for piece in maven_to_vec(&arg.replace('[', "").replace(']', ""), None, None) {
             path = path.join(piece);
         }
         // If the parent dir doesnt exist yet, make it

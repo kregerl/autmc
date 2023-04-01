@@ -31,7 +31,7 @@ pub struct InstanceConfiguration {
 pub struct InstanceState(pub Arc<AsyncMutex<InstanceManager>>);
 
 impl InstanceState {
-    pub fn new(app_dir: &PathBuf) -> Self {
+    pub fn new(app_dir: &Path) -> Self {
         Self(Arc::new(AsyncMutex::new(InstanceManager::new(app_dir))))
     }
 }
@@ -101,8 +101,8 @@ impl InstanceManager {
 
     pub fn get_instance_names(&self) -> Vec<String> {
         self.instance_map
-            .iter()
-            .map(|(instance_name, _)| instance_name.into())
+            .keys()
+            .map(|instance_name| instance_name.into())
             .collect()
     }
 
