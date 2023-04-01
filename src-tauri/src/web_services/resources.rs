@@ -26,7 +26,7 @@ use crate::{
     web_services::{
         downloader::{
             boxed_buffered_download_stream, buffered_download_stream, download_bytes_from_url,
-            validate_hash_sha1, DownloadError, Downloadable, download_json_object_from_url,
+            download_json_object_from_url, validate_hash_sha1, DownloadError, Downloadable,
         },
         manifest::{
             fabric::{download_fabric_profile, obtain_fabric_library_hashes},
@@ -44,10 +44,12 @@ use crate::{
 
 use super::{
     downloader::{hash_bytes_sha1, validate_file_hash},
-    manifest::vanilla::{
-        AssetIndex, DownloadMetadata, JarType, JavaManifest, JavaRuntime, JavaVersion,
-        LaunchArguments, LaunchArguments113, Library, Logging, Rule, RuleType,
-        VanillaManifestVersion,
+    manifest::{
+        vanilla::{
+            AssetIndex, DownloadMetadata, JarType, JavaManifest, JavaRuntime, JavaVersion,
+            LaunchArguments, LaunchArguments113, Library, Logging, Rule, RuleType,
+            VanillaManifestVersion,
+        },
     },
 };
 
@@ -481,7 +483,7 @@ struct LibraryData {
     classifiers: Vec<DownloadableClassifier>,
 }
 
-fn separate_classifiers_from_libraries(libraries: &[Library]) -> LibraryData {
+fn separate_classifiers_from_libraries(libraries: Vec<Library>) -> LibraryData {
     let mut downloadables: Vec<Box<dyn Downloadable + Send + Sync>> = Vec::new();
     let mut classifiers: Vec<DownloadableClassifier> = Vec::new();
 
@@ -588,7 +590,7 @@ async fn download_java_from_runtime_manifest(
 ) -> ManifestResult<PathBuf> {
     info!("Downloading java runtime manifset");
     let version_manifest: JavaRuntimeManifest =
-    download_json_object_from_url(&manifest.manifest.url()).await?;
+        download_json_object_from_url(&manifest.manifest.url()).await?;
     let base_path = &java_dir.join(&manifest.version.name);
 
     let mut files: Vec<JavaRuntimeFile> = Vec::new();
@@ -676,7 +678,7 @@ async fn download_java_from_runtime_manifest(
 async fn download_java_version(java_dir: &Path, java: JavaVersion) -> ManifestResult<PathBuf> {
     info!("Downloading java version manifest");
     let java_version_manifest: HashMap<String, JavaManifest> =
-    download_json_object_from_url(JAVA_VERSION_MANIFEST_URL).await?;
+        download_json_object_from_url(JAVA_VERSION_MANIFEST_URL).await?;
     let manifest_key = determine_key_for_java_manifest(&java_version_manifest);
 
     let java_manifest = &java_version_manifest.get(manifest_key).unwrap();
@@ -891,6 +893,8 @@ fn extract_natives(
     Ok(())
 }
 
+/// Applies library rules from the manifest and also patches
+/// forge universal library where the url is empty.
 fn apply_library_rules(libraries: Vec<Library>) -> Vec<Library> {
     libraries
         .into_iter()
@@ -917,7 +921,7 @@ fn apply_library_rules(libraries: Vec<Library>) -> Vec<Library> {
 pub enum ModloaderType {
     Forge,
     Fabric,
-    None
+    None,
 }
 
 impl From<&str> for ModloaderType {
@@ -938,6 +942,19 @@ impl ToString for ModloaderType {
             ModloaderType::None => "".into(),
         }
     }
+}
+
+/// Seperates libraries with empty url into a different vec.
+/// Returns a tuple of (<empty url>, <remaining libraries>) 
+fn seperate_nondownloadables(libraries: Vec<Library>) -> (Vec<Library>, Vec<Library>) {
+    // Pull out forge libraries with empty url's so they can be extracted from the installer
+    libraries.into_iter().partition(|library| {
+        if let Some(artifact) = &library.downloads.artifact {
+            artifact.url().is_empty()
+        } else {
+            false
+        }
+    })
 }
 
 pub async fn create_instance(
@@ -973,7 +990,7 @@ pub async fn create_instance(
 
     let vanilla_libraries = apply_library_rules(version.libraries);
 
-    let library_data = separate_classifiers_from_libraries(&vanilla_libraries);
+    let library_data = separate_classifiers_from_libraries(vanilla_libraries);
     all_libraries.extend(library_data.downloadables);
 
     let mut main_class = version.main_class;
@@ -1005,7 +1022,7 @@ pub async fn create_instance(
         }
         ModloaderType::Forge => {
             let forge_hashes = download_forge_hashes(&modloader_version).await?;
-            let forge_profile = download_forge_version(
+            let forge_installer_profile = download_forge_version(
                 &modloader_version,
                 &vanilla_version,
                 forge_hashes.installer_hash(),
@@ -1013,26 +1030,58 @@ pub async fn create_instance(
                 tmp_dir.path(),
             )
             .await?;
-            let forge_version = forge_profile.version;
+            let forge_version = forge_installer_profile.version;
 
             main_class = forge_version.main_class;
 
-            let forge_libraries: Vec<Library> = forge_version
-                .libraries
+            // Filter out log4j-core and log4j-api versions from minecraft.
+            // This fixes an issue with forge providing different versions of log4j-core and log4j-api which
+            // conflict with the forge log4j libraries in the classpath.
+            all_libraries = all_libraries
                 .into_iter()
-                // .chain(forge_profile.profile.libraries)
+                .filter(|library| {
+                    let url = library.url();
+                    if url.contains("log4j") && url.contains("libraries.minecraft.net") {
+                        false
+                    } else {
+                        true
+                    }
+                })
                 .collect();
-            let filtered_libraries = apply_library_rules(forge_libraries);
+
+            // Pull out forge libraries with empty url's so they can be extracted from the installer
+            let (forge_version_jars, remaining_version_libraries) = seperate_nondownloadables(forge_version.libraries);
+            let (forge_profile_jars, remaining_profile_libraries) = seperate_nondownloadables(forge_installer_profile.profile.libraries);
+            
+            // Find the path to the forge universal jar from the profile jars list
+            let forge_universal_path = forge_profile_jars
+                .iter()
+                .map(|library| library.name.clone())
+                .find(|name| name.starts_with("net.minecraftforge:forge:"));
+
+            for jar in forge_version_jars.into_iter().chain(forge_profile_jars.into_iter()) {
+                // Can unwrap here since the option was checked in the partition above
+                let artifact = jar.downloads.artifact.unwrap();
+                // Create path to jar in the extracted installer
+                let archive_path = artifact.path(&tmp_dir.path().join("maven"));
+                let library_path = artifact.path(&resource_manager.libraries_dir());
+                if let Some(parent) = library_path.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+                fs::copy(archive_path, &library_path)?;
+                library_paths.push(library_path);
+            }
+
+            let filtered_libraries = apply_library_rules(remaining_version_libraries);
             // If it is possible for forge libraries to have classifiers we are ignoring them here.
-            let forge_library_data = separate_classifiers_from_libraries(&filtered_libraries);
+            let forge_library_data = separate_classifiers_from_libraries(filtered_libraries);
 
             all_libraries.extend(forge_library_data.downloadables);
 
             // Download libraries used for forge processors without adding them to game's classpath
             download_libraries(
                 &resource_manager.libraries_dir(),
-                &separate_classifiers_from_libraries(&forge_profile.profile.libraries)
-                    .downloadables,
+                &separate_classifiers_from_libraries(remaining_profile_libraries).downloadables,
             )
             .await?;
 
@@ -1047,9 +1096,9 @@ pub async fn create_instance(
             deferred_forge_patcher = Some(Box::pin(async {
                 patch_forge(
                     &java_path.clone(),
-                    forge_profile.profile.processors,
-                    forge_profile.profile.data,
-                    forge_profile.profile.libraries,
+                    forge_installer_profile.profile.processors,
+                    forge_installer_profile.profile.data,
+                    forge_universal_path,
                     forge_installer_paths,
                 )
             }));
@@ -1059,7 +1108,6 @@ pub async fn create_instance(
         _ => None,
     };
 
-    // FIXME: Filtering duplicated libraries here, should probably be done before attempting to download
     library_paths.extend(
         download_libraries(&resource_manager.libraries_dir(), &all_libraries)
             .await?

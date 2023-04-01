@@ -247,6 +247,10 @@ impl Artifact {
     fn get_os_specific_path(&self) -> String {
         self.path.clone()
     }
+
+    pub fn set_url(&mut self, url: String) {
+        self.metadata.url = url;
+    }
 }
 
 impl Downloadable for Artifact {

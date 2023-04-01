@@ -16,15 +16,16 @@ use crate::{
     state::resource_manager::{ManifestError, ManifestResult},
     web_services::{
         downloader::{
-            download_bytes_from_url, validate_hash_md5, DownloadResult, download_json_object_from_url,
+            download_bytes_from_url, download_json_object_from_url, validate_hash_md5,
+            DownloadResult,
         },
         manifest::get_classpath_separator,
     },
 };
 
 use super::{
-    get_directory_separator, maven_to_vec, path_to_utf8_str,
-    vanilla::{LaunchArguments, Library}, bytes_from_zip_file,
+    bytes_from_zip_file, get_directory_separator, maven_to_vec, path_to_utf8_str,
+    vanilla::{LaunchArguments, Library},
 };
 
 #[derive(Debug, Deserialize)]
@@ -60,9 +61,7 @@ pub struct ForgeFileHash {
 
 impl From<&str> for ForgeFileHash {
     fn from(s: &str) -> Self {
-        Self {
-            hash: s.into()
-        }
+        Self { hash: s.into() }
     }
 }
 
@@ -114,7 +113,7 @@ pub struct ForgeInstall {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct ForgeProfile {
+pub struct ForgeInstallerProfile {
     pub version: ForgeVersion,
     pub profile: ForgeInstall,
 }
@@ -138,7 +137,7 @@ pub async fn download_forge_version(
     valid_hash: &ForgeFileHash,
     version_path: &Path,
     tmp_dir: &Path,
-) -> ManifestResult<ForgeProfile> {
+) -> ManifestResult<ForgeInstallerProfile> {
     // FIXME: This changes depending on the game version
     // https://github.com/gorilla-devs/GDLauncher/blob/391dd9cc7ef5ac6ef050327abb516eb6799f0539/src/common/reducers/actions.js#L1284
     let terminal = "installer.jar";
@@ -178,7 +177,7 @@ pub async fn download_forge_version(
     // Extract the rest of the archive into the tmp_dir
     archive.extract(tmp_dir)?;
 
-    Ok(ForgeProfile {
+    Ok(ForgeInstallerProfile {
         profile: serde_json::from_slice(&install_profile_bytes)?,
         version: serde_json::from_slice(&version_bytes)?,
     })
@@ -188,22 +187,17 @@ pub fn patch_forge(
     java_path: &Path,
     processors: Vec<ForgeProcessor>,
     data: HashMap<String, ForgeData>,
-    libraries: Vec<Library>,
+    forge_universal_path: Option<String>,
     argument_paths: InstallerArgumentPaths,
 ) -> Result<(), io::Error> {
-    // Find the path to the forge universal jar from the libraries list
-    let forge_universal_path = libraries
-        .iter()
-        .find(|library| library.name.starts_with("net.minecraftforge:forge:"));
-
     // Copy the data map so it can be mutable.
     let mut forge_data_map = HashMap::new();
     forge_data_map.extend(data.into_iter());
 
     // Format the client_lzma_path from the forge_universal_path
-    if let Some(library) = forge_universal_path {
+    if let Some(library_name) = forge_universal_path {
         // FIXME: Currently ignoring the "path" part of the install_profile.json
-        let client_lzma_str = maven_to_vec(&library.name, Some("-clientdata"), Some(".lzma"))
+        let client_lzma_str = maven_to_vec(&library_name, Some("-clientdata"), Some(".lzma"))
             .join(&get_directory_separator());
         let client_lzma_path = argument_paths.libraries_path.join(client_lzma_str);
         let client_lzma_parent = client_lzma_path.parent().unwrap();
@@ -461,12 +455,21 @@ pub fn test_download_forge_version() {
             tmp_dir: tmp_dir.path().to_path_buf(),
         };
 
+        // Find the path to the forge universal jar from the libraries list
+        let forge_universal_path = fp
+            .profile
+            .libraries
+            .iter()
+            .map(|library| library.name.clone())
+            .find(|name| name.starts_with("net.minecraftforge:forge:"));
+
         patch_forge(
             Path::new("/home/loucas/.config/com.autm.launcher/java/17.0.3/bin/java"),
             fp.profile.processors,
             fp.profile.data,
-            fp.profile.libraries,
+            forge_universal_path,
             paths,
-        ).unwrap();
+        )
+        .unwrap();
     });
 }
