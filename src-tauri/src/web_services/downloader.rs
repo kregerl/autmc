@@ -142,7 +142,6 @@ where
     if let Some(params) = query_params {
         builder = builder.query(params);
     }
-
     let response = builder.send().await?;
     Ok(response.json().await?)
 }

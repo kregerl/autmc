@@ -87,7 +87,9 @@ pub struct CurseforgeFile {
 }
 
 /// Extract the manifest from the curseforge zip.
-pub fn extract_manifest_from_curseforge_zip(archive: &mut ZipArchive<&File>) -> io::Result<CurseforgeManifest> {
+pub fn extract_manifest_from_curseforge_zip(
+    archive: &mut ZipArchive<&File>,
+) -> io::Result<CurseforgeManifest> {
     info!("Extracting manifest from curseforge modpack zip");
     let manifest_bytes = bytes_from_zip_file(archive.by_name("manifest.json")?);
 
@@ -247,7 +249,7 @@ pub async fn download_mods_from_curseforge(
     }
 
     let mods_dir = instances_dir.join(info.instance_name).join("mods");
-    
+
     info!("Downloading {} mods from curseforge", download_vec.len());
     // Download all the files
     buffered_download_stream(&download_vec, &mods_dir, |bytes, file_data| {
@@ -267,7 +269,7 @@ pub async fn download_mods_from_curseforge(
     Ok(())
 }
 
-/// Resursively download a mod and its dependencies at `modid`, filtered by `game_version` and `modloader_type` 
+/// Resursively download a mod and its dependencies at `modid`, filtered by `game_version` and `modloader_type`
 #[async_recursion::async_recursion]
 async fn download_dependencies_recursively(
     game_version: &str,
@@ -314,7 +316,7 @@ async fn download_dependencies_recursively(
     Ok(dependencies)
 }
 
-/// Download the file data about a given `modid`, filtered by `game_version` and `modloader_type` or 
+/// Download the file data about a given `modid`, filtered by `game_version` and `modloader_type` or
 /// None if the `modid` doesn't exist
 async fn download_mod_from_modid(
     game_version: &str,
@@ -343,10 +345,13 @@ async fn download_mod_from_modid(
                 "modLoaderVersion",
                 modloader_id_from_version(modloader_type),
             ),
+            // Without this sometimes versions with differing modloaders can be included. 
+            ("gameVersionTypeId", "6441"),
         ]),
     )
     .await?;
 
+    // TODO: Sort by date?
     // Take the first element from data since they are already ordered by date and filtered during the request.
     Ok(response.data.pop_front())
 }
