@@ -8,7 +8,7 @@ use std::{
 };
 
 use bytes::Bytes;
-use futures::future::BoxFuture;
+use futures::{future::BoxFuture, Future};
 use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State, Wry};
@@ -173,7 +173,11 @@ fn construct_jvm_arguments113(
 ) -> Vec<String> {
     let mut formatted_arguments = Vec::new();
 
-    for jvm_arg in arguments.jvm.iter() {
+    if arguments.jvm.is_none() {
+        return formatted_arguments;
+    }
+
+    for jvm_arg in arguments.jvm.as_ref().unwrap().iter() {
         match jvm_arg {
             // For normal arguments, check if it has something that should be replaced and replace it
             Argument::Arg(value) => {
@@ -1039,6 +1043,7 @@ pub async fn create_instance(
                 .map(|library| library.name.clone())
                 .find(|name| name.starts_with("net.minecraftforge:forge:"));
 
+            // Pull jars out of extracted installer
             for jar in forge_version_jars
                 .into_iter()
                 .chain(forge_profile_jars.into_iter())

@@ -116,7 +116,8 @@ where
 #[derive(Debug, Deserialize)]
 pub struct LaunchArguments113 {
     pub game: Vec<Argument>,
-    pub jvm: Vec<Argument>,
+    // Optional since some older forge versions( < 1.15.2) only have game args
+    pub jvm: Option<Vec<Argument>>,
 }
 
 #[derive(Debug, Deserialize)]

@@ -3,7 +3,8 @@ use std::{
     fs::{self, File},
     io::{self, BufReader, Cursor, Read, Write},
     path::{Path, PathBuf},
-    process::{Command, Stdio},
+    process::{Stdio, Command},
+    time::Instant,
 };
 
 use log::{debug, error, info};
@@ -190,6 +191,7 @@ pub fn patch_forge(
     forge_universal_path: Option<String>,
     argument_paths: InstallerArgumentPaths,
 ) -> Result<(), io::Error> {
+    info!("Patching Forge");
     // Copy the data map so it can be mutable.
     let mut forge_data_map = HashMap::new();
     forge_data_map.extend(data.into_iter());
@@ -232,6 +234,7 @@ pub fn patch_forge(
 
     // Iterate over each processor and run them with the correctly substituted arguments.
     info!("Spawning forge patching processors...");
+    let timer = Instant::now();
     for processor in processors {
         // Ignoring server side processors
         if let Some(sides) = &processor.sides {
@@ -300,21 +303,20 @@ pub fn patch_forge(
                 .current_dir(&argument_paths.tmp_dir)
                 .args(args)
                 .stdout(Stdio::null());
-            debug!("Command: {:#?}", command);
+            debug!("Forge Processor: {:#?}", command);
             let mut child = command.spawn().expect("Could not spawn instance.");
-            info!("Spawned forge processor with PID {}", child.id());
-            // Wait for the child process since it could take longer to finish and the tempdir will be deleted.
+            let id = child.id();
+            info!("Spawned forge processor with PID {}", id);
             let status = child.wait()?;
-            info!(
-                "Forge processor({}) exited with exit code: {}",
-                child.id(),
-                status
-            );
+            info!("Forge processor({}) exited with exit code: {}", id, status);
         } else {
             error!("Error obtaining main class from jar: {:#?}", &jar_path);
         }
     }
-    info!("Finished patching forge");
+    info!(
+        "Finished patching forge in {}ms",
+        timer.elapsed().as_millis()
+    );
     Ok(())
 }
 
@@ -469,7 +471,6 @@ pub fn test_download_forge_version() {
             fp.profile.data,
             forge_universal_path,
             paths,
-        )
-        .unwrap();
+        ).unwrap()
     });
 }
