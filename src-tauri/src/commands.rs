@@ -25,10 +25,7 @@ use crate::{
     web_services::{
         authentication::{validate_account, AuthResult},
         manifest::{path_to_utf8_str, vanilla::VanillaManifestVersion},
-        modpack::curseforge::{
-            download_mods_from_curseforge, extract_manifest_from_curseforge_zip, extract_overrides,
-            CurseforgeManifestInfo,
-        },
+        modpack::{curseforge::import_curseforge_zip, modrinth::import_modrinth_zip},
         resources::{create_instance, ModloaderType},
     },
 };
@@ -378,7 +375,7 @@ fn create_log_map(
         if directory_entries.is_err() {
             result.insert(instance.clone(), HashMap::new());
             continue;
-        } 
+        }
 
         // Traverse every entry in the dir
         for dir_entry in directory_entries.unwrap() {
@@ -426,65 +423,15 @@ pub async fn import_zip(zip_path: String, app_handle: AppHandle<Wry>) {
     let zip_file = File::open(&path).unwrap();
     let mut archive = ZipArchive::new(&zip_file).unwrap();
 
-    // Pull out the manifest.json from the zip
-    let curseforge_manifest = extract_manifest_from_curseforge_zip(&mut archive).unwrap();
-
-    let vanilla_version = curseforge_manifest.vanilla_version();
-    let instance_name = curseforge_manifest.modpack_name();
-
-    // Get the modloader with 'primary: true'
-    let primary_modloader = curseforge_manifest
-        .modloaders()
-        .iter()
-        .find(|modloader| modloader.primary);
-    let (modloader_type, modloader_version) = match primary_modloader {
-        Some(modloader) => {
-            let splits = modloader.id.split('-').collect::<Vec<&str>>();
-            (splits[0], splits[1])
-        }
-        None => {
-            error!("Error getting primary modloader from manifest, does one exist?");
-            ("", "")
-        }
-    };
-
-    // Create corrected modloader version string for instance creation
-    let full_modloader_version = format!("{}-{}", vanilla_version, modloader_version);
-
-    create_instance(
-        vanilla_version.into(),
-        modloader_type.into(),
-        full_modloader_version,
-        instance_name.into(),
-        &app_handle,
-    )
-    .await
-    .unwrap();
-
-    let instance_state: State<InstanceState> = app_handle
-        .try_state()
-        .expect("`InstanceState` should already be managed.");
-    let instance_manager = instance_state.0.lock().await;
-    let instances_dir = instance_manager.instances_dir();
-
-    let info = CurseforgeManifestInfo {
-        instance_name: instance_name.into(),
-        game_version: curseforge_manifest.vanilla_version().into(),
-        modloader_type: modloader_type.into(),
-    };
-
-    // After instance is created, download the mods from curseforge
-    download_mods_from_curseforge(curseforge_manifest.files(), &instances_dir, info)
-        .await
-        .unwrap();
-
-    // Finally extract overrides into the instance dir
-    extract_overrides(
-        &instances_dir.join(instance_name),
-        &mut archive,
-        curseforge_manifest.overrides(),
-    )
-    .unwrap();
+    match path.extension() {
+        Some(extension) if extension == "zip" => import_curseforge_zip(&mut archive, &app_handle)
+            .await
+            .unwrap(),
+        Some(extension) if extension == "mrpack" => import_modrinth_zip(&mut archive, &app_handle)
+            .await
+            .unwrap(),
+        _ => {}
+    }
 
     debug!("Invoked import_zip: {}", zip_path);
 }

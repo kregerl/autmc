@@ -1044,25 +1044,32 @@ pub async fn create_instance(
 
             main_class = forge_version.main_class;
 
-            // Filter out log4j-core and log4j-api versions from minecraft.
-            // This fixes an issue with forge providing different versions of log4j-core and log4j-api which
-            // conflict with the forge log4j libraries in the classpath.
-            all_libraries.retain(|library| {
-                let url = library.url();
-                !(url.contains("log4j") && url.contains("libraries.minecraft.net"))
-            });
-
             // Pull out forge libraries with empty url's so they can be extracted from the installer
             let (forge_version_jars, remaining_version_libraries) =
                 seperate_nondownloadables(forge_version.libraries);
             let (forge_profile_jars, remaining_profile_libraries) =
                 seperate_nondownloadables(forge_installer_profile.profile.libraries);
 
+            if remaining_version_libraries
+                .iter()
+                .any(|library| library.name.contains("log4j"))
+            {
+                // Filter out log4j-core and log4j-api versions from minecraft.
+                // This fixes an issue with forge providing different versions of log4j-core and log4j-api which
+                // conflict with the forge log4j libraries in the classpath.
+                all_libraries.retain(|library| {
+                    let url = library.url();
+                    !(url.contains("log4j") && url.contains("libraries.minecraft.net"))
+                });
+            }
+
             // Find the path to the forge universal jar from the profile jars list
             let forge_universal_path = forge_profile_jars
                 .iter()
                 .map(|library| library.name.clone())
                 .find(|name| name.starts_with("net.minecraftforge:forge:"));
+
+            debug!("forge_universal_path: {:#?}", forge_universal_path);
 
             // Pull jars out of extracted installer
             for jar in forge_version_jars
