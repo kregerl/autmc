@@ -3,7 +3,7 @@ use std::{
     fs::{self, File},
     io::{self, BufReader, Cursor, Read, Write},
     path::{Path, PathBuf},
-    process::{Stdio, Command},
+    process::{Command, Stdio},
     time::Instant,
 };
 
@@ -48,6 +48,7 @@ pub struct ForgeHashClassifiers {
     sources: ForgeFileHash,
     mdk: ForgeFileHash,       // .zip
     changelog: ForgeFileHash, // .txt
+    #[serde(alias = "userdev3")]
     userdev: ForgeFileHash,
     universal: ForgeFileHash,
     installer: ForgeFileHash,
@@ -80,6 +81,7 @@ pub struct ForgeVersion {
     inherits_from: String,
     // FIXME: Ignoring for now since this is just a empty json entry in 1.19.3, not sure about other versions
     // logging: Option<ForgeLogging>,
+    #[serde(alias = "minecraftArguments")]
     pub arguments: LaunchArguments,
     pub libraries: Vec<Library>,
 }
@@ -195,9 +197,11 @@ pub fn patch_forge(
     // Copy the data map so it can be mutable.
     let mut forge_data_map = HashMap::new();
     forge_data_map.extend(data.into_iter());
+    let tmp_lzma_dir_path = argument_paths.tmp_dir.join("data");
 
     // Format the client_lzma_path from the forge_universal_path
-    if let Some(library_name) = forge_universal_path {
+    if tmp_lzma_dir_path.exists() && forge_universal_path.is_some() {
+        let library_name = forge_universal_path.unwrap();
         // FIXME: Currently ignoring the "path" part of the install_profile.json
         let client_lzma_str = maven_to_vec(&library_name, Some("-clientdata"), Some(".lzma"))
             .join(&get_directory_separator());
@@ -213,7 +217,7 @@ pub fn patch_forge(
         );
 
         fs::copy(
-            argument_paths.tmp_dir.join("data").join("client.lzma"),
+            tmp_lzma_dir_path.join("client.lzma"),
             &client_lzma_path,
         )?;
         // Patches issue wit BINPATCH where it uses a relative path but should use the client_lzma_path created above
@@ -471,6 +475,7 @@ pub fn test_download_forge_version() {
             fp.profile.data,
             forge_universal_path,
             paths,
-        ).unwrap()
+        )
+        .unwrap()
     });
 }

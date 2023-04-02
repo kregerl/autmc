@@ -8,7 +8,7 @@ use std::{
 };
 
 use bytes::Bytes;
-use futures::{future::BoxFuture, Future};
+use futures::{future::BoxFuture};
 use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State, Wry};
@@ -226,6 +226,7 @@ fn construct_arguments(
     main_class: String,
     arguments: &LaunchArguments,
     modloader_arguments: Option<LaunchArguments>,
+    modloader_type: &ModloaderType,
     mc_version: &VanillaManifestVersion,
     asset_index: &str,
     argument_paths: LaunchArgumentPaths,
@@ -244,11 +245,18 @@ fn construct_arguments(
                 &mc_version.id,
                 &argument_paths,
             ));
-            // Split game arg string on whitespace to get individual args
-            game_args
-                .split_ascii_whitespace()
-                .map(|split| Argument::Arg(split.into()))
-                .collect::<Vec<Argument>>()
+
+            // If the modloader is forge and 1.12.2 or older, then ignore vanilla arguments since they
+            // are already provided by the forge arguments.
+            if modloader_arguments.is_some() && *modloader_type == ModloaderType::Forge {
+                Vec::new()
+            } else {
+                // Split game arg string on whitespace to get individual args
+                game_args
+                    .split_ascii_whitespace()
+                    .map(|split| Argument::Arg(split.into()))
+                    .collect::<Vec<Argument>>()
+            }
         }
         // Versions >= 1.13 provide the game and jvm arguments.
         LaunchArguments::LaunchArguments113(arguments) => {
@@ -906,7 +914,7 @@ fn apply_library_rules(libraries: Vec<Library>) -> Vec<Library> {
         .collect()
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, PartialEq)]
 pub enum ModloaderType {
     Forge,
     Fabric,
@@ -1138,6 +1146,7 @@ pub async fn create_instance(
         main_class,
         &version.arguments,
         modloader_launch_arguments,
+        &modloader_type,
         mc_version_manifest.unwrap(),
         &asset_index,
         LaunchArgumentPaths {
