@@ -70,21 +70,21 @@ pub(crate) fn bytes_from_zip_file(file: ZipFile) -> Vec<u8> {
 }
 
 #[cfg(target_family = "unix")]
-pub fn get_classpath_separator() -> String {
-    ":".into()
+pub fn get_classpath_separator() -> &'static str {
+    ":"
 }
 
 #[cfg(target_family = "windows")]
-pub fn get_classpath_separator() -> String {
-    ";".into()
+pub fn get_classpath_separator() -> &'static str {
+    ";"
 }
 
 #[cfg(target_family = "unix")]
-pub fn get_directory_separator() -> String {
-    "/".into()
+pub fn get_directory_separator() -> &'static str {
+    "/"
 }
 
 #[cfg(target_family = "windows")]
-pub fn get_directory_separator() -> String {
-    "\\".into()
+pub fn get_directory_separator() -> &'static str {
+    "\\"
 }

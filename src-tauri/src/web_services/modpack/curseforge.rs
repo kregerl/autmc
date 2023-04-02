@@ -237,6 +237,7 @@ pub async fn download_mods_from_curseforge(
         download_vec.push(files_data);
     }
 
+    info!("Gathering modids from {} dependencies", dependencies.len());
     for dependency_modid in dependencies {
         download_vec.extend(
             download_dependencies_recursively(

@@ -201,40 +201,39 @@ pub fn patch_forge(
     let tmp_lzma_dir_path = argument_paths.tmp_dir.join("data");
 
     // Format the client_lzma_path from the forge_universal_path
-    if tmp_lzma_dir_path.exists() && forge_universal_path.is_some() {
-        let library_name = forge_universal_path.unwrap();
-        // FIXME: Currently ignoring the "path" part of the install_profile.json
-        let client_lzma_str = maven_to_vec(&library_name, Some("-clientdata"), Some(".lzma"))
-            .join(&get_directory_separator());
-        let client_lzma_path = argument_paths.libraries_path.join(client_lzma_str);
-        let client_lzma_parent = client_lzma_path.parent().unwrap();
-        if !client_lzma_parent.exists() {
-            fs::create_dir_all(client_lzma_parent)?;
+    match forge_universal_path {
+        Some(library_name) if tmp_lzma_dir_path.exists() => {
+            // FIXME: Currently ignoring the "path" part of the install_profile.json
+            let client_lzma_str = maven_to_vec(&library_name, Some("-clientdata"), Some(".lzma"))
+                .join(&get_directory_separator());
+            let client_lzma_path = argument_paths.libraries_path.join(client_lzma_str);
+            let client_lzma_parent = client_lzma_path.parent().unwrap();
+            if !client_lzma_parent.exists() {
+                fs::create_dir_all(client_lzma_parent)?;
+            }
+
+            debug!(
+                "Client lzma path: {}",
+                path_to_utf8_str(&argument_paths.libraries_path.join(&client_lzma_path))
+            );
+
+            fs::copy(tmp_lzma_dir_path.join("client.lzma"), &client_lzma_path)?;
+            // Patches issue wit BINPATCH where it uses a relative path but should use the client_lzma_path created above
+            forge_data_map.insert(
+                "BINPATCH".into(),
+                ForgeData {
+                    client: path_to_utf8_str(&argument_paths.libraries_path.join(client_lzma_path))
+                        .into(),
+                    // TODO: Implement server
+                    server: "__UNIMPLEMENTED__".into(),
+                },
+            );
         }
-
-        debug!(
-            "Client lzma path: {}",
-            path_to_utf8_str(&argument_paths.libraries_path.join(&client_lzma_path))
-        );
-
-        fs::copy(
-            tmp_lzma_dir_path.join("client.lzma"),
-            &client_lzma_path,
-        )?;
-        // Patches issue wit BINPATCH where it uses a relative path but should use the client_lzma_path created above
-        forge_data_map.insert(
-            "BINPATCH".into(),
-            ForgeData {
-                client: path_to_utf8_str(&argument_paths.libraries_path.join(client_lzma_path))
-                    .into(),
-                // TODO: Implement server
-                server: "__UNIMPLEMENTED__".into(),
-            },
-        );
-    } else {
-        // FIXME: Populate errors to caller
-        error!("Error getting forge universal path, does it exist?");
-        return Ok(());
+        _ => {
+            // FIXME: Populate errors to caller
+            error!("Error getting forge universal path, does it exist?");
+            return Ok(());
+        }
     }
 
     // Iterate over each processor and run them with the correctly substituted arguments.

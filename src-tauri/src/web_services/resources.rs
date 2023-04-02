@@ -249,14 +249,16 @@ fn construct_arguments(
 
             // If the modloader is forge and 1.12.2 or older, then ignore vanilla arguments since they
             // are already provided by the forge arguments.
-            if modloader_arguments.is_some() && *modloader_type == ModloaderType::Forge {
-                Vec::new()
-            } else {
-                // Split game arg string on whitespace to get individual args
-                game_args
-                    .split_ascii_whitespace()
-                    .map(|split| Argument::Arg(split.into()))
-                    .collect::<Vec<Argument>>()
+            match modloader_arguments {
+                // If we have some arguments and the modloader type is forge
+                Some(_) if *modloader_type == ModloaderType::Forge => Vec::new(),
+                _ => {
+                    // Split game arg string on whitespace to get individual args
+                    game_args
+                        .split_ascii_whitespace()
+                        .map(|split| Argument::Arg(split.into()))
+                        .collect::<Vec<Argument>>()
+                }
             }
         }
         // Versions >= 1.13 provide the game and jvm arguments.
@@ -788,7 +790,6 @@ async fn download_logging_configurations(
     Ok((client_logger.argument.clone(), path))
 }
 
-//TODO: This probably needs to change a little to support "legacy" versions < 1.7
 async fn download_assets(
     instance_dir: &Path,
     asset_dir: &Path,
@@ -810,6 +811,8 @@ async fn download_assets(
 
     let start = Instant::now();
 
+    // TODO: Dont download resources into each instance path directly, instead download once into
+    // ${assets_dir}/resources and copy into instance dir.
     let asset_objects_dir = if asset_index.id == "legacy" {
         asset_dir.join("virtual").join("legacy")
     } else if asset_index.id == "pre-1.6" {

@@ -8,7 +8,7 @@ use crate::{
     web_services::downloader::{download_bytes_from_url, Downloadable, download_json_object_from_url},
 };
 
-use super::{vanilla::{LaunchArguments}, get_directory_separator};
+use super::{vanilla::{LaunchArguments}, get_directory_separator, maven_to_vec};
 
 #[derive(Debug, Deserialize)]
 pub struct FabricLoaderVersion {
@@ -49,7 +49,7 @@ impl Downloadable for DownloadableFabricLibrary {
     }
 
     fn path(&self, base_dir: &Path) -> PathBuf {
-        let path = maven_to_fabric_endpoint(&self.name, None).replace('/', &get_directory_separator());
+        let path = maven_to_vec(&self.name, None, None).join(get_directory_separator());
         base_dir.join(path)
     }
 }
@@ -89,7 +89,7 @@ pub async fn obtain_fabric_library_hashes(
         let hash_url = format!(
             "{}{}",
             library.url,
-            maven_to_fabric_endpoint(&library.name, Some(".sha1"))
+            maven_to_vec(&library.name, Some(".sha1"), None).join(get_directory_separator())
         );
         let bytes = download_bytes_from_url(&hash_url).await?;
         let hash = String::from_utf8(bytes.to_vec())?;
@@ -98,45 +98,13 @@ pub async fn obtain_fabric_library_hashes(
             url: format!(
                 "{}{}",
                 library.url,
-                maven_to_fabric_endpoint(&library.name, None)
+                maven_to_vec(&library.name, None, None).join(get_directory_separator())
             ),
             hash,
         });
     }
 
     Ok(result)
-}
-
-fn maven_to_fabric_endpoint(maven_artifact: &str, force_extension: Option<&str>) -> String {
-    let splits: Vec<&str> = maven_artifact.split(':').collect();
-    let file_name_ending = if splits.get(3).is_some() {
-        format!("{}-{}", splits[2], splits[3])
-    } else {
-        splits[2].into()
-    };
-
-    let full_file_name = if file_name_ending.contains('@') {
-        file_name_ending.replace('@', ".")
-    } else {
-        format!(
-            "{}.jar{}",
-            file_name_ending,
-            if let Some(ext) = force_extension {
-                ext
-            } else {
-                ""
-            }
-        )
-    };
-
-    let mut result = Vec::new();
-    result.append(&mut splits[0].split('.').collect::<Vec<&str>>());
-    result.push(splits[1]);
-    result.push(splits[2].split('@').collect::<Vec<&str>>()[0]);
-    let final_name = format!("{}-{}", splits[1], full_file_name);
-    result.push(&final_name);
-
-    result.join("/")
 }
 
 #[test]
@@ -146,7 +114,7 @@ fn test_maven_to_fabric() {
         url: "https://maven.fabricmc.net/".into(),
     };
 
-    let result = format!("{}{}", lib.url, maven_to_fabric_endpoint(&lib.name, None));
+    let result = format!("{}{}", lib.url, maven_to_vec(&lib.name, None, None).join(get_directory_separator()));
     assert!(result == "https://maven.fabricmc.net/org/ow2/asm/asm-commons/9.2/asm-commons-9.2.jar");
 }
 
