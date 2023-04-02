@@ -8,7 +8,7 @@ use std::{
 };
 
 use bytes::Bytes;
-use futures::{future::BoxFuture};
+use futures::future::BoxFuture;
 use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State, Wry};
@@ -157,7 +157,8 @@ fn determine_key_for_java_manifest<'a>(
     }
 }
 struct LaunchArgumentPaths {
-    logging: (String, PathBuf),
+    // logging configurations are optional since they dont exist in versions 1.6.4 and older
+    logging: Option<(String, PathBuf)>,
     library_paths: Vec<PathBuf>,
     instance_path: PathBuf,
     jar_path: PathBuf,
@@ -295,15 +296,13 @@ fn construct_arguments(
         });
     }
 
-    // Construct the logging configuration argument
-    if let Some(substr) = get_arg_substring(&argument_paths.logging.0) {
-        formatted_arguments.push(
-            argument_paths
-                .logging
-                .0
-                .replace(substr, path_to_utf8_str(&argument_paths.logging.1)),
-        );
+    if let Some((arg, path)) = &argument_paths.logging {
+        // Construct the logging configuration argument
+        if let Some(substr) = get_arg_substring(arg) {
+            formatted_arguments.push(arg.replace(substr, path_to_utf8_str(path)));
+        }
     }
+
     // Add main class
     formatted_arguments.push(main_class);
 
@@ -439,6 +438,10 @@ fn substitute_game_arguments(
             "${assets_root}" => {
                 Some(arg.replace(substr, path_to_utf8_str(&argument_paths.asset_dir_path)))
             }
+            "${game_assets}" => Some(arg.replace(
+                substr,
+                path_to_utf8_str(&argument_paths.asset_dir_path.join("virtual").join("legacy")),
+            )),
             "${assets_index_name}" => Some(arg.replace(substr, asset_index)),
             "${user_type}" => Some(arg.replace(substr, "mojang")),
             "${version_type}" => Some(arg.replace(substr, &mc_version.version_type)),
@@ -787,8 +790,8 @@ async fn download_logging_configurations(
 
 //TODO: This probably needs to change a little to support "legacy" versions < 1.7
 async fn download_assets(
+    instance_dir: &Path,
     asset_dir: &Path,
-    asset_objects_dir: &Path,
     asset_index: &AssetIndex,
 ) -> ManifestResult<String> {
     let metadata = &asset_index.metadata;
@@ -807,9 +810,17 @@ async fn download_assets(
 
     let start = Instant::now();
 
-    fs::create_dir_all(asset_objects_dir)?;
+    let asset_objects_dir = if asset_index.id == "legacy" {
+        asset_dir.join("virtual").join("legacy")
+    } else if asset_index.id == "pre-1.6" {
+        instance_dir.join("resources")
+    } else {
+        asset_dir.join("objects")
+    };
 
-    let x = buffered_download_stream(&asset_object.objects, asset_objects_dir, |bytes, asset| {
+    fs::create_dir_all(&asset_objects_dir)?;
+
+    let x = buffered_download_stream(&asset_object.objects, &asset_objects_dir, |bytes, asset| {
         if !validate_hash_sha1(bytes, asset.hash()) {
             let err = format!(
                 "Error downloading asset {}, expected {} but got {}",
@@ -820,13 +831,12 @@ async fn download_assets(
             error!("{}", err);
             return Err(DownloadError::InvalidFileHash(err));
         }
-        fs::create_dir_all(asset.path(asset_objects_dir).parent().unwrap())?;
+        let path = asset.path(&asset_objects_dir);
 
-        debug!(
-            "Bulk Download asset path: {:#?}",
-            &asset.path(asset_objects_dir)
-        );
-        let mut file = File::create(asset.path(asset_objects_dir))?;
+        fs::create_dir_all(path.parent().unwrap())?;
+
+        debug!("Bulk Download asset path: {:#?}", &path);
+        let mut file = File::create(path)?;
         file.write_all(bytes)?;
         Ok(())
     })
@@ -1117,23 +1127,23 @@ pub async fn create_instance(
         future.await?;
     }
 
-    let logging =
-        download_logging_configurations(&resource_manager.asset_objects_dir(), &version.logging)
-            .await?;
+    let logging: Option<_> = if let Some(logging_config) = version.logging {
+        Some(
+            download_logging_configurations(&resource_manager.asset_objects_dir(), &logging_config)
+                .await?,
+        )
+    } else {
+        None
+    };
+    let instance_dir = resource_manager.instances_dir().join(&instance_name);
+    fs::create_dir_all(&instance_dir)?;
 
     let asset_index = download_assets(
+        &instance_dir,
         &resource_manager.assets_dir(),
-        &resource_manager.asset_objects_dir(),
         &version.asset_index,
     )
     .await?;
-    info!(
-        "Finished download instance in {}ms",
-        start.elapsed().as_millis()
-    );
-
-    let instance_dir = resource_manager.instances_dir().join(&instance_name);
-    fs::create_dir_all(&instance_dir)?;
 
     let mc_version_manifest = resource_manager.get_vanilla_manifest_from_version(&vanilla_version);
     if mc_version_manifest.is_none() {
@@ -1178,7 +1188,10 @@ pub async fn create_instance(
         &resource_manager.libraries_dir(),
         library_data.classifiers,
     )?;
-    debug!("Updating instances");
+    info!(
+        "Finished download instance in {}ms",
+        start.elapsed().as_millis()
+    );
     tmp_dir.close()?;
     Ok(())
 }

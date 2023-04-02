@@ -45,7 +45,8 @@ impl ForgeHashes {
 
 #[derive(Debug, Deserialize)]
 pub struct ForgeHashClassifiers {
-    sources: ForgeFileHash,
+    // Sources is not present in 1.11.2 and older.
+    sources: Option<ForgeFileHash>,
     mdk: ForgeFileHash,       // .zip
     changelog: ForgeFileHash, // .txt
     #[serde(alias = "userdev3")]

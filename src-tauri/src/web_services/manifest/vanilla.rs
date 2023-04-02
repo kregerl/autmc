@@ -172,8 +172,12 @@ impl Downloadable for Asset {
     }
 
     fn path(&self, base_dir: &Path) -> PathBuf {
-        let first_two_chars = &self.hash.split_at(2);
-        base_dir.join(first_two_chars.0).join(&self.hash)
+        if base_dir.ends_with("legacy") || base_dir.ends_with("resources") {
+            base_dir.join(&self.path)
+        } else {
+            let first_two_chars = &self.hash.split_at(2);
+            base_dir.join(first_two_chars.0).join(&self.hash)
+        }
     }
 }
 
@@ -218,7 +222,8 @@ pub struct AssetIndex {
 pub struct GameDownloads {
     pub client: DownloadMetadata,
     pub client_mappings: Option<DownloadMetadata>,
-    pub server: DownloadMetadata,
+    // Optional for mc version 1.1 and older.
+    pub server: Option<DownloadMetadata>,
     pub server_mappings: Option<DownloadMetadata>,
 }
 
@@ -406,7 +411,7 @@ pub struct VanillaVersion {
     // FIXME: 1.6.4 and older do not provide a java version.. set to java 8 if not provided.
     pub java_version: Option<JavaVersion>,
     pub libraries: Vec<Library>,
-    pub logging: Logging,
+    pub logging: Option<Logging>,
     #[serde(rename = "mainClass")]
     pub main_class: String,
     // #[serde(rename = "minimumLauncherVersion")]
