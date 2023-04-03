@@ -234,7 +234,7 @@ fn purge_old_logs(log_dir: &Path) -> Result<(), std::io::Error> {
     let file_paths = fs::read_dir(log_dir)?;
     println!("{:#?}", file_paths);
 
-    let regex = Regex::new("^launcher_log_[0-9]{4}-[0-9]{2}-[0-9]{2}T([0-9]{2}:){2}[0-9]{2}.log$");
+    let regex = Regex::new("^launcher_log_[0-9]{4}-[0-9]{2}-[0-9]{2}T([0-9]{2}-){2}[0-9]{2}.log$");
     match regex {
         Ok(rexp) => {
             let mut dir_entries = file_paths
