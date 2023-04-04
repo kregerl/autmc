@@ -4,12 +4,15 @@ use std::{
     io::{BufReader, Error, Write},
     path::{Path, PathBuf},
     sync::Arc,
-    time::{ SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use log::{debug,  info};
+use log::{debug, error, info};
 use serde::{Deserialize, Serialize};
-use tauri::async_runtime::{Mutex};
+use tauri::{async_runtime::Mutex, AppHandle, Wry, Manager};
+use tokio::time::sleep;
+
+use crate::web_services::authentication::{authenticate, AuthMode};
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Account {
@@ -99,7 +102,7 @@ impl AccountManager {
     }
 
     /// Add and activate an account, overwriting any existing accounts with the same uuid.
-    pub fn add_and_activate_account(&mut self, account: Account) {
+    pub fn add_and_activate_account(&mut self, account: Account, app_handle: AppHandle<Wry>) {
         let uuid = &account.uuid.clone();
         let start = SystemTime::now();
         let since_the_epoch = start
@@ -112,7 +115,7 @@ impl AccountManager {
             account.microsoft_access_token_expiry
         );
         self.add_account(account);
-        self.activate_account(uuid);
+        self.activate_account(uuid, app_handle);
         info!(
             "Added and activated account: {}",
             self.active.as_ref().unwrap()
@@ -120,28 +123,44 @@ impl AccountManager {
     }
 
     // Activate the account associated with uuid
-    pub fn activate_account(&mut self, uuid: &str) {
+    pub fn activate_account(&mut self, uuid: &str, app_handle: AppHandle<Wry>) {
         self.active = Some(uuid.to_owned());
         // Can unwrap here since we just set `self.active`
         let account = self.get_account(uuid).unwrap().clone();
-        // tauri::async_runtime::spawn(async move {
-        //     if account.minecraft_access_token_expiry < account.microsoft_access_token_expiry {
-        //         // sleep(Duration::from_secs(account.minecraft_access_token_expiry)).await;
-        //         sleep(Duration::from_secs(10)).await;
-        //         debug!("Refresh Minecraft");
-        //         // Minecraft
-        //     } else {
-        //         // sleep(Duration::from_secs(account.microsoft_access_token_expiry)).await;
-        //         sleep(Duration::from_secs(10)).await;
-        //         debug!("Refresh Microsoft");
-        //         let mode = AuthMode::MicrosoftRefresh(account.microsoft_refresh_token);
-        //         let account_res = authenticate(mode).await;
-        //         match account_res {
-        //             Ok(account) => self.add_and_activate_account(account),
-        //             Err(e) => error!("Issue re-authenticating with microsoft: {}", e.to_string()),
-        //         }
-        //     }
-        // });
+        // Spawn a thread to refresh access tokens once they expire.
+        tauri::async_runtime::spawn(async move {
+            // Refresh the tokens 5s earlier than needed. 
+            // Assumes SystemTime is after UNIX_EPOCH
+            let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() - 10;
+            let auth_mode =
+                if account.minecraft_access_token_expiry < account.microsoft_access_token_expiry {
+                    // Minecraft
+                    let secs_until_expire = account.minecraft_access_token_expiry - now;
+                    sleep(Duration::from_secs(secs_until_expire)).await;
+                    info!("Refreshing minecraft access token");
+                    AuthMode::MinecraftRefresh {
+                        access_token: account.microsoft_access_token,
+                        refresh_token: account.microsoft_refresh_token,
+                        access_token_expiry: account.microsoft_access_token_expiry,
+                    }
+                } else {
+                    // Microsoft
+                    let secs_until_expire = account.microsoft_access_token_expiry - now;
+                    sleep(Duration::from_secs(secs_until_expire)).await;
+                    info!("Refreshing Microsoft access token");
+                    AuthMode::MicrosoftRefresh(account.microsoft_refresh_token)
+                };
+            let account_state: tauri::State<AccountState> = app_handle
+                .try_state()
+                .expect("`AccountState` should already be managed.");
+            let mut account_manager = account_state.0.lock().await;
+
+            let account_res = authenticate(auth_mode).await;
+            match account_res {
+                Ok(account) => account_manager.add_and_activate_account(account, app_handle.clone()),
+                Err(e) => error!("Issue re-authenticating with microsoft: {}", e.to_string()),
+            }
+        });
     }
 
     /// Adds an account, overwriting any existing accounts with the same uuid.

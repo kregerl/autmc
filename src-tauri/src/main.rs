@@ -127,7 +127,7 @@ fn setup(app: &mut App<Wry>) -> Result<(), Box<(dyn StdError + 'static)>> {
 
                 let account = validation_result.unwrap();
                 // Save account to account manager.
-                account_manager.add_and_activate_account(account);
+                account_manager.add_and_activate_account(account, app_handle.clone());
 
                 if let Err(error) = account_manager.serialize_accounts() {
                     warn!(
@@ -183,7 +183,7 @@ fn autmc_uri_scheme(
         let mut account_manager = account_state.0.lock().await;
 
         // Save account to account manager.
-        account_manager.add_and_activate_account(account);
+        account_manager.add_and_activate_account(account, handle.clone());
 
         if let Err(error) = account_manager.serialize_accounts() {
             warn!(

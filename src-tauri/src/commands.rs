@@ -203,7 +203,7 @@ pub async fn login_to_account(uuid: String, app_handle: AppHandle<Wry>) {
         .expect("`AccountState` should already be managed.");
     let mut account_manager = account_state.0.lock().await;
 
-    account_manager.activate_account(&uuid);
+    account_manager.activate_account(&uuid, app_handle.clone());
 
     // Get the active account that was just set.
     match account_manager.get_active_account() {
