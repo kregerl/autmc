@@ -20,6 +20,8 @@ pub const FABRIC_BASE_URL: &str = "https://meta.fabricmc.net/v2";
 pub const VANILLA_ASSET_BASE_URL: &str = "https://resources.download.minecraft.net";
 pub const JAVA_VERSION_MANIFEST_URL: &str = "https://launchermeta.mojang.com/v1/products/java-runtime/2ec0cc96c44e5a76b9c8b7c39df7210883d12871/all.json";
 
+pub const MINECRAFT_LIBRARIES_URL: &str = "https://libraries.minecraft.net"; 
+
 pub const CURSEFORGE_API_URL: &str = "https://api.curseforge.com/v1";
 pub const CURSEFORGE_MODPACK_CLASS_ID: u32 = 4471;
 pub const CURSEFORGE_MODS_CLASS_ID: u32 = 6;

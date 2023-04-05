@@ -17,7 +17,7 @@ use xmltree::{Element, XMLNode};
 use zip::ZipArchive;
 
 use crate::{
-    consts::{JAVA_VERSION_MANIFEST_URL, LAUNCHER_NAME, LAUNCHER_VERSION},
+    consts::{JAVA_VERSION_MANIFEST_URL, LAUNCHER_NAME, LAUNCHER_VERSION, MINECRAFT_LIBRARIES_URL},
     state::{
         account_manager::Account,
         instance_manager::{InstanceConfiguration, InstanceState},
@@ -46,12 +46,12 @@ use crate::{
 use super::{
     downloader::{hash_bytes_sha1, validate_file_hash},
     manifest::{
-        forge::{ForgeInstall112, ForgeVersion112},
+        forge::{ForgeInstall112, ForgeVersion112, ForgeLibrary},
         vanilla::{
             AssetIndex, DownloadMetadata, JarType, JavaManifest, JavaRuntime, JavaVersion,
             LaunchArguments, LaunchArguments113, Library, Logging, Rule, RuleType,
             VanillaManifestVersion,
-        },
+        }, maven_to_vec,
     },
 };
 
@@ -1131,8 +1131,9 @@ pub async fn create_instance(
                     let version = profile.version_info;
 
 
-                    // Some(version.metadata.arguments)
-                    todo!("Forge profile")
+
+                    Some(version.metadata.arguments)
+                    // todo!("Forge profile")
                 },
             };
 

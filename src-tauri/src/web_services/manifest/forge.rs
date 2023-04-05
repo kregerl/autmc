@@ -13,12 +13,12 @@ use serde::Deserialize;
 use tempdir::TempDir;
 
 use crate::{
-    consts::{FORGE_FILES_BASE_URL, FORGE_MAVEN_BASE_URL},
+    consts::{FORGE_FILES_BASE_URL, FORGE_MAVEN_BASE_URL, MINECRAFT_LIBRARIES_URL},
     state::resource_manager::{ManifestError, ManifestResult},
     web_services::{
         downloader::{
             download_bytes_from_url, download_json_object_from_url, validate_hash_md5,
-            DownloadResult,
+            DownloadResult, Downloadable,
         },
         manifest::get_classpath_separator,
     },
@@ -103,11 +103,48 @@ pub struct ForgeVersion111 {
 
 #[derive(Debug, Deserialize)]
 pub struct ForgeLibrary {
-    name: String,
-    url: String,
-    checksums: Vec<String>,
+    pub name: String,
+    pub url: Option<String>,
+    checksums: Option<Vec<String>>,
     servereq: Option<bool>,
     clientrreq: Option<bool>,
+}
+
+impl Downloadable for ForgeLibrary {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn url(&self) -> String {
+        match self.url {
+            Some(_) => {
+                let append_str = if self.name.contains("net.minecraftforge:forge:") {
+                    Some("-universal")
+                } else {
+                    None
+                };
+    
+                maven_to_vec(&self.name, append_str, None).join("/")
+            },
+            None => {
+                let endpoint = maven_to_vec(&self.name, None, None).join("/");
+                format!("{}/{}", MINECRAFT_LIBRARIES_URL, endpoint)
+            },
+        }
+    }
+
+    fn hash(&self) -> &str {
+        if let Some(checksums) = &self.checksums {
+            checksums.get(0).unwrap()
+        } else {
+            // FIXME: Not sure what to do here.
+            ""
+        }
+    }
+
+    fn path(&self, base_dir: &Path) -> PathBuf {
+        base_dir.join(maven_to_vec(&self.name, None, None).join(get_directory_separator()))
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -219,19 +256,29 @@ pub async fn download_forge_version(
     let cursor = Cursor::new(bytes);
     let mut archive = zip::ZipArchive::new(cursor)?;
 
-    let version_file = archive.by_name("version.json")?;
-    let version_bytes = bytes_from_zip_file(version_file);
+    // Extract the archive into the tmp_dir
+    archive.extract(tmp_dir)?;
 
+    // Pull out install profile and version
     let install_profile_file = archive.by_name("install_profile.json")?;
     let install_profile_bytes = bytes_from_zip_file(install_profile_file);
 
-    // Extract the rest of the archive into the tmp_dir
-    archive.extract(tmp_dir)?;
+    let version_file_result = archive.by_name("version.json");
+    let installer_profile = match version_file_result {
+        Ok(version_file) => {
+            let version_bytes = bytes_from_zip_file(version_file);
 
-    Ok(ForgeInstallerProfile::Profile112 {
-        profile: serde_json::from_slice(&install_profile_bytes)?,
-        version: serde_json::from_slice(&version_bytes)?,
-    })
+            ForgeInstallerProfile::Profile112 {
+                profile: serde_json::from_slice(&install_profile_bytes)?,
+                version: serde_json::from_slice(&version_bytes)?,
+            }
+        },
+        Err(e) => {
+            ForgeInstallerProfile::Profile111(serde_json::from_slice(&install_profile_bytes)?)
+        },
+    };
+    
+    Ok(installer_profile)
 }
 
 pub fn patch_forge(
