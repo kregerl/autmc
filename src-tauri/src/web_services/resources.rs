@@ -31,7 +31,8 @@ use crate::{
         manifest::{
             fabric::{download_fabric_profile, obtain_fabric_library_hashes},
             forge::{
-                download_forge_hashes, download_forge_version, patch_forge, InstallerArgumentPaths,
+                download_forge_hashes, download_forge_version, patch_forge, ForgeInstallerProfile,
+                InstallerArgumentPaths,
             },
             get_classpath_separator, path_to_utf8_str,
             vanilla::{
@@ -44,10 +45,13 @@ use crate::{
 
 use super::{
     downloader::{hash_bytes_sha1, validate_file_hash},
-    manifest::vanilla::{
-        AssetIndex, DownloadMetadata, JarType, JavaManifest, JavaRuntime, JavaVersion,
-        LaunchArguments, LaunchArguments113, Library, Logging, Rule, RuleType,
-        VanillaManifestVersion,
+    manifest::{
+        forge::{ForgeInstall112, ForgeVersion112},
+        vanilla::{
+            AssetIndex, DownloadMetadata, JarType, JavaManifest, JavaRuntime, JavaVersion,
+            LaunchArguments, LaunchArguments113, Library, Logging, Rule, RuleType,
+            VanillaManifestVersion,
+        },
     },
 };
 
@@ -1040,88 +1044,99 @@ pub async fn create_instance(
                 tmp_dir.path(),
             )
             .await?;
-            let forge_version = forge_installer_profile.version;
 
-            main_class = forge_version.main_class;
+            let arguments: Option<LaunchArguments> = match forge_installer_profile {
+                ForgeInstallerProfile::Profile112 { version, profile } => {
+                    main_class = version.metadata.main_class;
+                    // Find the path to the forge universal jar from the profile jars list
+                    let forge_universal_path = profile
+                        .libraries
+                        .iter()
+                        .map(|library| library.name.clone())
+                        .find(|name| name.starts_with("net.minecraftforge:forge:"));
 
-            // Find the path to the forge universal jar from the profile jars list
-            let forge_universal_path = forge_installer_profile
-                .profile
-                .libraries
-                .iter()
-                .map(|library| library.name.clone())
-                .find(|name| name.starts_with("net.minecraftforge:forge:"));
+                    debug!("forge_universal_path: {:#?}", forge_universal_path);
 
-            debug!("forge_universal_path: {:#?}", forge_universal_path);
+                    // Pull out forge libraries with empty url's so they can be extracted from the installer
+                    let (forge_version_jars, remaining_version_libraries) =
+                        seperate_nondownloadables(version.libraries);
+                    let (forge_profile_jars, remaining_profile_libraries) =
+                        seperate_nondownloadables(profile.libraries);
 
-            // Pull out forge libraries with empty url's so they can be extracted from the installer
-            let (forge_version_jars, remaining_version_libraries) =
-                seperate_nondownloadables(forge_version.libraries);
-            let (forge_profile_jars, remaining_profile_libraries) =
-                seperate_nondownloadables(forge_installer_profile.profile.libraries);
+                    if remaining_version_libraries
+                        .iter()
+                        .any(|library| library.name.contains("log4j"))
+                    {
+                        // Filter out log4j-core and log4j-api versions from minecraft.
+                        // This fixes an issue with forge providing different versions of log4j-core and log4j-api which
+                        // conflict with the forge log4j libraries in the classpath.
+                        all_libraries.retain(|library| {
+                            let url = library.url();
+                            !(url.contains("log4j") && url.contains("libraries.minecraft.net"))
+                        });
+                    }
 
-            if remaining_version_libraries
-                .iter()
-                .any(|library| library.name.contains("log4j"))
-            {
-                // Filter out log4j-core and log4j-api versions from minecraft.
-                // This fixes an issue with forge providing different versions of log4j-core and log4j-api which
-                // conflict with the forge log4j libraries in the classpath.
-                all_libraries.retain(|library| {
-                    let url = library.url();
-                    !(url.contains("log4j") && url.contains("libraries.minecraft.net"))
-                });
-            }
+                    // Pull jars out of extracted installer
+                    for jar in forge_version_jars
+                        .into_iter()
+                        .chain(forge_profile_jars.into_iter())
+                    {
+                        // Can unwrap here since the option was checked in the partition above
+                        let artifact = jar.downloads.artifact.unwrap();
+                        // Create path to jar in the extracted installer
+                        let archive_path = artifact.path(&tmp_dir.path().join("maven"));
+                        let library_path = artifact.path(&resource_manager.libraries_dir());
+                        if let Some(parent) = library_path.parent() {
+                            fs::create_dir_all(parent)?;
+                        }
+                        fs::copy(archive_path, &library_path)?;
+                        library_paths.push(library_path);
+                    }
 
-            // Pull jars out of extracted installer
-            for jar in forge_version_jars
-                .into_iter()
-                .chain(forge_profile_jars.into_iter())
-            {
-                // Can unwrap here since the option was checked in the partition above
-                let artifact = jar.downloads.artifact.unwrap();
-                // Create path to jar in the extracted installer
-                let archive_path = artifact.path(&tmp_dir.path().join("maven"));
-                let library_path = artifact.path(&resource_manager.libraries_dir());
-                if let Some(parent) = library_path.parent() {
-                    fs::create_dir_all(parent)?;
+                    let filtered_libraries = apply_library_rules(remaining_version_libraries);
+                    // If it is possible for forge libraries to have classifiers we are ignoring them here.
+                    let forge_library_data =
+                        separate_classifiers_from_libraries(filtered_libraries);
+
+                    all_libraries.extend(forge_library_data.downloadables);
+
+                    // Download libraries used for forge processors without adding them to game's classpath
+                    download_libraries(
+                        &resource_manager.libraries_dir(),
+                        &separate_classifiers_from_libraries(remaining_profile_libraries)
+                            .downloadables,
+                    )
+                    .await?;
+
+                    let forge_installer_paths = InstallerArgumentPaths {
+                        libraries_path: resource_manager.libraries_dir(),
+                        versions_dir_path: resource_manager.version_dir(),
+                        minecraft_version: vanilla_version.clone(),
+                        forge_loader_version: modloader_version.clone(),
+                        tmp_dir: tmp_dir.path().to_path_buf(),
+                    };
+
+                    deferred_forge_patcher = Some(Box::pin(async {
+                        patch_forge(
+                            &java_path.clone(),
+                            profile.processors,
+                            profile.data,
+                            forge_universal_path,
+                            forge_installer_paths,
+                        )
+                    }));
+                    Some(version.metadata.arguments)
                 }
-                fs::copy(archive_path, &library_path)?;
-                library_paths.push(library_path);
-            }
+                ForgeInstallerProfile::Profile111(profile) => {
+                    let version = profile.version_info;
 
-            let filtered_libraries = apply_library_rules(remaining_version_libraries);
-            // If it is possible for forge libraries to have classifiers we are ignoring them here.
-            let forge_library_data = separate_classifiers_from_libraries(filtered_libraries);
 
-            all_libraries.extend(forge_library_data.downloadables);
-
-            // Download libraries used for forge processors without adding them to game's classpath
-            download_libraries(
-                &resource_manager.libraries_dir(),
-                &separate_classifiers_from_libraries(remaining_profile_libraries).downloadables,
-            )
-            .await?;
-
-            let forge_installer_paths = InstallerArgumentPaths {
-                libraries_path: resource_manager.libraries_dir(),
-                versions_dir_path: resource_manager.version_dir(),
-                minecraft_version: vanilla_version.clone(),
-                forge_loader_version: modloader_version.clone(),
-                tmp_dir: tmp_dir.path().to_path_buf(),
+                    // Some(version.metadata.arguments)
+                    todo!("Forge profile")
+                },
             };
 
-            deferred_forge_patcher = Some(Box::pin(async {
-                patch_forge(
-                    &java_path.clone(),
-                    forge_installer_profile.profile.processors,
-                    forge_installer_profile.profile.data,
-                    forge_universal_path,
-                    forge_installer_paths,
-                )
-            }));
-
-            Some(forge_version.arguments)
+            arguments
         }
         _ => None,
     };

@@ -47,7 +47,8 @@ impl ForgeHashes {
 pub struct ForgeHashClassifiers {
     // Sources is not present in 1.11.2 and older.
     sources: Option<ForgeFileHash>,
-    mdk: ForgeFileHash,       // .zip
+    #[serde(alias = "src")]
+    mdk: ForgeFileHash, // .zip
     changelog: ForgeFileHash, // .txt
     #[serde(alias = "userdev3")]
     userdev: ForgeFileHash,
@@ -69,7 +70,7 @@ impl From<&str> for ForgeFileHash {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct ForgeVersion {
+pub struct ForgeVersionMetadata {
     id: String,
     time: String,
     #[serde(rename = "releaseTime")]
@@ -84,7 +85,29 @@ pub struct ForgeVersion {
     // logging: Option<ForgeLogging>,
     #[serde(alias = "minecraftArguments")]
     pub arguments: LaunchArguments,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ForgeVersion112 {
+    #[serde(flatten)]
+    pub metadata: ForgeVersionMetadata,
     pub libraries: Vec<Library>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ForgeVersion111 {
+    #[serde(flatten)]
+    pub metadata: ForgeVersionMetadata,
+    pub libraries: Vec<ForgeLibrary>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ForgeLibrary {
+    name: String,
+    url: String,
+    checksums: Vec<String>,
+    servereq: Option<bool>,
+    clientrreq: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -103,7 +126,7 @@ pub struct ForgeProcessor {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct ForgeInstall {
+pub struct ForgeInstall112 {
     spec: u32,
     profile: String,
     version: String,
@@ -117,9 +140,33 @@ pub struct ForgeInstall {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct ForgeInstallerProfile {
-    pub version: ForgeVersion,
-    pub profile: ForgeInstall,
+#[serde(rename_all = "camelCase")]
+pub struct ForgeInstall111 {
+    profile_name: String,
+    target: String,
+    path: String,
+    version: String,
+    file_path: String,
+    welcome: String,
+    minecraft: String,
+    mirror_list: String,
+    logo: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ForgeInstallerProfile111 {
+    install: ForgeInstall111,
+    #[serde(rename = "versionInfo")]
+    pub version_info: ForgeVersion111,
+}
+
+#[derive(Debug, Deserialize)]
+pub enum ForgeInstallerProfile {
+    Profile112 {
+        version: ForgeVersion112,
+        profile: ForgeInstall112,
+    },
+    Profile111(ForgeInstallerProfile111),
 }
 
 pub struct InstallerArgumentPaths {
@@ -181,7 +228,7 @@ pub async fn download_forge_version(
     // Extract the rest of the archive into the tmp_dir
     archive.extract(tmp_dir)?;
 
-    Ok(ForgeInstallerProfile {
+    Ok(ForgeInstallerProfile::Profile112 {
         profile: serde_json::from_slice(&install_profile_bytes)?,
         version: serde_json::from_slice(&version_bytes)?,
     })
@@ -461,21 +508,22 @@ pub fn test_download_forge_version() {
             tmp_dir: tmp_dir.path().to_path_buf(),
         };
 
-        // Find the path to the forge universal jar from the libraries list
-        let forge_universal_path = fp
-            .profile
-            .libraries
-            .iter()
-            .map(|library| library.name.clone())
-            .find(|name| name.starts_with("net.minecraftforge:forge:"));
+        if let ForgeInstallerProfile::Profile112 { version, profile } = fp {
+            // Find the path to the forge universal jar from the libraries list
+            let forge_universal_path = profile
+                .libraries
+                .iter()
+                .map(|library| library.name.clone())
+                .find(|name| name.starts_with("net.minecraftforge:forge:"));
 
-        patch_forge(
-            Path::new("/home/loucas/.config/com.autm.launcher/java/17.0.3/bin/java"),
-            fp.profile.processors,
-            fp.profile.data,
-            forge_universal_path,
-            paths,
-        )
-        .unwrap()
+            patch_forge(
+                Path::new("/home/loucas/.config/com.autm.launcher/java/17.0.3/bin/java"),
+                profile.processors,
+                profile.data,
+                forge_universal_path,
+                paths,
+            )
+            .unwrap()
+        }
     });
 }
