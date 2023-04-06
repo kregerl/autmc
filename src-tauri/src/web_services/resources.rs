@@ -45,12 +45,10 @@ use crate::{
 
 use super::{
     downloader::{hash_bytes_sha1, validate_file_hash},
-    manifest::{
-        vanilla::{
-            AssetIndex, DownloadMetadata, JarType, JavaManifest, JavaRuntime, JavaVersion,
-            LaunchArguments, LaunchArguments113, Library, Logging, Rule, RuleType,
-            VanillaManifestVersion,
-        },
+    manifest::vanilla::{
+        AssetIndex, DownloadMetadata, JarType, JavaManifest, JavaRuntime, JavaVersion,
+        LaunchArguments, LaunchArguments113, Library, Logging, Rule, RuleType,
+        VanillaManifestVersion,
     },
 };
 
@@ -1133,7 +1131,7 @@ pub async fn create_instance(
                     for library in version.libraries {
                         all_libraries.push(Box::new(library));
                     }
-
+                    // FIXME: Forge 1.11 supply ALL the arguments, including vanilla. Ignore vanilla arguments when using forge 1.11 or lower.
                     Some(version.metadata.arguments)
                 }
             };
