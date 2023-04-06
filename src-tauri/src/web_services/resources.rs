@@ -1002,6 +1002,8 @@ pub async fn create_instance(
 
     let vanilla_libraries = apply_library_rules(version.libraries);
 
+    let mut vanilla_arguments = version.arguments;
+
     let library_data = separate_classifiers_from_libraries(vanilla_libraries);
     all_libraries.extend(library_data.downloadables);
 
@@ -1131,8 +1133,12 @@ pub async fn create_instance(
                     for library in version.libraries {
                         all_libraries.push(Box::new(library));
                     }
-                    // FIXME: Forge 1.11 supply ALL the arguments, including vanilla. Ignore vanilla arguments when using forge 1.11 or lower.
-                    Some(version.metadata.arguments)
+
+                    // Forge versions <= 1.11 supply the entire launch argument string, including 
+                    // the vanilla arguments. We can overwrite the vanilla arguments and return no
+                    // modloader arguments.
+                    vanilla_arguments = version.metadata.arguments;
+                    None
                 }
             };
 
@@ -1181,7 +1187,7 @@ pub async fn create_instance(
     }
     let persitent_arguments = construct_arguments(
         main_class,
-        &version.arguments,
+        &vanilla_arguments,
         modloader_launch_arguments,
         &modloader_type,
         mc_version_manifest.unwrap(),
