@@ -226,8 +226,6 @@ pub async fn download_forge_version(
     version_path: &Path,
     tmp_dir: &Path,
 ) -> ManifestResult<ForgeInstallerProfile> {
-    // FIXME: This changes depending on the game version
-    // https://github.com/gorilla-devs/GDLauncher/blob/391dd9cc7ef5ac6ef050327abb516eb6799f0539/src/common/reducers/actions.js#L1284
     let terminal = "installer.jar";
     let url = format!(
         "{0}/{1}/forge-{1}-{2}",
@@ -273,7 +271,7 @@ pub async fn download_forge_version(
                 version: serde_json::from_slice(&version_bytes)?,
             }
         },
-        Err(e) => {
+        Err(_) => {
             ForgeInstallerProfile::Profile111(serde_json::from_slice(&install_profile_bytes)?)
         },
     };
@@ -297,7 +295,6 @@ pub fn patch_forge(
     // Format the client_lzma_path from the forge_universal_path
     match forge_universal_path {
         Some(library_name) if tmp_lzma_dir_path.exists() => {
-            // FIXME: Currently ignoring the "path" part of the install_profile.json
             let client_lzma_str = maven_to_vec(&library_name, Some("-clientdata"), Some(".lzma"))
                 .join(&get_directory_separator());
             let client_lzma_path = argument_paths.libraries_path.join(client_lzma_str);

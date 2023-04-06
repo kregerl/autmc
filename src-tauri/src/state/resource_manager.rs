@@ -261,13 +261,9 @@ impl ResourceManager {
                     let bytes = download_bytes_from_url(&manifest_version.url).await?;
                     validate_hash_sha1(&bytes, "");
 
-                    info!("REMOVEME: Serializing vanilla version {}", version_id);
                     self.serialize_version(version_id, &bytes)?;
 
-                    info!("REMOVEME: Reading vanilla version struct from string");
-                    // TODO: Replace this string conversion and directly read bytes into json using serde_json::from_slice()
-                    let byte_str = String::from_utf8(bytes.to_vec())?;
-                    let vanilla_version = serde_json::from_str::<VanillaVersion>(&byte_str)?;
+                    let vanilla_version = serde_json::from_slice::<VanillaVersion>(&bytes.to_vec())?;
                     info!("Finished downloading version `{}`", version_id);
                     Ok(vanilla_version)
                 }
