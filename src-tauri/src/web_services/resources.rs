@@ -17,7 +17,7 @@ use xmltree::{Element, XMLNode};
 use zip::ZipArchive;
 
 use crate::{
-    consts::{JAVA_VERSION_MANIFEST_URL, LAUNCHER_NAME, LAUNCHER_VERSION, MINECRAFT_LIBRARIES_URL},
+    consts::{JAVA_VERSION_MANIFEST_URL, LAUNCHER_NAME, LAUNCHER_VERSION},
     state::{
         account_manager::Account,
         instance_manager::{InstanceConfiguration, InstanceState},
@@ -46,12 +46,11 @@ use crate::{
 use super::{
     downloader::{hash_bytes_sha1, validate_file_hash},
     manifest::{
-        forge::{ForgeInstall112, ForgeVersion112, ForgeLibrary},
         vanilla::{
             AssetIndex, DownloadMetadata, JarType, JavaManifest, JavaRuntime, JavaVersion,
             LaunchArguments, LaunchArguments113, Library, Logging, Rule, RuleType,
             VanillaManifestVersion,
-        }, maven_to_vec,
+        },
     },
 };
 
@@ -530,7 +529,8 @@ async fn download_libraries(
     let start = Instant::now();
     // Perform one buffered download for all libraries, including classifiers
     boxed_buffered_download_stream(libraries, libraries_dir, |bytes, artifact| {
-        if !validate_hash_sha1(bytes, artifact.hash()) {
+        // Skip empty hashes for forge 1.11 and older.
+        if !artifact.hash().is_empty() && !validate_hash_sha1(bytes, artifact.hash()) {
             let err = format!("Error downloading {}, invalid hash.", &artifact.url());
             error!("{}", err);
             return Err(DownloadError::InvalidFileHash(err));
@@ -1130,11 +1130,12 @@ pub async fn create_instance(
                 ForgeInstallerProfile::Profile111(profile) => {
                     let version = profile.version_info;
 
-
+                    for library in version.libraries {
+                        all_libraries.push(Box::new(library));
+                    }
 
                     Some(version.metadata.arguments)
-                    // todo!("Forge profile")
-                },
+                }
             };
 
             arguments
