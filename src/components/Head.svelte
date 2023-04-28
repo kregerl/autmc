@@ -1,12 +1,13 @@
 <script lang="ts">
     import { onMount } from "svelte";
 
+    export let size: number = 64;
     export let skinUrl: string;
 
     let canvas: HTMLCanvasElement;
 
     onMount(async () => {
-        const image = new Image(64, 64);
+        const image = new Image(size, size);
 
         image.src = skinUrl;
 
@@ -32,3 +33,9 @@
 </script>
 
 <canvas bind:this={canvas}/>
+
+<style>
+    canvas {
+        border-radius: var(--border-radius);
+    }
+</style>
