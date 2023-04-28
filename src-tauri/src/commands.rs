@@ -75,6 +75,13 @@ pub async fn show_microsoft_login_page(app_handle: tauri::AppHandle<Wry>) -> Aut
     Ok(())
 }
 
+#[tauri::command(async)]
+pub async fn start_microsoft_device_code_authentication(app_handle: tauri::AppHandle<Wry>) -> AuthResult<()> {
+    todo!("start_microsoft_device_code_authentication");
+
+    Ok(())
+}
+
 #[derive(Deserialize)]
 pub struct VersionFilter {
     pub id: String,
