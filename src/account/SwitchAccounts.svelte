@@ -1,8 +1,8 @@
 <script lang="ts">
     import { invoke } from "@tauri-apps/api/tauri";
+
     import AccountContainer from "./AccountContainer.svelte";
-    import Head from "../Head.svelte";
-    import Loader from "../Loader.svelte";
+    import Head from "../components/Head.svelte";
 
     interface BasicAccount {
         uuid: string;
@@ -19,12 +19,11 @@
     const promise: Promise<AccountInformation> = invoke("get_accounts");
 </script>
 
-<div />
 <AccountContainer>
     <h1 class="high-emphasis">Switch Accounts</h1>
 
     {#await promise then accountInfo} 
-        {#each Object.values(accountInfo.accounts) as account, index}
+        {#each Object.values(accountInfo.accounts) as account}
             <div id={accountInfo.active_account === account.uuid ? "active-account" : ""} class="button account">
                 <Head skinUrl={account.skin_url} />
                 <div class="flex-col text">

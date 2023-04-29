@@ -6,7 +6,6 @@
     export function close() {
         dispatch("close");
     }
-
 </script>
 
 <div class="modal-background" />

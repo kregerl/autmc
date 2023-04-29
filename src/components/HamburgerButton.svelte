@@ -3,7 +3,7 @@
 </script>
 
 <div class="hamburger-menu">
-    <div class="hamburder-container">
+    <div class="hamburger-container">
         <input id="checkbox" type="checkbox" bind:checked />
         <label id="checkbox-label" for="checkbox">
             <div class="line1 high-emphasis" />
@@ -15,23 +15,32 @@
 </div>
 
 <style>
-    .hamburder-container {
-        z-index: 3;
+    .hamburger-menu {
+        position: relative;
+        width: 55.5px;
+        height: 55.5px;
+        margin: var(--margin)
+    }
+
+    .hamburger-container {
+        z-index: 6;
         position: absolute;
     }
 
     .hamburger-hover {
-        z-index: 2;
+        z-index: 5;
+        position: absolute;
+        width: 55.5px;
+        height: 55.5px;
+        cursor: pointer;
+        background-color: var(--light-black);
         border-radius: 50%;
-        width: 54px;
-        height: 54px;
+        transform: translate(calc(-1 * 7.5px / 2), calc(-1 * 7.5px / 2));
         display: none;
     }
 
-    .hamburder-container:hover + .hamburger-hover {
+    .hamburger-container:hover + .hamburger-hover {
         display: block;
-        transform: translate(-3px, -3px);
-        background-color: var(--light-black);
     }
 
     #checkbox {
