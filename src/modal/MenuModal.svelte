@@ -49,6 +49,7 @@
     }
 
     .background {
+        z-index: 2;
         position: absolute;
         width: 350px;
         height: 100%;

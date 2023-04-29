@@ -16,12 +16,12 @@
 
 <style>
     .hamburder-container {
-        z-index: 1;
+        z-index: 3;
         position: absolute;
     }
 
     .hamburger-hover {
-        z-index: -1;
+        z-index: 2;
         border-radius: 50%;
         width: 54px;
         height: 54px;
@@ -47,7 +47,6 @@
     }
 
     #checkbox-label > div {
-        z-index: 9;
         width: 33px;
         height: 3px;
         background-color: white;
