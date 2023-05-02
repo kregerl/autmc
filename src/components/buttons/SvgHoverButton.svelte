@@ -17,6 +17,7 @@
         width: var(--svg-size);
         height: var(--svg-size);
         margin-top: var(--margin-top);
+        margin-bottom: var(--margin-bottom);
         margin-left: var(--margin-left);
         padding: var(--padding);
         cursor: pointer;
@@ -37,6 +38,7 @@
         width: var(--hover-size);
         height: var(--hover-size);
         margin-top: var(--margin-top);
+        margin-bottom: var(--margin-bottom);
         margin-left: var(--margin-left);
         background-color: var(--light-black);
         border-radius: 50%;

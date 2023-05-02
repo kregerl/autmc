@@ -19,7 +19,7 @@
         position: relative;
         width: 55.5px;
         height: 55.5px;
-        margin: var(--margin)
+        margin: var(--margin);
     }
 
     .hamburger-container {

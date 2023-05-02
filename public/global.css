@@ -41,7 +41,8 @@ body {
 	flex-direction: column;
 }
 
-h1:focus {
+h1:focus,
+h3:focus {
 	outline: none;
 }
 

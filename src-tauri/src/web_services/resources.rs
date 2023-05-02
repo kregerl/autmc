@@ -1004,6 +1004,9 @@ pub async fn create_instance(
 
     let mut vanilla_arguments = version.arguments;
 
+    // FIXME: There is an issue with the classifier jar paths getting added to the launch arguments. 
+    // Classifiers are extracted into ${instance_dir}/natives but should NOT be added to the classpath.
+    // Anything added to 'library_data.downloadables' is going to be added to the classpath. 
     let library_data = separate_classifiers_from_libraries(vanilla_libraries);
     all_libraries.extend(library_data.downloadables);
 

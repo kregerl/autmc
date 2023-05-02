@@ -2,11 +2,11 @@
     import { createEventDispatcher } from "svelte";
     import { fly } from "svelte/transition";
 
-    import { MenuId } from "../menu";
+    import { MenuId } from "../../menu";
     
-    import Modal from "./Modal.svelte";
-    import Head from "../components/Head.svelte";
-    import SidebarButton from "../components/buttons/SidebarButton.svelte";
+    import Modal from "../Modal.svelte";
+    import Head from "../../components/Head.svelte";
+    import SidebarButton from "../../components/buttons/SidebarButton.svelte";
     import { navigate } from "svelte-navigator";
 
     const dispatch = createEventDispatcher();

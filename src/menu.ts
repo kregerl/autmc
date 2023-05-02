@@ -3,3 +3,9 @@ export enum MenuId {
     Screenshots,
     Logs,
 }
+
+export enum OpenModalType {
+    None,
+    SideMenu,
+    Settings,
+}
