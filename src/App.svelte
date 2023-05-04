@@ -5,6 +5,8 @@
     import Login from "./account/Login.svelte";
     import Home from "./Home.svelte";
     import SwitchAccounts from "./account/SwitchAccounts.svelte";
+    import NewInstance from "./NewInstance.svelte";
+    import { fly } from "svelte/transition";
 
     async function init() {
         await new Promise((resolve) => setTimeout(resolve, 200));
@@ -24,6 +26,9 @@
         </Route>
         <Route path="/switchaccounts">
             <SwitchAccounts />
+        </Route>
+        <Route path="/newinstance">
+            <NewInstance />
         </Route>
     {/await}
 </Router>

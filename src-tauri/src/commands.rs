@@ -290,6 +290,7 @@ pub async fn launch_instance(instance_name: String, app_handle: AppHandle<Wry>) 
 // FIXME: Instance names can be different from the directory name its stored in.
 #[tauri::command(async)]
 pub async fn open_folder(instance_name: String, app_handle: AppHandle<Wry>) {
+    debug!("open_folder with name: {}", instance_name);
     let instance_state: State<InstanceState> = app_handle
         .try_state()
         .expect("`InstanceState` should already be managed.");

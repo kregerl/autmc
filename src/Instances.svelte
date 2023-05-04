@@ -5,6 +5,17 @@
         instanceStore,
     } from "./store/instancestore";
     import Loader from "./components/Loader.svelte";
+    import { navigate } from "svelte-navigator";
+    import RightClickModal from "./modal/RightClickModal/RightClickModal.svelte";
+
+    function newInstance() {
+        navigate("/newinstance");
+    }
+
+    async function launchInstance() {
+        await invoke("launch_instance", { instanceName: this.id });
+        console.log("launch_instance -- this", this);
+    }
 
     async function retrieveInstances(): Promise<InstanceConfiguration[]> {
         if ($instanceStore === undefined) {
@@ -20,9 +31,17 @@
             <Loader />
         {:then instances}
             {#each instances as instance}
-                <div class="instance">
+                <div
+                    id={instance.instance_name}
+                    class="instance"
+                    on:click={launchInstance}
+                    on:keydown
+                >
                     <div class="background">
-                        <div class="version-info high-emphasis">{instance.modloader_type} {instance.modloader_version}</div>
+                        <div class="version-info high-emphasis">
+                            {instance.modloader_type}
+                            {instance.modloader_version}
+                        </div>
                     </div>
                     <div class="footer">
                         <h2 class="high-emphasis">{instance.instance_name}</h2>
@@ -33,10 +52,48 @@
             {/each}
         {/await}
     </div>
+    <button class="flex-row" on:click={newInstance}>
+        <img
+            class="medium-emphasis"
+            src="svg/PlusSign.svg"
+            alt="New Instance"
+        />
+        <h3 class="medium-emphasis">New Instance</h3>
+    </button>
 </div>
+<RightClickModal validClasses={["instance"]}/>
 
 <style>
-    h2, p {
+    button {
+        position: absolute;
+        bottom: 0;
+        right: 0;
+        margin: 0 16px 16px 0;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 1.6rem;
+        background-color: var(--dark-black);
+        border: none;
+        color: white;
+        box-shadow: 3px 3px 10px 2px rgba(0, 0, 0, 0.5);
+        transition: 0.25s linear;
+    }
+
+    button > h3 {
+        margin: 4px;
+    }
+
+    button > img {
+        margin-top: 4px;
+        width: 22px;
+    }
+
+    button:hover {
+        background-color: var(--light-black);
+    }
+
+    h2,
+    p {
         color: white;
         margin: 0 0 0 6px;
     }

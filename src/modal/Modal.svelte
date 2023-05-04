@@ -8,6 +8,7 @@
     }
 
     function onKeyDown(event: KeyboardEvent) {
+        console.log("onKeyDown");
         if (event.key === "Escape") {
             close();
         }
@@ -16,7 +17,7 @@
 
 <slot />
 <div class="modal-background" />
-<svelte:window on:keydown|preventDefault={onKeyDown}/>
+<svelte:body on:keydown|preventDefault={onKeyDown}/>
 
 <style>
     .modal-background {
