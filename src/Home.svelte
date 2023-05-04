@@ -4,12 +4,13 @@
     import MenuModal from "./modal/MenuModal/MenuModal.svelte";
     import SettingsModal from "./modal/SettingsModal/SettingsModal.svelte";
     import { MenuId, OpenModalType } from "./menu";
+    import Instances from "./Instances.svelte";
 
     let activeMenuId: MenuId = MenuId.Instances;
     let openModal: OpenModalType = OpenModalType.None;
 
     let isSideModalOpen: boolean = false;
-    $: if(isSideModalOpen)  {
+    $: if (isSideModalOpen) {
         openModal = OpenModalType.SideMenu;
     } else {
         openModal = OpenModalType.None;
@@ -71,7 +72,7 @@
             <SvgHoverButton
                 src="svg/Settings.svg"
                 alt="Settings"
-                on:click={() => openModal = OpenModalType.Settings}
+                on:click={() => (openModal = OpenModalType.Settings)}
                 --svg-size="33px"
                 --hover-size="55.5px"
                 --margin-bottom="8px"
@@ -87,11 +88,11 @@
             on:menuchanged={(event) => (activeMenuId = event.detail.id)}
         />
     {:else if openModal === OpenModalType.Settings}
-        <SettingsModal on:close={closeSettingsModal}/>
+        <SettingsModal on:close={closeSettingsModal} />
     {/if}
 
     {#if activeMenuId == MenuId.Instances}
-        <h1>TODO: Instances</h1>
+        <Instances --grid-area="content" />
     {:else if activeMenuId == MenuId.Screenshots}
         <h1>TODO: Screenshots</h1>
     {:else if activeMenuId == MenuId.Logs}
@@ -107,8 +108,8 @@
 
     main {
         display: grid;
-        grid-template-columns: 0.1fr 1.9fr;
-        grid-template-rows: 0.2fr 1.8fr;
+        grid-template-columns: 64px 1fr;
+        grid-template-rows: 64px 1fr;
         gap: 0px 0px;
         grid-template-areas:
             "side header"
@@ -116,9 +117,11 @@
         width: 100%;
         height: 100%;
         background-color: var(--medium-black);
+        overflow-y: scroll;
     }
 
     .side-menu {
+        position: absolute;
         grid-area: side;
         justify-content: space-between;
         width: 64px;

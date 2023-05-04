@@ -16,7 +16,6 @@
 
 <style>
     .hamburger-menu {
-        position: relative;
         width: 55.5px;
         height: 55.5px;
         margin: var(--margin);
