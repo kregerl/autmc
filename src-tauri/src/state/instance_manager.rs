@@ -19,7 +19,7 @@ use crate::web_services::resources::{substitute_account_specific_arguments, Modl
 
 use super::account_manager::Account;
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct InstanceConfiguration {
     pub instance_name: String,
     pub jvm_path: PathBuf,
@@ -97,6 +97,10 @@ impl InstanceManager {
             let conf = instance.unwrap();
             self.instance_map.insert(conf.instance_name.clone(), conf);
         }
+    }
+
+    pub fn get_instance_configurations(&self) -> Vec<InstanceConfiguration> {
+        self.instance_map.values().map(|instance| instance.clone()).collect()
     }
 
     pub fn get_instance_names(&self) -> Vec<String> {

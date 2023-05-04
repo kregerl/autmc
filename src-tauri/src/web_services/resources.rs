@@ -929,7 +929,7 @@ fn apply_library_rules(libraries: Vec<Library>) -> Vec<Library> {
         .collect()
 }
 
-#[derive(Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Deserialize, Serialize, PartialEq, Clone)]
 pub enum ModloaderType {
     Forge,
     Fabric,
@@ -1211,12 +1211,20 @@ pub async fn create_instance(
         .expect("`ResourceState` should already be managed.");
     let instance_manager = instance_state.0.lock().await;
 
+    // If there is no modloader, then set the "modloader_version" to the vanilla version for displaying
+    // on the instances screen
+    let instance_version = if modloader_type == ModloaderType::None {
+        vanilla_version
+    } else {
+        modloader_version
+    };
+
     instance_manager.add_instance(InstanceConfiguration {
         instance_name,
         jvm_path: java_path.clone(),
         arguments: persitent_arguments,
         modloader_type,
-        modloader_version,
+        modloader_version: instance_version,
     })?;
     debug!("After persistent args");
     extract_natives(

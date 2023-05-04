@@ -19,7 +19,7 @@ use crate::{
     consts::{CLIENT_ID, GZIP_SIGNATURE, MICROSOFT_LOGIN_URL},
     state::{
         account_manager::AccountState,
-        instance_manager::InstanceState,
+        instance_manager::{InstanceState, InstanceConfiguration},
         resource_manager::{ManifestResult, ResourceState},
     },
     web_services::{
@@ -255,14 +255,15 @@ pub async fn get_account_skin(app_handle: AppHandle<Wry>) -> String {
 }
 
 #[tauri::command(async)]
-pub async fn load_instances(app_handle: AppHandle<Wry>) -> Vec<String> {
+pub async fn load_instances(app_handle: AppHandle<Wry>) -> Vec<InstanceConfiguration> {
     let instance_state: State<InstanceState> = app_handle
         .try_state()
         .expect("`InstanceState` should already be managed.");
     let mut instance_manager = instance_state.0.lock().await;
 
     instance_manager.deserialize_instances();
-    instance_manager.get_instance_names()
+    debug!("load_instances");
+    instance_manager.get_instance_configurations()
 }
 
 #[tauri::command(async)]
