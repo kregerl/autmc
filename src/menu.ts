@@ -9,3 +9,16 @@ export enum OpenModalType {
     SideMenu,
     Settings,
 }
+
+export enum InstanceType {
+    Vanilla, 
+    Curseforge,
+    Modrinth,
+    Zip
+}
+
+export enum ModloaderType {
+    None,
+    Fabric,
+    Forge
+}

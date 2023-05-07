@@ -1,10 +1,10 @@
 <script lang="ts">
     import HamburgerButton from "./components/HamburgerButton.svelte";
-    import SvgHoverButton from "./components/buttons/SvgHoverButton.svelte";
     import MenuModal from "./modal/MenuModal/MenuModal.svelte";
     import SettingsModal from "./modal/SettingsModal/SettingsModal.svelte";
     import { MenuId, OpenModalType } from "./menu";
     import Instances from "./Instances.svelte";
+    import SvgCircleHoverButton from "./components/buttons/SvgCircleHoverButton.svelte";
 
     let activeMenuId: MenuId = MenuId.Instances;
     let openModal: OpenModalType = OpenModalType.None;
@@ -32,7 +32,7 @@
                 bind:checked={isSideModalOpen}
                 --margin="8px 0 0 8px"
             />
-            <SvgHoverButton
+            <SvgCircleHoverButton
                 src="svg/Grid.svg"
                 alt="Instances"
                 active={activeMenuId === MenuId.Instances}
@@ -44,7 +44,7 @@
                 --padding="7.5px"
             />
 
-            <SvgHoverButton
+            <SvgCircleHoverButton
                 src="svg/Screenshot.svg"
                 alt="Screenshots"
                 active={activeMenuId === MenuId.Screenshots}
@@ -56,7 +56,7 @@
                 --padding="7.5px"
             />
 
-            <SvgHoverButton
+            <SvgCircleHoverButton
                 src="svg/Logs.svg"
                 alt="Logs"
                 active={activeMenuId === MenuId.Logs}
@@ -69,7 +69,7 @@
             />
         </div>
         <div class="side-menu-bottom">
-            <SvgHoverButton
+            <SvgCircleHoverButton
                 src="svg/Settings.svg"
                 alt="Settings"
                 on:click={() => (openModal = OpenModalType.Settings)}
@@ -118,6 +118,7 @@
         height: 100%;
         background-color: var(--medium-black);
         overflow-y: scroll;
+        overflow-x: hidden;
     }
 
     .side-menu {

@@ -103,7 +103,7 @@
     </div>
     <Modal on:close={close} />
 {/if}
-<svelte:body on:contextmenu={onRightClick} />
+<svelte:window on:contextmenu|preventDefault={onRightClick} />
 
 <style>
     #right-click-menu {

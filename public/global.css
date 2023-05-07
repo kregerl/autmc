@@ -9,7 +9,9 @@ html, body {
 :root {
 	--dark-black: #121212;
 	--medium-black: #1B1B1B;
+	--medium-light-black: #1f1f1f;
 	--light-black: #222222;
+	--lightest-black: #2f2f2f;
 }
 
 body {
@@ -46,3 +48,11 @@ h3:focus {
 	outline: none;
 }
 
+/* required for styling the thead element of a svelte-virtual-table */
+thead.thead {
+	position: -webkit-sticky;
+	position: sticky;
+	top: 0;
+	background-color: var(--dark-black);
+	z-index: 1;
+}

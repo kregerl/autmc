@@ -1,15 +1,16 @@
 <script lang="ts">
     import { invoke } from "@tauri-apps/api/tauri";
+    import { navigate } from "svelte-navigator";
+
     import {
         InstanceConfiguration,
         instanceStore,
     } from "./store/instancestore";
     import Loader from "./components/Loader.svelte";
-    import { navigate } from "svelte-navigator";
     import RightClickModal from "./modal/RightClickModal/RightClickModal.svelte";
 
     function newInstance() {
-        navigate("/newinstance");
+        navigate("/newinstance-version");
     }
 
     async function launchInstance() {
@@ -60,8 +61,8 @@
         />
         <h3 class="medium-emphasis">New Instance</h3>
     </button>
+    <RightClickModal validClasses={["instance"]}/>
 </div>
-<RightClickModal validClasses={["instance"]}/>
 
 <style>
     button {
@@ -76,7 +77,7 @@
         border: none;
         color: white;
         box-shadow: 3px 3px 10px 2px rgba(0, 0, 0, 0.5);
-        transition: 0.25s linear;
+        transition: 0.15s linear;
     }
 
     button > h3 {
@@ -129,7 +130,7 @@
     }
 
     .instance:hover {
-        background-color: #2f2f2f;
+        background-color: var(--lightest-black);
         cursor: pointer;
     }
 
