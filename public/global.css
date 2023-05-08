@@ -4,6 +4,7 @@ html, body {
 	width: 100%;
 	height: 100%;
 	overflow: hidden;
+	background-color: var(--dark-black);
 }
 
 :root {
@@ -46,13 +47,4 @@ body {
 h1:focus,
 h3:focus {
 	outline: none;
-}
-
-/* required for styling the thead element of a svelte-virtual-table */
-thead.thead {
-	position: -webkit-sticky;
-	position: sticky;
-	top: 0;
-	background-color: var(--dark-black);
-	z-index: 1;
 }

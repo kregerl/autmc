@@ -5,6 +5,7 @@
     import { MenuId, OpenModalType } from "./menu";
     import Instances from "./Instances.svelte";
     import SvgCircleHoverButton from "./components/buttons/SvgCircleHoverButton.svelte";
+    import { fade } from "svelte/transition";
 
     let activeMenuId: MenuId = MenuId.Instances;
     let openModal: OpenModalType = OpenModalType.None;
@@ -25,7 +26,7 @@
     }
 </script>
 
-<main>
+<main out:fade={{duration: 100}}>
     <div class="side-menu flex-col">
         <div class="side-menu-top">
             <HamburgerButton

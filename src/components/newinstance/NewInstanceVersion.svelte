@@ -1,8 +1,8 @@
 <script lang="ts">
     import { invoke } from "@tauri-apps/api/tauri";
-    
+
     import { navigate } from "svelte-navigator";
-    
+
     import SvgButton from "../buttons/SvgButton.svelte";
     import VanillaContent from "./VanillaContent.svelte";
     import Loader from "../Loader.svelte";
@@ -13,6 +13,10 @@
 
     function back() {
         navigate(-1);
+    }
+
+    function next() {
+        navigate("/newinstance-settings");
     }
 
     function onClickTab() {
@@ -29,6 +33,8 @@
             $manifestStore.forge_versions = new Map(
                 Object.entries($manifestStore.forge_versions)
             );
+            for (let key of $manifestStore.forge_versions.keys())
+                $manifestStore.forge_versions.get(key).reverse();
         }
         console.log("$manifestStore", $manifestStore);
         return $manifestStore;
@@ -101,7 +107,7 @@
                 --img-width="18px"
                 on:click={back}
             />
-            <SvgButton src="svg/RightArrow.svg" alt="Next" />
+            <SvgButton src="svg/RightArrow.svg" alt="Next" on:click={next} />
         </div>
     </main>
 {/await}
@@ -149,8 +155,10 @@
     }
 
     .footer {
-        float: right;
+        position: absolute;
+        right: 0;
+        bottom: 0;
         justify-content: space-between;
-        margin: 0 8px 8px 0 ;
+        margin: 0 16px 16px 0;
     }
 </style>

@@ -5,7 +5,8 @@
     import Login from "./account/Login.svelte";
     import Home from "./Home.svelte";
     import SwitchAccounts from "./account/SwitchAccounts.svelte";
-    import NewInstance from "./components/newinstance/NewInstance.svelte";
+    import NewInstanceVersion from "./components/newinstance/NewInstanceVersion.svelte";
+    import NewInstanceSettings from "./components/newinstance/NewInstanceSettings.svelte";
 
     async function init() {
         await new Promise((resolve) => setTimeout(resolve, 200));
@@ -27,7 +28,10 @@
             <SwitchAccounts />
         </Route>
         <Route path="/newinstance-version">
-            <NewInstance />
+            <NewInstanceVersion />
+        </Route>
+        <Route path="/newinstance-settings">
+            <NewInstanceSettings />
         </Route>
     {/await}
 </Router>

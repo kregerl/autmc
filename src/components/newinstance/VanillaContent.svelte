@@ -1,5 +1,6 @@
 <script lang="ts">
-    import VirtualTable from "svelte-virtual-table";
+    import VirtualList from "../virtuallist/VirtualList.svelte";
+    import VirtualListRow from "../virtuallist/VirtualListRow.svelte";
     import type {
         VersionEntry,
         VersionManifest,
@@ -15,6 +16,8 @@
     export let selectedModloaderVersion: string = "";
     export let modloaderType: ModloaderType = ModloaderType.None;
 
+    let vanillaScrollToIndex;
+
     interface Filter {
         id: string;
         name: string;
@@ -23,7 +26,7 @@
 
     const FILTERS: Filter[] = [
         { id: "release", name: "Releases", checked: true },
-        { id: "snapshot", name: "Snapshots", checked: true },
+        { id: "snapshot", name: "Snapshots", checked: false },
         { id: "old_beta", name: "Betas", checked: false },
         { id: "old_alpha", name: "Alphas", checked: false },
     ];
@@ -35,6 +38,8 @@
         FILTERS
     );
 
+    $: tryScroll(filteredVanillaVersions);
+
     function getFilteredVanillaVersions(
         versions: VersionEntry[],
         filers: Filter[]
@@ -45,9 +50,32 @@
                     return true;
             }
         });
-        if (filteredVersions.length > 0)
+        console.log(
+            filteredVersions.find(
+                (versionEntry) =>
+                    versionEntry.version === selectedVanillaVersion
+            )
+        );
+        let found = filteredVersions.find(
+            (versionEntry) => versionEntry.version === selectedVanillaVersion
+        );
+        if (filteredVersions.length > 0 && found === undefined)
             selectedVanillaVersion = filteredVersions.at(0).version;
+        console.log("Updating filtered versions");
         return filteredVersions;
+    }
+
+    // Scrolls to the selected element in the vanilla versions list
+    function tryScroll(versions: VersionEntry[]) {
+        setTimeout(() => {
+            if (vanillaScrollToIndex) {
+                let x = versions.find(
+                    (element) => element.version === selectedVanillaVersion
+                );
+                let index = versions.indexOf(x);
+                vanillaScrollToIndex(index);
+            }
+        }, 100);
     }
 
     // Filter forge versions based on the vanilla version
@@ -55,14 +83,8 @@
         versionManifest.forge_versions.get(selectedVanillaVersion) ?? [];
 
     // On change of vanilla version on forge tabs, make sure to update the selection
-    $: if (selectedVanillaVersion) {
+    $: if (selectedVanillaVersion && modloaderType === ModloaderType.Forge) {
         selectedModloaderVersion = filteredForgeVersions.at(0);
-    }
-
-    $: x = test(selectedVanillaVersion);
-
-    function test(version: string) {
-        console.log(version);
     }
 
     function setSelectedVanillaVersion(_event: MouseEvent) {
@@ -89,6 +111,17 @@
             day: "numeric",
         });
     }
+
+    interface Pair<T> {
+        entry: T;
+        index: number;
+    }
+
+    function withIndex<T>(list: T[]): Pair<T>[] {
+        return list.map((element, index) => {
+            return { entry: element, index: index };
+        });
+    }
 </script>
 
 <div class="grid-container">
@@ -96,56 +129,51 @@
         {#if filteredVanillaVersions.length == 0}
             <p class="medium-emphasis">No Versions Matching Filters</p>
         {:else}
-            <VirtualTable items={filteredVanillaVersions} let:item>
-                <tr slot="thead">
-                    <th class="high-emphasis">Version</th>
-                    <th class="high-emphasis">Release Type</th>
-                    <th class="high-emphasis">Release Date</th>
-                </tr>
-                <tr
-                    id={item.version}
-                    class="data-row {selectedVanillaVersion === item.version
-                        ? 'selected'
-                        : ''}"
+            <div class="header flex-row">
+                <span class="high-emphasis">Version</span>
+                <span class="high-emphasis">Release Type</span>
+                <span class="high-emphasis">Released Date</span>
+            </div>
+            <VirtualList
+                items={withIndex(filteredVanillaVersions)}
+                bind:scrollToIndex={vanillaScrollToIndex}
+                let:item
+            >
+                <VirtualListRow
+                    id={item.entry.version}
+                    index={item.index}
+                    items={[
+                        item.entry.version,
+                        item.entry.versionType,
+                        formatDate(item.entry.releasedDate),
+                    ]}
                     on:click={setSelectedVanillaVersion}
-                    slot="tbody"
-                >
-                    <td class="high-emphasis">{item.version}</td>
-                    <td class="high-emphasis">{item.versionType}</td>
-                    <td class="high-emphasis"
-                        >{formatDate(item.releasedDate)}</td
-                    >
-                </tr>
-            </VirtualTable>
+                    selected={selectedVanillaVersion}
+                />
+            </VirtualList>
         {/if}
     </div>
     <div class="modloader-versions">
         <div class="modloader-button-wrapper flex-row">
             <div
-                class="high-emphasis button {modloaderType ===
-                ModloaderType.None
-                    ? 'selected'
-                    : ''}"
+                class="high-emphasis button
+                {modloaderType === ModloaderType.None ? 'selected' : ''}"
                 on:click={() => setModloaderType(ModloaderType.None)}
                 on:keydown
             >
                 None
             </div>
             <div
-                class="high-emphasis button {modloaderType ===
-                ModloaderType.Fabric
-                    ? 'selected'
-                    : ''}"
+                class="high-emphasis button
+                {modloaderType === ModloaderType.Fabric ? 'selected' : ''}"
                 on:click={() => setModloaderType(ModloaderType.Fabric)}
                 on:keydown
             >
                 Fabric
             </div>
             <div
-                class="high-emphasis button {modloaderType ===
-                ModloaderType.Forge
-                    ? 'selected'
-                    : ''}"
+                class="high-emphasis button
+                {modloaderType === ModloaderType.Forge ? 'selected' : ''}"
                 on:click={() => setModloaderType(ModloaderType.Forge)}
                 on:keydown
             >
@@ -153,49 +181,46 @@
             </div>
         </div>
         {#if filteredVanillaVersions.length > 0 && modloaderType == ModloaderType.Fabric}
-            <VirtualTable items={versionManifest.fabric_versions} let:item>
-                <tr slot="thead">
-                    <th class="high-emphasis">Version</th>
-                </tr>
-                <tr
-                    class="data-row {selectedModloaderVersion === item
-                        ? 'selected'
-                        : ''}"
-                    id={item}
+            <div class="header flex-row">
+                <span class="high-emphasis">Version</span>
+            </div>
+            <VirtualList
+                items={withIndex(versionManifest.fabric_versions)}
+                let:item
+            >
+                <VirtualListRow
+                    id={item.entry}
+                    index={item.index}
+                    items={[item.entry]}
                     on:click={setSelectedModloaderVersion}
-                    slot="tbody"
-                >
-                    <td class="high-emphasis">{item}</td>
-                </tr>
-            </VirtualTable>
+                    selected={selectedModloaderVersion}
+                />
+            </VirtualList>
         {:else if filteredVanillaVersions.length > 0 && modloaderType == ModloaderType.Forge}
+            <div class="header flex-row">
+                <span class="high-emphasis">Version</span>
+            </div>
             {#if filteredForgeVersions.length == 0}
                 <p class="medium-emphasis">
                     No Forge Versions for {selectedVanillaVersion}
                 </p>
             {:else}
-                <VirtualTable items={filteredForgeVersions} let:item>
-                    <tr slot="thead">
-                        <th class="high-emphasis">Version</th>
-                    </tr>
-                    <tr
-                        class="data-row {selectedModloaderVersion === item
-                            ? 'selected'
-                            : ''}"
-                        id={item}
+                <VirtualList items={withIndex(filteredForgeVersions)} let:item>
+                    <VirtualListRow
+                        id={item.entry}
+                        index={item.index}
+                        items={[item.entry]}
                         on:click={setSelectedModloaderVersion}
-                        slot="tbody"
-                    >
-                        <td class="high-emphasis">{item}</td>
-                    </tr>
-                </VirtualTable>
+                        selected={selectedModloaderVersion}
+                    />
+                </VirtualList>
             {/if}
         {:else}
             <p class="medium-emphasis">No Modloader Selected</p>
         {/if}
     </div>
     <div class="filters flex-col">
-        <h3 class="high-emphasis">Version Filters</h3>
+        <span class="high-emphasis">Version Filters</span>
         {#each FILTERS as filter}
             <label for={filter.name} class="high-emphasis">
                 <input
@@ -225,7 +250,7 @@
         grid-area: vanilla;
         /* -12px since thats the padding */
         width: calc(100% - 12px);
-        overflow-y: scroll;
+        overflow-y: hidden;
         background-color: var(--light-black);
         padding: 6px;
         border-radius: 4px;
@@ -253,9 +278,12 @@
         border-radius: 4px;
     }
 
-    .filters > h3 {
+    .filters > span {
         margin: 0;
-        padding: 4px;
+        padding: 4px 0 4px 0;
+        height: 32px;
+        font-size: 2vmin;
+        font-weight: bold;
         text-align: center;
         background-color: var(--dark-black);
     }
@@ -276,36 +304,6 @@
         background-color: var(--lightest-black);
     }
 
-    th,
-    td {
-        color: white;
-        padding: 4px 0 4px 0;
-    }
-
-    th {
-        font-size: 2vmin;
-    }
-
-    td {
-        font-size: 1.5vmin;
-    }
-
-    .data-row:nth-child(odd) {
-        background-color: var(--medium-light-black);
-    }
-
-    .data-row:nth-child(even) {
-        background-color: var(--medium-black);
-    }
-
-    .data-row {
-        cursor: pointer;
-    }
-
-    .data-row:hover:not(.selected) {
-        background-color: var(--lightest-black);
-    }
-
     .selected {
         background-color: #573993 !important;
     }
@@ -315,6 +313,7 @@
         width: 100%;
         height: 32px;
         line-height: 32px;
+        padding: 4px 0 4px 0;
         font-size: 2vmin;
         font-weight: bold;
         cursor: pointer;
@@ -330,5 +329,20 @@
         color: white;
         font-size: 2.4rem;
         text-align: center;
+    }
+
+    .header {
+        height: 32px;
+        line-height: 32px;
+        padding: 4px 0 4px 0;
+        background-color: var(--dark-black);
+        color: white;
+    }
+
+    .header > span {
+        font-size: 2vmin;
+        font-weight: bold;
+        margin: 0px;
+        width: 33%;
     }
 </style>
