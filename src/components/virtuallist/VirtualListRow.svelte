@@ -43,6 +43,6 @@
     }
 
     .selected {
-        background-color: #573993 !important;
+        background-color: var(--medium-purple) !important;
     }
 </style>

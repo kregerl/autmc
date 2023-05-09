@@ -38,7 +38,7 @@
     }
 
     .active {
-        box-shadow: -4px 0px #573993;
+        box-shadow: -4px 0px var(--medium-purple);
         border-top-left-radius: 0px;
         border-bottom-left-radius: 0px;
     }

@@ -27,10 +27,10 @@
         <Route path="/switchaccounts">
             <SwitchAccounts />
         </Route>
-        <Route path="/newinstance-version">
+        <Route path="/newinstance-version" primary={false}>
             <NewInstanceVersion />
         </Route>
-        <Route path="/newinstance-settings">
+        <Route path="/newinstance-settings" primary={false}>
             <NewInstanceSettings />
         </Route>
     {/await}

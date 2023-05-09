@@ -43,14 +43,14 @@
         margin: 12px;
         padding: 12px;
         border-radius: 8px;
-        border: 2px solid #3D2E5B;
-        background-color: #573993;
+        border: 2px solid var(--dark-purple);
+        background-color: var(--medium-purple);
         display: flex;
         justify-content: center;
     }
 
     .mslogin:hover {
-        background-color: #6A51B9;
+        background-color: var(--light-purple);
         cursor: pointer;
     }
 

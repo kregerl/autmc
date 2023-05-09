@@ -75,15 +75,15 @@
         margin: 12px;
         padding: 12px;
         border-radius: 8px;
-        border: 2px solid #3d2e5b;
-        background-color: #573993;
+        border: 2px solid var(--dark-purple);
+        background-color: var(--medium-purple);
         display: flex;
         justify-content: center;
     }
 
     .button:hover {
         cursor: pointer;
-        background-color: #6a51b9;
+        background-color: var(--light-purple);
     }
 
     .add-account > p {
@@ -110,7 +110,7 @@
     }
 
     #active-account {
-        border: 2px solid #5eb3e8;
+        border: 2px solid var(--light-blue);
     }
 
     .back-button {

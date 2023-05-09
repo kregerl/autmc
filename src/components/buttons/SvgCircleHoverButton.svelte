@@ -24,7 +24,7 @@
     }
 
     .active {
-        box-shadow: -4px 0px #573993;
+        box-shadow: -4px 0px var(--medium-purple);
     }
 
     .wrapper {

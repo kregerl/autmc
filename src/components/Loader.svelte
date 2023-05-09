@@ -37,7 +37,7 @@
             transform: translateY(calc(-1 * var(--line-height)));
         }
         from {
-            text-shadow: 2px 6px 4px #6A51B9;
+            text-shadow: 2px 6px 4px var(--light-purple);
         }
     }
 </style>

@@ -6,6 +6,7 @@
         VersionManifest,
     } from "../../store/manifeststore";
     import { ModloaderType } from "../../menu";
+    import CheckboxInput from "../input/CheckboxInput.svelte";
 
     // Input
     export let versionManifest: VersionManifest;
@@ -83,7 +84,7 @@
         versionManifest.forge_versions.get(selectedVanillaVersion) ?? [];
 
     // On change of vanilla version on forge tabs, make sure to update the selection
-    $: if (selectedVanillaVersion && modloaderType === ModloaderType.Forge) {
+    $: if (selectedVanillaVersion == "" && modloaderType === ModloaderType.Forge) {
         selectedModloaderVersion = filteredForgeVersions.at(0);
     }
 
@@ -222,14 +223,7 @@
     <div class="filters flex-col">
         <span class="high-emphasis">Version Filters</span>
         {#each FILTERS as filter}
-            <label for={filter.name} class="high-emphasis">
-                <input
-                    id={filter.name}
-                    type="checkbox"
-                    bind:checked={filter.checked}
-                />
-                {filter.name}
-            </label>
+            <CheckboxInput text={filter.name} bind:checked={filter.checked}/>
         {/each}
     </div>
 </div>
@@ -288,24 +282,8 @@
         background-color: var(--dark-black);
     }
 
-    .filters > label {
-        margin-top: 4px;
-        cursor: pointer;
-        width: fit-content;
-        padding: 4px;
-    }
-
-    .filters > label > input {
-        width: 1.5rem;
-        height: 1.5rem;
-    }
-
-    .filters > label:hover {
-        background-color: var(--lightest-black);
-    }
-
     .selected {
-        background-color: #573993 !important;
+        background-color: var(--medium-purple) !important;
     }
 
     .button {

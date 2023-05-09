@@ -1,29 +1,59 @@
+<script lang="ts" context="module">
+    export interface VersionState {
+        vanillaVersion: string;
+        modloaderVersion: string;
+        modloaderType: ModloaderType;
+    }
+</script>
+
 <script lang="ts">
     import { invoke } from "@tauri-apps/api/tauri";
 
-    import { navigate } from "svelte-navigator";
+    import { navigate, useLocation } from "svelte-navigator";
 
     import SvgButton from "../buttons/SvgButton.svelte";
     import VanillaContent from "./VanillaContent.svelte";
     import Loader from "../Loader.svelte";
-    import { InstanceType } from "../../menu";
+    import { InstanceType, ModloaderType } from "../../menu";
     import { VersionManifest, manifestStore } from "../../store/manifeststore";
+    import { onMount } from "svelte";
 
     export let selectedInstanceType: InstanceType = InstanceType.Vanilla;
 
+    const location = useLocation();
+    onMount(() => {
+        if ($location.state.vanillaVersion !== undefined)
+            selectedVanillaVersion = $location.state.vanillaVersion;
+
+        if ($location.state.modloaderType !== undefined)
+            modloaderType = $location.state.modloaderType;
+
+        if ($location.state.modloaderVersion !== undefined)
+            selectedModloaderVersion = $location.state.modloaderVersion;
+    });
+
+    let selectedVanillaVersion: string;
+    let selectedModloaderVersion: string;
+    let modloaderType: ModloaderType;
+
     function back() {
-        navigate(-1);
+        navigate("/");
     }
 
     function next() {
-        navigate("/newinstance-settings");
+        let state: VersionState = {
+            vanillaVersion: selectedVanillaVersion,
+            modloaderVersion: selectedModloaderVersion,
+            modloaderType: modloaderType,
+        };
+        navigate("/newinstance-settings", { state: state });
     }
 
     function onClickTab() {
         let instanceType: InstanceType = Number(
             (this as Element).getAttribute("data-instance-type")
         );
-        console.log(instanceType);
+        console.log("HERE", instanceType);
         selectedInstanceType = instanceType;
     }
 
@@ -36,7 +66,6 @@
             for (let key of $manifestStore.forge_versions.keys())
                 $manifestStore.forge_versions.get(key).reverse();
         }
-        console.log("$manifestStore", $manifestStore);
         return $manifestStore;
     }
 </script>
@@ -87,10 +116,14 @@
                 Import Zip
             </div>
         </div>
-
         <div class="instance-type-content">
             {#if selectedInstanceType === InstanceType.Vanilla}
-                <VanillaContent {versionManifest} />
+                <VanillaContent
+                    {versionManifest}
+                    bind:selectedVanillaVersion
+                    bind:selectedModloaderVersion
+                    bind:modloaderType
+                />
             {:else if selectedInstanceType === InstanceType.Curseforge}
                 <h1>TODO: Curseforge</h1>
             {:else if selectedInstanceType === InstanceType.Modrinth}
@@ -113,11 +146,6 @@
 {/await}
 
 <style>
-    /* TODO: REMOVE THIS */
-    h1 {
-        color: white;
-    }
-
     main {
         background-color: var(--medium-black);
         width: 100%;
@@ -145,11 +173,11 @@
     }
 
     .tabs > div.selected {
-        box-shadow: 0px 4px #573993;
+        box-shadow: 0px 4px var(--medium-purple);
     }
 
     .instance-type-content {
-        margin: 32px 80px 0 80px;
+        margin: 16px 80px 0 80px;
         background-color: white;
         height: calc(100% - 120px);
     }

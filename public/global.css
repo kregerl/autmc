@@ -13,25 +13,35 @@ html, body {
 	--medium-light-black: #1f1f1f;
 	--light-black: #222222;
 	--lightest-black: #2f2f2f;
+
+	--light-blue: #5eb3e8;
+
+	--light-purple: #6a51b9;	
+	--medium-purple: #573993;
+	--dark-purple: #3D2E5B;
+
+	--high-emphasis-opacity: 87%;
+	--medium-emphasis-opacity: 60%;
+	--low-emphasis-opacity: 38%;
 }
 
 body {
 	margin: 0;
-	padding: 0px;
+	padding: 0;
 	box-sizing: border-box;
 	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
 }
 
 .high-emphasis {
-	opacity: 87%;
+	opacity: var(--high-emphasis-opacity);
 }
 
 .medium-emphasis {
-	opacity: 60%;
+	opacity: var(--medium-emphasis-opacity);
 }
 
 .low-emphasis {
-	opacity: 38%;
+	opacity: var(--low-emphasis-opacity);
 }
 
 .flex-row {
