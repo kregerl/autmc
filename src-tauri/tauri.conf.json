@@ -21,6 +21,14 @@
       "protocol": {
         "asset": true,
         "assetScope": ["$APP/instances/**/screenshots/*.png"]
+      },
+      "dialog": {
+        "all": false,
+        "ask": false,
+        "confirm": false,
+        "message": false,
+        "open": true,
+        "save": false
       }
     },
     "bundle": {

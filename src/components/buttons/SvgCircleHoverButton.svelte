@@ -40,7 +40,7 @@
         margin-top: var(--margin-top);
         margin-bottom: var(--margin-bottom);
         margin-left: var(--margin-left);
-        background-color: var(--light-black);
+        background-color: var(--hover-color, var(--light-black));
         border-radius: 50%;
         transform: translate(
             calc(-1 * var(--padding) / 2),

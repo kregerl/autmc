@@ -9,9 +9,10 @@
     export let order: Order = Order.ImgLast;
     export let src: string;
     export let alt: string;
+    export let disabled: boolean = false;
 </script>
 
-<button class="button flex-row" on:click>
+<button class="button flex-row" {disabled} on:click>
     {#if order === Order.ImgFirst}
         <img {src} {alt} />
         <span class="high-emphasis">{alt}</span>

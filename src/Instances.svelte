@@ -21,6 +21,7 @@
     async function retrieveInstances(): Promise<InstanceConfiguration[]> {
         if ($instanceStore === undefined) {
             $instanceStore = await invoke("load_instances");
+            $instanceStore.sort((a,b) => a.instance_name.localeCompare(b.instance_name, "en", {numeric: true}));
         }
         return $instanceStore;
     }

@@ -23,6 +23,14 @@ export enum ModloaderType {
     Forge
 }
 
+export function modloaderTypeToString(type: ModloaderType): string {
+    switch (type) {
+        case ModloaderType.Fabric: return "Fabric";
+        case ModloaderType.Forge: return "Forge";
+        default: return "";
+    }
+}
+
 export enum Emphasis {
     High,
     Medium,

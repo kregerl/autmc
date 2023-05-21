@@ -1,30 +1,46 @@
 <script lang="ts">
     import { appConfigDir } from "@tauri-apps/api/path";
     import { path } from "@tauri-apps/api";
+    import { open } from "@tauri-apps/api/dialog";
+    import { invoke } from "@tauri-apps/api/tauri";
 
     import { navigate, useLocation } from "svelte-navigator";
 
     import SvgButton, { Order } from "../buttons/SvgButton.svelte";
     import TextBoxInput from "../input/TextBoxInput.svelte";
     import type { VersionState } from "./NewInstanceVersion.svelte";
-    import { Emphasis, ModloaderType } from "../../menu";
+    import { Emphasis, ModloaderType, modloaderTypeToString } from "../../menu";
     import CheckboxInput from "../input/CheckboxInput.svelte";
-    import SettingsHeader from "./SettingsHeader.svelte";
+    import SvgCircleHoverButton from "../buttons/SvgCircleHoverButton.svelte";
+    import { instanceStore } from "../../store/instancestore";
 
     let additionalJvmArguments: string = "";
-    let shouldOverrideJavaPath: boolean = false;
     let javaPathOverride: string = "";
 
-
+    let resolutionWidth: string = "800";
+    let resolutionHeight: string = "600";
+    let startWindowMaximized: boolean = false;
 
     let recordPlaytime: boolean = true;
     let showRecordedPlaytime: boolean = true;
 
+    let overrideOptionsTxt: boolean = false;
+    let overrideServersDat: boolean = false;
+
+    let addMods: boolean = false;
+    let addResourcepacks: boolean = false;
+
     const location = useLocation();
     $: generateInstanceName($location.state as VersionState);
-    let value: string;
+    let instanceName: string;
 
-    $: instancePath = getInstancePath(value);
+    $: instancePath = getInstancePath(instanceName);
+
+    $: hasConflict =
+        $instanceStore !== undefined &&
+        $instanceStore
+            .map((element) => element.instance_name)
+            .includes(instanceName);
 
     function back() {
         navigate("/newinstance-version", { state: $location.state });
@@ -34,16 +50,40 @@
     function generateInstanceName(state: VersionState) {
         console.log(state);
         let result = "Minecraft";
-        if (state.modloaderType === ModloaderType.Forge) {
-            result += " Forge";
-        } else if (state.modloaderType === ModloaderType.Fabric) {
-            result += " Fabric";
+        if (!state) {
+            return result;
         }
+
+        let modloaderString = modloaderTypeToString(state.modloaderType);
+        if (modloaderString) result += " ";
+        result += modloaderString;
 
         if (state.vanillaVersion) {
             result += ` ${state.vanillaVersion}`;
         }
-        value = result;
+        instanceName = result;
+    }
+
+    function finish() {
+        let state = $location.state;
+        console.log("state", state);
+        invoke("obtain_version", {
+            vanillaVersion: state.vanillaVersion,
+            modloaderType: modloaderTypeToString(state.modloaderType),
+            modloaderVersion: state.modloaderVersion,
+            instanceName: instanceName,
+        });
+        navigate("/");
+    }
+
+    async function openJavaPathDialog() {
+        const selected = await open({
+            multiple: false,
+            directory: false,
+            title: "Select Java Binary",
+        });
+        // TODO: Do something with this "selected"
+        console.log("selected", selected);
     }
 
     async function getInstancePath(name: string): Promise<string> {
@@ -53,32 +93,110 @@
 </script>
 
 <main>
-    <div class="settings">
-        <h1 class="high-emphasis">Instance Settings</h1>
-        <div class="name-wrapper">
-            <TextBoxInput id="instance" label="Instance Name" bind:value/>
-            <p>
-                {#await instancePath}
-                    {"..."}
-                {:then path}
-                    {path}
-                {/await}
-            </p>
-        </div>
-        <h2 class="high-emphasis">JVM</h2>
-        <TextBoxInput id="jvmargs" label="Additional JVM Arguments" emphasis={Emphasis.Medium} bind:value={additionalJvmArguments} --width="350px"/>
-        <div class="flex-row">
-            <CheckboxInput bind:checked={shouldOverrideJavaPath}/>
-            <TextBoxInput id="jvmargs" label="Override Java Path" emphasis={shouldOverrideJavaPath ? Emphasis.Medium : Emphasis.Low} bind:value={javaPathOverride} --width="350px"/>
-        </div>
+    <h1 class="title high-emphasis">Instance Settings</h1>
+    <div class="grid-container">
+        <div class="settings">
+            <h3>Testing</h3>
+            <hr>
+            <div class="name-wrapper">
+                <TextBoxInput
+                    id="instance"
+                    label="Instance Name"
+                    bind:value={instanceName}
+                    bind:disabled={hasConflict}
+                />
+                <p>
+                    {#await instancePath}
+                        {"..."}
+                    {:then path}
+                        {path}
+                    {/await}
+                </p>
+            </div>
 
-        
-        <h2 class="high-emphasis">Playtime</h2>
-        <!-- Header -->
-        <CheckboxInput text="Record Playtime" bind:checked={recordPlaytime}/>
-        <CheckboxInput text="Display Recorded Playtime" bind:checked={showRecordedPlaytime}/>
-        
-    
+            <h1 class="high-emphasis">JVM</h1>
+            <TextBoxInput
+                id="jvmargs"
+                label="Additional JVM Arguments"
+                emphasis={Emphasis.Medium}
+                bind:value={additionalJvmArguments}
+                --width="350px"
+            />
+            <br />
+
+            <br />
+            <div class="flex-row">
+                <TextBoxInput
+                    id="jvmargs"
+                    label="Override Java Path"
+                    emphasis={Emphasis.Medium}
+                    bind:value={javaPathOverride}
+                    --width="350px"
+                />
+                <SvgCircleHoverButton
+                    src="svg/Folder.svg"
+                    alt="Folder"
+                    --hover-color="var(--dark-black)"
+                    --svg-size="33px"
+                    --hover-size="55.5px"
+                    --margin-top="8px"
+                    --margin-left="8px"
+                    --padding="7.5px"
+                    on:click={openJavaPathDialog}
+                />
+            </div>
+
+            <h1 class="high-emphasis">Default Resolution</h1>
+            <div class="resolution flex-row">
+                <TextBoxInput
+                    id="reswidth"
+                    label="Width"
+                    emphasis={Emphasis.Medium}
+                    bind:value={resolutionWidth}
+                    --width="60px"
+                />
+                <TextBoxInput
+                    id="resheight"
+                    label="Height"
+                    emphasis={Emphasis.Medium}
+                    bind:value={resolutionHeight}
+                    --width="60px"
+                />
+            </div>
+            <br />
+            <CheckboxInput
+                text="Start Window Maximized"
+                bind:checked={startWindowMaximized}
+            />
+            <h1 class="high-emphasis">Playtime</h1>
+            <CheckboxInput
+                text="Record Playtime"
+                bind:checked={recordPlaytime}
+            />
+            <CheckboxInput
+                text="Display Recorded Playtime"
+                bind:checked={showRecordedPlaytime}
+            />
+
+            <h1 class="high-emphasis">Overrides</h1>
+            <CheckboxInput
+                text="Override Options.txt"
+                bind:checked={overrideOptionsTxt}
+            />
+
+            <CheckboxInput
+                text="Override Servers.dat"
+                bind:checked={overrideServersDat}
+            />
+        </div>
+        <div class="includes">
+            <h3>Includes</h3>
+            <hr>
+            <div class="checkboxes">
+                <CheckboxInput disabled={$location.state.modloaderType === ModloaderType.None} text="Add Mods" bind:checked={addMods} />
+                <CheckboxInput text="Add Resourcepacks" bind:checked={addResourcepacks} />
+            </div>
+        </div>
     </div>
 
     <div class="footer flex-row">
@@ -89,7 +207,7 @@
             --img-rotation="180deg"
             on:click={back}
         />
-        <SvgButton src="svg/Check.svg" alt="Done" />
+        <SvgButton src="svg/Check.svg" alt="Done" on:click={finish} />
     </div>
 </main>
 
@@ -99,6 +217,48 @@
         height: 100%;
         /* Prevent margin collapse */
         padding-top: 0.05px;
+        background-color: var(--medium-black);
+    }
+
+    .title {
+        color: white;
+        text-align: center;
+        font-size: 3.2rem;
+    }
+
+    .grid-container {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: 1fr;
+        gap: 0px 8px;
+        grid-template-areas: "left right";
+        width: 100%;
+        height: 100%;
+        box-sizing: border-box;
+        padding: 0 80px 0 80px;
+        background-color: var(--medium-black);
+    }
+
+    .settings {
+        grid-area: left;
+        height: 100%;
+        width: 100%;
+        padding-left: 32px;
+        box-sizing: border-box;
+    }
+
+    .includes {
+        color: white;
+        grid-area: right;
+        height: 100%;
+        width: 100%;
+        font-size: 1.8rem;
+        padding-left: 32px;
+        box-sizing: border-box;
+    }
+
+    .checkboxes {
+        margin: 32px 0 0 0;
     }
 
     p {
@@ -107,12 +267,13 @@
     }
 
     h1 {
-        text-align: center;
-        font-size: 2.4rem;
+        color: white;
     }
 
-    h1, h2 {
+    h3 {
         color: white;
+        font-size: 2.4rem;
+        text-align: center;
     }
 
     .footer {
@@ -123,17 +284,6 @@
         margin: 0 16px 16px 0;
     }
 
-    .settings {
-        padding: 16px;
-        width: auto;
-        border-radius: 4px;
-        /* Prevent margin collapse */
-        padding-top: 0.05px;
-        height: calc(100% - 200px);
-        margin: 80px 80px 0 80px;
-        background-color: var(--light-black);
-    }
-
     .settings > .name-wrapper {
         margin: 32px 0 0 0;
     }
@@ -142,4 +292,8 @@
         margin-top: 4px;
     }
 
+    .resolution {
+        width: 140px;
+        justify-content: space-between;
+    }
 </style>

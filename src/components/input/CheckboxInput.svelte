@@ -3,21 +3,29 @@
 
     export let text: string = "";
     export let checked: boolean = false;
+    export let disabled: boolean = false;
 
     export let emphasis: Emphasis = Emphasis.High;
 </script>
 
-<label class="container">
-    <input type="checkbox" bind:checked/>
-    <svg class={classFromEmphasis(emphasis)} viewBox="0 0 64 64" height="24px" width="24px">
-        <path
-            d="M 0 16 V 56 A 8 8 90 0 0 8 64 H 56 A 8 8 90 0 0 64 56 V 8 A 8 8 90 0 0 56 0 H 8 A 8 8 90 0 0 0 8 V 16 L 32 48 L 64 16 V 8 A 8 8 90 0 0 56 0 H 8 A 8 8 90 0 0 0 8 V 56 A 8 8 90 0 0 8 64 H 56 A 8 8 90 0 0 64 56 V 16"
-            pathLength="575.0541381835938"
-            class="path"
-        />
-    </svg>
-    <span class={classFromEmphasis(emphasis)}>{text}</span>
-</label>
+<div class="cursor-wrapper">
+    <label class="container {disabled ? 'disabled' : ''}">
+        <input type="checkbox" bind:checked />
+        <svg
+            class={classFromEmphasis(emphasis)}
+            viewBox="0 0 64 64"
+            height="24px"
+            width="24px"
+        >
+            <path
+                d="M 0 16 V 56 A 8 8 90 0 0 8 64 H 56 A 8 8 90 0 0 64 56 V 8 A 8 8 90 0 0 56 0 H 8 A 8 8 90 0 0 0 8 V 16 L 32 48 L 64 16 V 8 A 8 8 90 0 0 56 0 H 8 A 8 8 90 0 0 0 8 V 56 A 8 8 90 0 0 8 64 H 56 A 8 8 90 0 0 64 56 V 16"
+                pathLength="575.0541381835938"
+                class="path"
+            />
+        </svg>
+        <span class={classFromEmphasis(emphasis)}>{text}</span>
+    </label>
+</div>
 
 <style>
     .container {
@@ -28,6 +36,15 @@
         cursor: pointer;
         padding: 4px;
         width: fit-content;
+    }
+
+    .disabled {
+        opacity: var(--low-emphasis-opacity);
+        pointer-events: none;
+    }
+
+    .cursor-wrapper {
+        cursor: not-allowed;
     }
 
     .container > span {

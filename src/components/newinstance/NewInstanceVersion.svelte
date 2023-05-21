@@ -17,6 +17,7 @@
     import { InstanceType, ModloaderType } from "../../menu";
     import { VersionManifest, manifestStore } from "../../store/manifeststore";
     import { onMount } from "svelte";
+    import ImportZip from "./ImportZip.svelte";
 
     export let selectedInstanceType: InstanceType = InstanceType.Vanilla;
 
@@ -129,7 +130,7 @@
             {:else if selectedInstanceType === InstanceType.Modrinth}
                 <h1>TODO: Modrinth</h1>
             {:else if selectedInstanceType === InstanceType.Zip}
-                <h1>TODO: Zip</h1>
+                <ImportZip />
             {/if}
         </div>
 
@@ -178,7 +179,6 @@
 
     .instance-type-content {
         margin: 16px 80px 0 80px;
-        background-color: white;
         height: calc(100% - 120px);
     }
 
