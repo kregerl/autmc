@@ -14,33 +14,50 @@
     import SvgCircleHoverButton from "../buttons/SvgCircleHoverButton.svelte";
     import { instanceStore } from "../../store/instancestore";
 
-    let additionalJvmArguments: string = "";
-    let javaPathOverride: string = "";
+    interface InstanceSettings {
+        instanceName: string;
+        vanillaVersion: string;
+        modloaderType: string;
+        modloaderVersion: string;
+        additionalJvmArguments: string;
+        javaPathOverride: string;
+        resolutionWidth: string;
+        resolutionHeight: string;
+        startWindowMaximized: boolean;
+        recordPlaytime: boolean;
+        showRecordedPlaytime: boolean;
+        overrideOptionsTxt: boolean;
+        overrideServersDat: boolean;
+    }
 
-    let resolutionWidth: string = "800";
-    let resolutionHeight: string = "600";
-    let startWindowMaximized: boolean = false;
-
-    let recordPlaytime: boolean = true;
-    let showRecordedPlaytime: boolean = true;
-
-    let overrideOptionsTxt: boolean = false;
-    let overrideServersDat: boolean = false;
+    const location = useLocation();
+    let settings: InstanceSettings = {
+        instanceName: "",
+        vanillaVersion: $location.state.vanillaVersion,
+        modloaderType: modloaderTypeToString($location.state.modloaderType),
+        modloaderVersion: $location.state.modloaderVersion,
+        additionalJvmArguments: "",
+        javaPathOverride: "",
+        resolutionWidth: "800",
+        resolutionHeight: "600",
+        startWindowMaximized: false,
+        recordPlaytime: true,
+        showRecordedPlaytime: true,
+        overrideOptionsTxt: false,
+        overrideServersDat: false
+    };
 
     let addMods: boolean = false;
     let addResourcepacks: boolean = false;
 
-    const location = useLocation();
     $: generateInstanceName($location.state as VersionState);
-    let instanceName: string;
-
-    $: instancePath = getInstancePath(instanceName);
+    $: instancePath = getInstancePath(settings.instanceName);
 
     $: hasConflict =
         $instanceStore !== undefined &&
         $instanceStore
             .map((element) => element.instance_name)
-            .includes(instanceName);
+            .includes(settings.instanceName);
 
     function back() {
         navigate("/newinstance-version", { state: $location.state });
@@ -61,17 +78,14 @@
         if (state.vanillaVersion) {
             result += ` ${state.vanillaVersion}`;
         }
-        instanceName = result;
+        settings.instanceName = result;
     }
 
     function finish() {
         let state = $location.state;
         console.log("state", state);
         invoke("obtain_version", {
-            vanillaVersion: state.vanillaVersion,
-            modloaderType: modloaderTypeToString(state.modloaderType),
-            modloaderVersion: state.modloaderVersion,
-            instanceName: instanceName,
+            settings: settings,
         });
         navigate("/");
     }
@@ -97,12 +111,12 @@
     <div class="grid-container">
         <div class="settings">
             <h3>Testing</h3>
-            <hr>
+            <hr />
             <div class="name-wrapper">
                 <TextBoxInput
                     id="instance"
                     label="Instance Name"
-                    bind:value={instanceName}
+                    bind:value={settings.instanceName}
                     bind:disabled={hasConflict}
                 />
                 <p>
@@ -119,7 +133,7 @@
                 id="jvmargs"
                 label="Additional JVM Arguments"
                 emphasis={Emphasis.Medium}
-                bind:value={additionalJvmArguments}
+                bind:value={settings.additionalJvmArguments}
                 --width="350px"
             />
             <br />
@@ -130,7 +144,7 @@
                     id="jvmargs"
                     label="Override Java Path"
                     emphasis={Emphasis.Medium}
-                    bind:value={javaPathOverride}
+                    bind:value={settings.javaPathOverride}
                     --width="350px"
                 />
                 <SvgCircleHoverButton
@@ -152,49 +166,57 @@
                     id="reswidth"
                     label="Width"
                     emphasis={Emphasis.Medium}
-                    bind:value={resolutionWidth}
+                    bind:value={settings.resolutionWidth}
                     --width="60px"
                 />
                 <TextBoxInput
                     id="resheight"
                     label="Height"
                     emphasis={Emphasis.Medium}
-                    bind:value={resolutionHeight}
+                    bind:value={settings.resolutionHeight}
                     --width="60px"
                 />
             </div>
             <br />
             <CheckboxInput
                 text="Start Window Maximized"
-                bind:checked={startWindowMaximized}
+                bind:checked={settings.startWindowMaximized}
             />
             <h1 class="high-emphasis">Playtime</h1>
             <CheckboxInput
                 text="Record Playtime"
-                bind:checked={recordPlaytime}
+                bind:checked={settings.recordPlaytime}
             />
             <CheckboxInput
                 text="Display Recorded Playtime"
-                bind:checked={showRecordedPlaytime}
+                bind:checked={settings.showRecordedPlaytime}
             />
 
             <h1 class="high-emphasis">Overrides</h1>
             <CheckboxInput
                 text="Override Options.txt"
-                bind:checked={overrideOptionsTxt}
+                bind:checked={settings.overrideOptionsTxt}
             />
 
             <CheckboxInput
                 text="Override Servers.dat"
-                bind:checked={overrideServersDat}
+                bind:checked={settings.overrideServersDat}
             />
         </div>
         <div class="includes">
             <h3>Includes</h3>
-            <hr>
+            <hr />
             <div class="checkboxes">
-                <CheckboxInput disabled={$location.state.modloaderType === ModloaderType.None} text="Add Mods" bind:checked={addMods} />
-                <CheckboxInput text="Add Resourcepacks" bind:checked={addResourcepacks} />
+                <CheckboxInput
+                    disabled={$location.state.modloaderType ===
+                        ModloaderType.None}
+                    text="Add Mods"
+                    bind:checked={addMods}
+                />
+                <CheckboxInput
+                    text="Add Resourcepacks"
+                    bind:checked={addResourcepacks}
+                />
             </div>
         </div>
     </div>

@@ -19,14 +19,14 @@ use crate::{
     consts::{CLIENT_ID, GZIP_SIGNATURE, MICROSOFT_LOGIN_URL},
     state::{
         account_manager::AccountState,
-        instance_manager::{InstanceState, InstanceConfiguration},
+        instance_manager::{InstanceConfiguration, InstanceState},
         resource_manager::{ManifestResult, ResourceState},
     },
     web_services::{
         authentication::{validate_account, AuthResult},
         manifest::{path_to_utf8_str, vanilla::VanillaManifestVersion},
         modpack::{curseforge::import_curseforge_zip, modrinth::import_modrinth_zip},
-        resources::{create_instance, ModloaderType},
+        resources::{create_instance, ModloaderType, InstanceSettings},
     },
 };
 
@@ -76,7 +76,9 @@ pub async fn show_microsoft_login_page(app_handle: tauri::AppHandle<Wry>) -> Aut
 }
 
 #[tauri::command(async)]
-pub async fn start_microsoft_device_code_authentication(app_handle: tauri::AppHandle<Wry>) -> AuthResult<()> {
+pub async fn start_microsoft_device_code_authentication(
+    app_handle: tauri::AppHandle<Wry>,
+) -> AuthResult<()> {
     todo!("start_microsoft_device_code_authentication");
 
     Ok(())
@@ -135,21 +137,18 @@ pub async fn obtain_manifests(app_handle: AppHandle<Wry>) -> ManifestResult<Vers
 
 #[tauri::command(async)]
 pub async fn obtain_version(
-    vanilla_version: String,
-    modloader_type: String,
-    modloader_version: String,
-    instance_name: String,
+    settings: InstanceSettings,
     app_handle: AppHandle<Wry>,
 ) -> ManifestResult<()> {
-    debug!(
-        "Creating instance {} from mc:{} ml:{} mlv:{}",
-        instance_name, vanilla_version, modloader_type, modloader_version
+    debug!("Settings: {:#?}", settings);
+    info!(
+        "Creating instance {} with Minecraft version {} and modloader {} {}",
+        settings.instance_name, settings.vanilla_version, settings.modloader_type, settings.modloader_version
     );
+    let instance_name = settings.instance_name.clone();
+
     create_instance(
-        vanilla_version,
-        ModloaderType::from(modloader_type.as_str()),
-        modloader_version,
-        instance_name.clone(),
+        settings,
         &app_handle,
     )
     .await?;

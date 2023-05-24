@@ -453,64 +453,65 @@ struct CurseforgeModule {
 }
 
 pub async fn import_curseforge_zip(mut archive: &mut ZipArchive<&File>, app_handle: &AppHandle<Wry>) -> io::Result<()> {
-    // Pull out the manifest.json from the zip
-    let curseforge_manifest = extract_manifest_from_curseforge_zip(&mut archive)?;
+    // IMPLEMENTME For the new instance settings
+    // // Pull out the manifest.json from the zip
+    // let curseforge_manifest = extract_manifest_from_curseforge_zip(&mut archive)?;
 
-    let vanilla_version = curseforge_manifest.vanilla_version();
-    let instance_name = curseforge_manifest.modpack_name();
+    // let vanilla_version = curseforge_manifest.vanilla_version();
+    // let instance_name = curseforge_manifest.modpack_name();
 
-    // Get the modloader with 'primary: true'
-    let primary_modloader = curseforge_manifest
-        .modloaders()
-        .iter()
-        .find(|modloader| modloader.primary);
-    let (modloader_type, modloader_version) = match primary_modloader {
-        Some(modloader) => {
-            let splits = modloader.id.split('-').collect::<Vec<&str>>();
-            (splits[0], splits[1])
-        }
-        None => {
-            error!("Error getting primary modloader from manifest, does one exist?");
-            ("", "")
-        }
-    };
+    // // Get the modloader with 'primary: true'
+    // let primary_modloader = curseforge_manifest
+    //     .modloaders()
+    //     .iter()
+    //     .find(|modloader| modloader.primary);
+    // let (modloader_type, modloader_version) = match primary_modloader {
+    //     Some(modloader) => {
+    //         let splits = modloader.id.split('-').collect::<Vec<&str>>();
+    //         (splits[0], splits[1])
+    //     }
+    //     None => {
+    //         error!("Error getting primary modloader from manifest, does one exist?");
+    //         ("", "")
+    //     }
+    // };
 
-    // Create corrected modloader version string for instance creation
-    let full_modloader_version = format!("{}-{}", vanilla_version, modloader_version);
+    // // Create corrected modloader version string for instance creation
+    // let full_modloader_version = format!("{}-{}", vanilla_version, modloader_version);
 
-    create_instance(
-        vanilla_version.into(),
-        modloader_type.into(),
-        full_modloader_version,
-        instance_name.into(),
-        &app_handle,
-    )
-    .await
-    .unwrap();
+    // create_instance(
+    //     vanilla_version.into(),
+    //     modloader_type.into(),
+    //     full_modloader_version,
+    //     instance_name.into(),
+    //     &app_handle,
+    // )
+    // .await
+    // .unwrap();
 
-    let instance_state: State<InstanceState> = app_handle
-        .try_state()
-        .expect("`InstanceState` should already be managed.");
-    let instance_manager = instance_state.0.lock().await;
-    let instances_dir = instance_manager.instances_dir();
+    // let instance_state: State<InstanceState> = app_handle
+    //     .try_state()
+    //     .expect("`InstanceState` should already be managed.");
+    // let instance_manager = instance_state.0.lock().await;
+    // let instances_dir = instance_manager.instances_dir();
 
-    let info = CurseforgeManifestInfo {
-        instance_name: instance_name.into(),
-        game_version: curseforge_manifest.vanilla_version().into(),
-        modloader_type: modloader_type.into(),
-    };
+    // let info = CurseforgeManifestInfo {
+    //     instance_name: instance_name.into(),
+    //     game_version: curseforge_manifest.vanilla_version().into(),
+    //     modloader_type: modloader_type.into(),
+    // };
 
-    // After instance is created, download the mods from curseforge
-    download_mods_from_curseforge(curseforge_manifest.files(), &instances_dir, info)
-        .await
-        .unwrap();
+    // // After instance is created, download the mods from curseforge
+    // download_mods_from_curseforge(curseforge_manifest.files(), &instances_dir, info)
+    //     .await
+    //     .unwrap();
 
-    // Finally extract overrides into the instance dir
-    extract_overrides(
-        &instances_dir.join(instance_name),
-        &mut archive,
-        curseforge_manifest.overrides(),
-    )?;
+    // // Finally extract overrides into the instance dir
+    // extract_overrides(
+    //     &instances_dir.join(instance_name),
+    //     &mut archive,
+    //     curseforge_manifest.overrides(),
+    // )?;
     Ok(())
 }
 

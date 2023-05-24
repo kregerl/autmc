@@ -85,39 +85,40 @@ pub async fn import_modrinth_zip(
     archive: &mut ZipArchive<&File>,
     app_handle: &AppHandle<Wry>,
 ) -> io::Result<()> {
-    info!("Importing modrinth zip...");
-    let manifest_bytes = bytes_from_zip_file(archive.by_name("modrinth.index.json").unwrap());
-    let manifest: ModrinthManifest = serde_json::from_slice(&manifest_bytes)?;
-    debug!("Manifset: {:#?}", manifest);
+    // IMPLEMENTME
+    // info!("Importing modrinth zip...");
+    // let manifest_bytes = bytes_from_zip_file(archive.by_name("modrinth.index.json").unwrap());
+    // let manifest: ModrinthManifest = serde_json::from_slice(&manifest_bytes)?;
+    // debug!("Manifset: {:#?}", manifest);
 
-    let (modloader_version, modloader_type) = match manifest.dependencies.modloader_dependency {
-        ModrinthModloaderDependency::Fabric(version) => (version, ModloaderType::Fabric),
-        ModrinthModloaderDependency::Forge(version) => (
-            format!("{}-{}", manifest.dependencies.minecraft, version),
-            ModloaderType::Forge,
-        ),
-    };
+    // let (modloader_version, modloader_type) = match manifest.dependencies.modloader_dependency {
+    //     ModrinthModloaderDependency::Fabric(version) => (version, ModloaderType::Fabric),
+    //     ModrinthModloaderDependency::Forge(version) => (
+    //         format!("{}-{}", manifest.dependencies.minecraft, version),
+    //         ModloaderType::Forge,
+    //     ),
+    // };
 
-    create_instance(
-        manifest.dependencies.minecraft,
-        modloader_type,
-        modloader_version,
-        manifest.name.clone(),
-        app_handle,
-    )
-    .await
-    .unwrap();
+    // create_instance(
+    //     manifest.dependencies.minecraft,
+    //     modloader_type,
+    //     modloader_version,
+    //     manifest.name.clone(),
+    //     app_handle,
+    // )
+    // .await
+    // .unwrap();
 
-    let instance_state: State<InstanceState> = app_handle
-        .try_state()
-        .expect("`InstanceState` should already be managed.");
-    let instance_manager = instance_state.0.lock().await;
-    let instances_dir = instance_manager.instances_dir();
-    let instance_dir = instances_dir.join(manifest.name);
+    // let instance_state: State<InstanceState> = app_handle
+    //     .try_state()
+    //     .expect("`InstanceState` should already be managed.");
+    // let instance_manager = instance_state.0.lock().await;
+    // let instances_dir = instance_manager.instances_dir();
+    // let instance_dir = instances_dir.join(manifest.name);
 
-    download_mods_from_modrinth(manifest.files, &instance_dir).await?;
+    // download_mods_from_modrinth(manifest.files, &instance_dir).await?;
 
-    extract_overrides(&instance_dir, archive)?;
+    // extract_overrides(&instance_dir, archive)?;
 
     Ok(())
 }

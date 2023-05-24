@@ -226,6 +226,7 @@ fn construct_jvm_arguments112(
 
 fn construct_arguments(
     main_class: String,
+    additional_arguments: String,
     arguments: &LaunchArguments,
     modloader_arguments: Option<LaunchArguments>,
     modloader_type: &ModloaderType,
@@ -236,6 +237,8 @@ fn construct_arguments(
     // IDEA: Vec could be 'with_capacity' if we calculate capacity first.
     let mut formatted_arguments: Vec<String> = Vec::new();
     let mut game_args: Vec<Argument> = Vec::new();
+
+    formatted_arguments.push(additional_arguments);
 
     // Create game arguments from the launch arguments.
     game_args.append(&mut match arguments {
@@ -969,11 +972,30 @@ fn seperate_nondownloadables(libraries: Vec<Library>) -> (Vec<Library>, Vec<Libr
     })
 }
 
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct InstanceSettings {
+    pub instance_name: String,
+    pub vanilla_version: String,
+    pub modloader_type: String,
+    pub modloader_version: String,
+    additional_jvm_arguments: String,
+    java_path_override: String,
+    resolution_width: String,
+    resolution_height: String,
+    start_window_maximized: bool,
+    record_playtime: bool,
+    show_recorded_playtime: bool,
+    override_options_txt: bool,
+    override_servers_dat: bool,
+}
+
 pub async fn create_instance(
-    vanilla_version: String,
-    modloader_type: ModloaderType,
-    modloader_version: String,
-    instance_name: String,
+    settings: InstanceSettings,
+    // vanilla_version: String,
+    // modloader_type: ModloaderType,
+    // modloader_version: String,
+    // instance_name: String,
     app_handle: &AppHandle<Wry>,
 ) -> ManifestResult<()> {
     let resource_state: State<ResourceState> = app_handle
@@ -983,7 +1005,7 @@ pub async fn create_instance(
     let start = Instant::now();
 
     let version: VanillaVersion = resource_manager
-        .download_vanilla_version(&vanilla_version)
+        .download_vanilla_version(&settings.vanilla_version)
         .await?;
 
     // java versions is optional for versions 1.6.4 and older. We select java 8 for them by default.
@@ -995,7 +1017,11 @@ pub async fn create_instance(
         },
     };
 
-    let java_path = download_java_version(&resource_manager.java_dir(), java_version).await?;
+    let java_path = if settings.java_path_override.is_empty() {
+        download_java_version(&resource_manager.java_dir(), java_version).await?
+    } else {
+        PathBuf::from(settings.java_path_override)
+    };
 
     // Init vec of libraries to download.
     let mut all_libraries: Vec<Box<dyn Downloadable + Send + Sync>> = Vec::new();
@@ -1004,9 +1030,9 @@ pub async fn create_instance(
 
     let mut vanilla_arguments = version.arguments;
 
-    // FIXME: There is an issue with the classifier jar paths getting added to the launch arguments. 
+    // FIXME: There is an issue with the classifier jar paths getting added to the launch arguments.
     // Classifiers are extracted into ${instance_dir}/natives but should NOT be added to the classpath.
-    // Anything added to 'library_data.downloadables' is going to be added to the classpath. 
+    // Anything added to 'library_data.downloadables' is going to be added to the classpath.
     let library_data = separate_classifiers_from_libraries(vanilla_libraries);
     all_libraries.extend(library_data.downloadables);
 
@@ -1028,9 +1054,13 @@ pub async fn create_instance(
     // Temp dir for extracting forge installer into, closed/deleted at end of function.
     let tmp_dir = TempDir::new("temp")?;
 
+    let modloader_type = ModloaderType::from(settings.modloader_type.as_str());
+
     let modloader_launch_arguments = match modloader_type {
         ModloaderType::Fabric => {
-            let profile = download_fabric_profile(&vanilla_version, &modloader_version).await?;
+            let profile =
+                download_fabric_profile(&settings.vanilla_version, &settings.modloader_version)
+                    .await?;
             main_class = profile.main_class;
             for fabric_library in obtain_fabric_library_hashes(&profile.libraries).await? {
                 all_libraries.push(Box::new(fabric_library));
@@ -1038,10 +1068,10 @@ pub async fn create_instance(
             Some(profile.arguments)
         }
         ModloaderType::Forge => {
-            let forge_hashes = download_forge_hashes(&modloader_version).await?;
+            let forge_hashes = download_forge_hashes(&settings.modloader_version).await?;
             let forge_installer_profile = download_forge_version(
-                &modloader_version,
-                &vanilla_version,
+                &settings.modloader_version,
+                &settings.vanilla_version,
                 forge_hashes.installer_hash(),
                 &resource_manager.version_dir(),
                 tmp_dir.path(),
@@ -1114,8 +1144,8 @@ pub async fn create_instance(
                     let forge_installer_paths = InstallerArgumentPaths {
                         libraries_path: resource_manager.libraries_dir(),
                         versions_dir_path: resource_manager.version_dir(),
-                        minecraft_version: vanilla_version.clone(),
-                        forge_loader_version: modloader_version.clone(),
+                        minecraft_version: settings.vanilla_version.clone(),
+                        forge_loader_version: settings.modloader_version.clone(),
                         tmp_dir: tmp_dir.path().to_path_buf(),
                     };
 
@@ -1137,7 +1167,7 @@ pub async fn create_instance(
                         all_libraries.push(Box::new(library));
                     }
 
-                    // Forge versions <= 1.11 supply the entire launch argument string, including 
+                    // Forge versions <= 1.11 supply the entire launch argument string, including
                     // the vanilla arguments. We can overwrite the vanilla arguments and return no
                     // modloader arguments.
                     vanilla_arguments = version.metadata.arguments;
@@ -1171,7 +1201,9 @@ pub async fn create_instance(
     } else {
         None
     };
-    let instance_dir = resource_manager.instances_dir().join(&instance_name);
+    let instance_dir = resource_manager
+        .instances_dir()
+        .join(&settings.instance_name);
     fs::create_dir_all(&instance_dir)?;
 
     let asset_index = download_assets(
@@ -1181,15 +1213,17 @@ pub async fn create_instance(
     )
     .await?;
 
-    let mc_version_manifest = resource_manager.get_vanilla_manifest_from_version(&vanilla_version);
+    let mc_version_manifest =
+        resource_manager.get_vanilla_manifest_from_version(&settings.vanilla_version);
     if mc_version_manifest.is_none() {
         warn!(
             "Could not retrieve manifest for unknown version: {}.",
-            &vanilla_version
+            &settings.vanilla_version
         );
     }
     let persitent_arguments = construct_arguments(
         main_class,
+        settings.additional_jvm_arguments,
         &vanilla_arguments,
         modloader_launch_arguments,
         &modloader_type,
@@ -1214,13 +1248,13 @@ pub async fn create_instance(
     // If there is no modloader, then set the "modloader_version" to the vanilla version for displaying
     // on the instances screen
     let instance_version = if modloader_type == ModloaderType::None {
-        vanilla_version
+        settings.vanilla_version
     } else {
-        modloader_version
+        settings.modloader_version
     };
 
     instance_manager.add_instance(InstanceConfiguration {
-        instance_name,
+        instance_name: settings.instance_name,
         jvm_path: java_path.clone(),
         arguments: persitent_arguments,
         modloader_type,
