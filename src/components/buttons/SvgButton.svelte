@@ -14,11 +14,11 @@
 
 <button class="button flex-row" {disabled} on:click>
     {#if order === Order.ImgFirst}
-        <img {src} {alt} />
-        <span class="high-emphasis">{alt}</span>
+        <img class="{disabled ? "low-emphasis" : "high-emphasis"}" {src} {alt} />
+        <span class="{disabled ? "low-emphasis" : "high-emphasis"}">{alt}</span>
     {:else}
-        <span class="high-emphasis">{alt}</span>
-        <img {src} {alt} />
+        <span class="{disabled ? "low-emphasis" : "high-emphasis"}">{alt}</span>
+        <img class="{disabled ? "low-emphasis" : "high-emphasis"}" {src} {alt} />
     {/if}
 </button>
 
@@ -38,8 +38,12 @@
         cursor: pointer;
     }
 
-    button:hover {
+    button:hover:enabled {
         background-color: var(--light-black);
+    }
+
+    button:disabled {
+        cursor: not-allowed;
     }
 
     img {

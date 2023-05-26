@@ -10,21 +10,22 @@ use log::{debug, error, info};
 use reqwest::header::HeaderMap;
 use serde::Deserialize;
 use serde_json::json;
-use tauri::{AppHandle, Wry, State, Manager};
 #[cfg(test)]
 use tauri::async_runtime::block_on;
+use tauri::{AppHandle, Manager, State, Wry};
 use zip::ZipArchive;
 
 use crate::{
     consts::{CURSEFORGE_API_URL, CURSEFORGE_FORGECDN_URL, CURSEFORGE_MODPACK_CLASS_ID},
+    state::instance_manager::InstanceState,
     web_services::{
         downloader::{
             buffered_download_stream, download_json_object, validate_hash_sha1, DownloadError,
             DownloadResult, Downloadable,
         },
         manifest::bytes_from_zip_file,
-        resources::{ModloaderType, create_instance},
-    }, state::instance_manager::InstanceState,
+        resources::{create_instance, InstanceSettings, ModloaderType},
+    },
 };
 
 // -----------------------------
@@ -452,66 +453,67 @@ struct CurseforgeModule {
     fingerprint: u32,
 }
 
-pub async fn import_curseforge_zip(mut archive: &mut ZipArchive<&File>, app_handle: &AppHandle<Wry>) -> io::Result<()> {
-    // IMPLEMENTME For the new instance settings
-    // // Pull out the manifest.json from the zip
-    // let curseforge_manifest = extract_manifest_from_curseforge_zip(&mut archive)?;
+pub async fn import_curseforge_zip(
+    mut archive: &mut ZipArchive<&File>,
+    app_handle: &AppHandle<Wry>,
+) -> io::Result<()> {
+    // Pull out the manifest.json from the zip
+    let curseforge_manifest = extract_manifest_from_curseforge_zip(&mut archive)?;
 
-    // let vanilla_version = curseforge_manifest.vanilla_version();
-    // let instance_name = curseforge_manifest.modpack_name();
+    let vanilla_version = curseforge_manifest.vanilla_version();
+    let instance_name = curseforge_manifest.modpack_name();
 
-    // // Get the modloader with 'primary: true'
-    // let primary_modloader = curseforge_manifest
-    //     .modloaders()
-    //     .iter()
-    //     .find(|modloader| modloader.primary);
-    // let (modloader_type, modloader_version) = match primary_modloader {
-    //     Some(modloader) => {
-    //         let splits = modloader.id.split('-').collect::<Vec<&str>>();
-    //         (splits[0], splits[1])
-    //     }
-    //     None => {
-    //         error!("Error getting primary modloader from manifest, does one exist?");
-    //         ("", "")
-    //     }
-    // };
+    // Get the modloader with 'primary: true'
+    let primary_modloader = curseforge_manifest
+        .modloaders()
+        .iter()
+        .find(|modloader| modloader.primary);
+    let (modloader_type, modloader_version) = match primary_modloader {
+        Some(modloader) => {
+            let splits = modloader.id.split('-').collect::<Vec<&str>>();
+            (splits[0], splits[1])
+        }
+        None => {
+            error!("Error getting primary modloader from manifest, does one exist?");
+            ("", "")
+        }
+    };
 
-    // // Create corrected modloader version string for instance creation
-    // let full_modloader_version = format!("{}-{}", vanilla_version, modloader_version);
+    // Create corrected modloader version string for instance creation
+    let full_modloader_version = format!("{}-{}", vanilla_version, modloader_version);
 
-    // create_instance(
-    //     vanilla_version.into(),
-    //     modloader_type.into(),
-    //     full_modloader_version,
-    //     instance_name.into(),
-    //     &app_handle,
-    // )
-    // .await
-    // .unwrap();
+    let settings = InstanceSettings::new(
+        instance_name.into(),
+        vanilla_version.into(),
+        modloader_type.into(),
+        full_modloader_version,
+    );
 
-    // let instance_state: State<InstanceState> = app_handle
-    //     .try_state()
-    //     .expect("`InstanceState` should already be managed.");
-    // let instance_manager = instance_state.0.lock().await;
-    // let instances_dir = instance_manager.instances_dir();
+    create_instance(settings, &app_handle).await.unwrap();
 
-    // let info = CurseforgeManifestInfo {
-    //     instance_name: instance_name.into(),
-    //     game_version: curseforge_manifest.vanilla_version().into(),
-    //     modloader_type: modloader_type.into(),
-    // };
+    let instance_state: State<InstanceState> = app_handle
+        .try_state()
+        .expect("`InstanceState` should already be managed.");
+    let instance_manager = instance_state.0.lock().await;
+    let instances_dir = instance_manager.instances_dir();
 
-    // // After instance is created, download the mods from curseforge
-    // download_mods_from_curseforge(curseforge_manifest.files(), &instances_dir, info)
-    //     .await
-    //     .unwrap();
+    let info = CurseforgeManifestInfo {
+        instance_name: instance_name.into(),
+        game_version: curseforge_manifest.vanilla_version().into(),
+        modloader_type: modloader_type.into(),
+    };
 
-    // // Finally extract overrides into the instance dir
-    // extract_overrides(
-    //     &instances_dir.join(instance_name),
-    //     &mut archive,
-    //     curseforge_manifest.overrides(),
-    // )?;
+    // After instance is created, download the mods from curseforge
+    download_mods_from_curseforge(curseforge_manifest.files(), &instances_dir, info)
+        .await
+        .unwrap();
+
+    // Finally extract overrides into the instance dir
+    extract_overrides(
+        &instances_dir.join(instance_name),
+        &mut archive,
+        curseforge_manifest.overrides(),
+    )?;
     Ok(())
 }
 

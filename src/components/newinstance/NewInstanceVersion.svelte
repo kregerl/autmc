@@ -37,8 +37,15 @@
     let selectedModloaderVersion: string;
     let modloaderType: ModloaderType;
 
+    let zipPath: string | undefined = undefined;
+
     function back() {
         navigate("/");
+    }
+
+    function importZip() {
+        invoke("import_zip", {zipPath: zipPath});
+        back();
     }
 
     function next() {
@@ -130,7 +137,7 @@
             {:else if selectedInstanceType === InstanceType.Modrinth}
                 <h1>TODO: Modrinth</h1>
             {:else if selectedInstanceType === InstanceType.Zip}
-                <ImportZip />
+                <ImportZip bind:zipPath/>
             {/if}
         </div>
 
@@ -141,7 +148,12 @@
                 --img-width="18px"
                 on:click={back}
             />
-            <SvgButton src="svg/RightArrow.svg" alt="Next" on:click={next} />
+
+            {#if selectedInstanceType === InstanceType.Zip && zipPath}
+                <SvgButton src="svg/Check.svg" alt="Done" on:click={importZip} />
+            {:else}
+                <SvgButton disabled={selectedInstanceType === InstanceType.Zip && !zipPath} src="svg/RightArrow.svg" alt="Next" on:click={next} />
+            {/if}
         </div>
     </main>
 {/await}

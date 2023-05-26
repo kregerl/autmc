@@ -4,13 +4,13 @@ use std::{
     fs::{self, File},
     io::{self, Write},
     path::{Path, PathBuf},
-    time::Instant,
+    time::Instant, fmt::Display,
 };
 
 use bytes::Bytes;
 use futures::future::BoxFuture;
 use log::{debug, error, info, warn};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use tauri::{AppHandle, Manager, State, Wry};
 use tempdir::TempDir;
 use xmltree::{Element, XMLNode};
@@ -990,7 +990,8 @@ fn seperate_nondownloadables(libraries: Vec<Library>) -> (Vec<Library>, Vec<Libr
 pub struct InstanceSettings {
     pub instance_name: String,
     pub vanilla_version: String,
-    pub modloader_type: String,
+    #[serde(deserialize_with = "as_modloader_type")]
+    pub modloader_type: ModloaderType,
     pub modloader_version: String,
     additional_jvm_arguments: String,
     java_path_override: String,
@@ -1001,6 +1002,39 @@ pub struct InstanceSettings {
     show_recorded_playtime: bool,
     override_options_txt: bool,
     override_servers_dat: bool,
+}
+
+fn as_modloader_type<'de, D>(deserializer: D) -> Result<ModloaderType, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let modloader_str: String = Deserialize::deserialize(deserializer)?;
+    Ok(ModloaderType::from(modloader_str.as_str()))
+}
+
+impl InstanceSettings {
+    pub fn new(
+        instance_name: String,
+        vanilla_version: String,
+        modloader_type: ModloaderType,
+        modloader_version: String,
+    ) -> Self {
+        Self {
+            instance_name,
+            vanilla_version,
+            modloader_type,
+            modloader_version,
+            additional_jvm_arguments: "".into(),
+            java_path_override: "".into(),
+            resolution_width: "800".into(),
+            resolution_height: "600".into(),
+            start_window_maximized: false,
+            record_playtime: true,
+            show_recorded_playtime: true,
+            override_options_txt: false,
+            override_servers_dat: false,
+        }
+    }
 }
 
 pub async fn create_instance(
@@ -1063,9 +1097,7 @@ pub async fn create_instance(
     // Temp dir for extracting forge installer into, closed/deleted at end of function.
     let tmp_dir = TempDir::new("temp")?;
 
-    let modloader_type = ModloaderType::from(settings.modloader_type.as_str());
-
-    let modloader_launch_arguments = match modloader_type {
+    let modloader_launch_arguments = match settings.modloader_type {
         ModloaderType::Fabric => {
             let profile =
                 download_fabric_profile(&settings.vanilla_version, &settings.modloader_version)
@@ -1236,7 +1268,7 @@ pub async fn create_instance(
         (settings.resolution_width, settings.resolution_height),
         &vanilla_arguments,
         modloader_launch_arguments,
-        &modloader_type,
+        &settings.modloader_type,
         mc_version_manifest.unwrap(),
         &asset_index,
         LaunchArgumentPaths {
@@ -1257,7 +1289,7 @@ pub async fn create_instance(
 
     // If there is no modloader, then set the "modloader_version" to the vanilla version for displaying
     // on the instances screen
-    let instance_version = if modloader_type == ModloaderType::None {
+    let instance_version = if settings.modloader_type == ModloaderType::None {
         settings.vanilla_version
     } else {
         settings.modloader_version
@@ -1267,7 +1299,7 @@ pub async fn create_instance(
         instance_name: settings.instance_name,
         jvm_path: java_path.clone(),
         arguments: persitent_arguments,
-        modloader_type,
+        modloader_type: settings.modloader_type,
         modloader_version: instance_version,
     })?;
     debug!("After persistent args");

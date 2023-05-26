@@ -143,7 +143,7 @@ pub async fn obtain_version(
     debug!("Settings: {:#?}", settings);
     info!(
         "Creating instance {} with Minecraft version {} and modloader {} {}",
-        settings.instance_name, settings.vanilla_version, settings.modloader_type, settings.modloader_version
+        settings.instance_name, settings.vanilla_version, settings.modloader_type.to_string(), settings.modloader_version
     );
     let instance_name = settings.instance_name.clone();
 

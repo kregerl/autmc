@@ -29,6 +29,7 @@
 
     function openFolder(event: MouseEvent) {
         if (lastTarget) {
+            console.log("lastTarget.id", lastTarget.id)
             invoke("open_folder", { instanceName: lastTarget.id });
         }
         close();
@@ -78,7 +79,7 @@
             showContextMenu(event);
         } else {
             if (target.matches(".instance *")) {
-                lastTarget = target;
+                lastTarget = target.closest("div.instance");
                 showContextMenu(event);
             }
         }

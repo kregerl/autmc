@@ -1,14 +1,24 @@
-use std::{fs::{File, self}, io::{self, Write}, path::{Path, PathBuf}, time::Instant};
+use std::{
+    fs::{self, File},
+    io::{self, Write},
+    path::{Path, PathBuf},
+    time::Instant,
+};
 
-use log::{debug, info, error};
+use log::{debug, error, info};
+use regex::internal::Inst;
 use serde::Deserialize;
-use tauri::{AppHandle, Wry, State, Manager};
+use tauri::{AppHandle, Manager, State, Wry};
 use zip::ZipArchive;
 
-use crate::{web_services::{
-    manifest::bytes_from_zip_file,
-    resources::{create_instance, ModloaderType}, downloader::{buffered_download_stream, Downloadable, validate_hash_sha1, DownloadError},
-}, state::instance_manager::InstanceState};
+use crate::{
+    state::instance_manager::InstanceState,
+    web_services::{
+        downloader::{buffered_download_stream, validate_hash_sha1, DownloadError, Downloadable},
+        manifest::bytes_from_zip_file,
+        resources::{create_instance, ModloaderType, InstanceSettings},
+    },
+};
 
 #[derive(Debug, Deserialize)]
 struct ModrinthManifest {
@@ -85,46 +95,46 @@ pub async fn import_modrinth_zip(
     archive: &mut ZipArchive<&File>,
     app_handle: &AppHandle<Wry>,
 ) -> io::Result<()> {
-    // IMPLEMENTME
-    // info!("Importing modrinth zip...");
-    // let manifest_bytes = bytes_from_zip_file(archive.by_name("modrinth.index.json").unwrap());
-    // let manifest: ModrinthManifest = serde_json::from_slice(&manifest_bytes)?;
-    // debug!("Manifset: {:#?}", manifest);
+    info!("Importing modrinth zip...");
+    let manifest_bytes = bytes_from_zip_file(archive.by_name("modrinth.index.json").unwrap());
+    let manifest: ModrinthManifest = serde_json::from_slice(&manifest_bytes)?;
+    debug!("Manifset: {:#?}", manifest);
 
-    // let (modloader_version, modloader_type) = match manifest.dependencies.modloader_dependency {
-    //     ModrinthModloaderDependency::Fabric(version) => (version, ModloaderType::Fabric),
-    //     ModrinthModloaderDependency::Forge(version) => (
-    //         format!("{}-{}", manifest.dependencies.minecraft, version),
-    //         ModloaderType::Forge,
-    //     ),
-    // };
+    let (modloader_version, modloader_type) = match manifest.dependencies.modloader_dependency {
+        ModrinthModloaderDependency::Fabric(version) => (version, ModloaderType::Fabric),
+        ModrinthModloaderDependency::Forge(version) => (
+            format!("{}-{}", manifest.dependencies.minecraft, version),
+            ModloaderType::Forge,
+        ),
+    };
 
-    // create_instance(
-    //     manifest.dependencies.minecraft,
-    //     modloader_type,
-    //     modloader_version,
-    //     manifest.name.clone(),
-    //     app_handle,
-    // )
-    // .await
-    // .unwrap();
+    let settings = InstanceSettings::new(
+        manifest.name.clone(),
+        manifest.dependencies.minecraft,
+        modloader_type,
+        modloader_version,
+    );
 
-    // let instance_state: State<InstanceState> = app_handle
-    //     .try_state()
-    //     .expect("`InstanceState` should already be managed.");
-    // let instance_manager = instance_state.0.lock().await;
-    // let instances_dir = instance_manager.instances_dir();
-    // let instance_dir = instances_dir.join(manifest.name);
+    create_instance(settings, app_handle).await.unwrap();
 
-    // download_mods_from_modrinth(manifest.files, &instance_dir).await?;
+    let instance_state: State<InstanceState> = app_handle
+        .try_state()
+        .expect("`InstanceState` should already be managed.");
+    let instance_manager = instance_state.0.lock().await;
+    let instances_dir = instance_manager.instances_dir();
+    let instance_dir = instances_dir.join(manifest.name);
 
-    // extract_overrides(&instance_dir, archive)?;
+    download_mods_from_modrinth(manifest.files, &instance_dir).await?;
+
+    extract_overrides(&instance_dir, archive)?;
 
     Ok(())
 }
 
-
-async fn download_mods_from_modrinth(files: Vec<ModrinthFile>, instance_dir: &Path) -> io::Result<()> {
+async fn download_mods_from_modrinth(
+    files: Vec<ModrinthFile>,
+    instance_dir: &Path,
+) -> io::Result<()> {
     fs::create_dir_all(&instance_dir)?;
 
     let x = buffered_download_stream(&files, &instance_dir, |bytes, file| {
@@ -138,7 +148,8 @@ async fn download_mods_from_modrinth(files: Vec<ModrinthFile>, instance_dir: &Pa
         let mut file = File::create(path)?;
         file.write_all(bytes)?;
         Ok(())
-    }).await;
+    })
+    .await;
 
     Ok(())
 }
