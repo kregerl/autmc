@@ -1005,10 +1005,6 @@ pub struct InstanceSettings {
 
 pub async fn create_instance(
     settings: InstanceSettings,
-    // vanilla_version: String,
-    // modloader_type: ModloaderType,
-    // modloader_version: String,
-    // instance_name: String,
     app_handle: &AppHandle<Wry>,
 ) -> ManifestResult<()> {
     let resource_state: State<ResourceState> = app_handle
