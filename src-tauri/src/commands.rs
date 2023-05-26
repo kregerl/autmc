@@ -26,7 +26,7 @@ use crate::{
         authentication::{validate_account, AuthResult},
         manifest::{path_to_utf8_str, vanilla::VanillaManifestVersion},
         modpack::{curseforge::import_curseforge_zip, modrinth::import_modrinth_zip},
-        resources::{create_instance, ModloaderType, InstanceSettings},
+        resources::{create_instance, InstanceSettings},
     },
 };
 
