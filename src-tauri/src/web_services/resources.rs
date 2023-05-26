@@ -227,6 +227,8 @@ fn construct_jvm_arguments112(
 fn construct_arguments(
     main_class: String,
     additional_arguments: String,
+    // (Width, Height)
+    resolution: (String, String),
     arguments: &LaunchArguments,
     modloader_arguments: Option<LaunchArguments>,
     modloader_type: &ModloaderType,
@@ -317,8 +319,13 @@ fn construct_arguments(
         match game_arg {
             // For normal arguments, check if it has something that should be replaced and replace it
             Argument::Arg(value) => {
-                let sub_arg =
-                    substitute_game_arguments(value, mc_version, asset_index, &argument_paths);
+                let sub_arg = substitute_game_arguments(
+                    value,
+                    &resolution,
+                    mc_version,
+                    asset_index,
+                    &argument_paths,
+                );
                 formatted_arguments.push(match sub_arg {
                     Some(argument) => argument,
                     None => value.into(),
@@ -330,8 +337,13 @@ fn construct_arguments(
                     continue;
                 }
                 for value in values {
-                    let sub_arg =
-                        substitute_game_arguments(value, mc_version, asset_index, &argument_paths);
+                    let sub_arg = substitute_game_arguments(
+                        value,
+                        &resolution,
+                        mc_version,
+                        asset_index,
+                        &argument_paths,
+                    );
                     formatted_arguments.push(match sub_arg {
                         Some(argument) => argument,
                         None => value.into(),
@@ -428,6 +440,7 @@ fn substitute_jvm_arguments(
 
 fn substitute_game_arguments(
     arg: &str,
+    resolution: &(String, String),
     mc_version: &VanillaManifestVersion,
     asset_index: &str,
     argument_paths: &LaunchArgumentPaths,
@@ -451,8 +464,8 @@ fn substitute_game_arguments(
             "${assets_index_name}" => Some(arg.replace(substr, asset_index)),
             "${user_type}" => Some(arg.replace(substr, "mojang")),
             "${version_type}" => Some(arg.replace(substr, &mc_version.version_type)),
-            "${resolution_width}" => None, // TODO: Launcher option specific
-            "${resolution_height}" => None, // TODO: Launcher option specific
+            "${resolution_width}" => Some(arg.replace(substr, &resolution.0)),
+            "${resolution_height}" => Some(arg.replace(substr, &resolution.1)),
             "${user_properties}" => {
                 debug!("Substituting user_properties at substr: {}", substr);
                 Some(arg.replace(substr, "{}"))
@@ -1224,6 +1237,7 @@ pub async fn create_instance(
     let persitent_arguments = construct_arguments(
         main_class,
         settings.additional_jvm_arguments,
+        (settings.resolution_width, settings.resolution_height),
         &vanilla_arguments,
         modloader_launch_arguments,
         &modloader_type,
