@@ -6,6 +6,8 @@
     import Instances from "./Instances.svelte";
     import SvgCircleHoverButton from "./components/buttons/SvgCircleHoverButton.svelte";
     import { fade } from "svelte/transition";
+    import Logs from "./logs/Logs.svelte";
+    import LogsHeader from "./logs/LogsHeader.svelte";
 
     let activeMenuId: MenuId = MenuId.Instances;
     let openModal: OpenModalType = OpenModalType.None;
@@ -97,7 +99,8 @@
     {:else if activeMenuId == MenuId.Screenshots}
         <h1>TODO: Screenshots</h1>
     {:else if activeMenuId == MenuId.Logs}
-        <h1>TODO: Logs</h1>
+        <LogsHeader --grid-area="header"/>
+        <Logs --grid-area="content"/>
     {/if}
 </main>
 

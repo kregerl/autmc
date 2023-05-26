@@ -1,24 +1,37 @@
 <script lang="ts">
+    // Inputs
     export let placeholder: string;
+    export let options: string[] = [];
     export let disabled: boolean = false;
 
+    // Output
+    export let selected: string = options.at(0) ?? "";
+
     let menuShown: boolean = false;
-    function showDropdown() {
-        menuShown = true;
+    function toggleDropdown() {
+        menuShown = !menuShown;
     }
 
     function closeDropdown() {
         menuShown = false;
     }
+
+    function setSelected() {
+        selected = this.id;
+        console.log("selected", selected);
+        closeDropdown();
+    }
 </script>
 
-<div class="dropdown flex-row" on:click={showDropdown} on:keydown>
+<div class="dropdown flex-row {disabled}" on:click={toggleDropdown} on:keydown>
     <img src="svg/Caret.svg" alt="Caret">    
     {placeholder}
 </div>
 {#if menuShown}
     <div class="menu">
-        <h1>Test</h1>
+        {#each options as option}
+            <h1 class="menu-item" id={option} on:click={setSelected} on:keydown>{option}</h1>
+        {/each}
     </div>
 {/if}
 
@@ -36,11 +49,24 @@
     img {
         transform: rotate(90deg);
     }
-
+    
     .menu {
         position: relative;
-        top: 1.6rem;
-        left: -10px;
         background-color: white;
+        max-height: var(--max-height, 100px);
+        overflow-y: scroll;
+        overflow-x: hidden;
+    }
+    
+    .menu > .menu-item {
+        cursor: pointer;
+    }
+
+    .menu > .menu-item:hover {
+        background-color: blue;
+    }
+
+    .menu > * {
+        margin-top: 0;
     }
 </style>
