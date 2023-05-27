@@ -240,7 +240,10 @@ fn construct_arguments(
     let mut formatted_arguments: Vec<String> = Vec::new();
     let mut game_args: Vec<Argument> = Vec::new();
 
-    formatted_arguments.push(additional_arguments);
+    // Empty strings will screw up the jvm arguments
+    if !additional_arguments.is_empty() {
+        formatted_arguments.push(additional_arguments);
+    }
 
     // Create game arguments from the launch arguments.
     game_args.append(&mut match arguments {
@@ -1073,9 +1076,6 @@ pub async fn create_instance(
 
     let mut vanilla_arguments = version.arguments;
 
-    // FIXME: There is an issue with the classifier jar paths getting added to the launch arguments.
-    // Classifiers are extracted into ${instance_dir}/natives but should NOT be added to the classpath.
-    // Anything added to 'library_data.downloadables' is going to be added to the classpath.
     let library_data = separate_classifiers_from_libraries(vanilla_libraries);
     all_libraries.extend(library_data.downloadables);
 
@@ -1227,6 +1227,15 @@ pub async fn create_instance(
             .drain(..)
             .collect::<HashSet<_>>()
             .into_iter()
+            .filter(|path| {
+                // Filter out the classifier paths from the library paths since they were all donwloaded together but cannot be part of the 
+                // launch argument's classpath. 
+                let found = library_data.classifiers.iter().find(|classifier| {
+                    let classifier_path = classifier.path(&resource_manager.libraries_dir());
+                    classifier_path == *path
+                });
+                found.is_none()
+            })
             .collect::<Vec<PathBuf>>(),
     );
 
