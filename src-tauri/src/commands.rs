@@ -143,15 +143,14 @@ pub async fn obtain_version(
     debug!("Settings: {:#?}", settings);
     info!(
         "Creating instance {} with Minecraft version {} and modloader {} {}",
-        settings.instance_name, settings.vanilla_version, settings.modloader_type.to_string(), settings.modloader_version
+        settings.instance_name,
+        settings.vanilla_version,
+        settings.modloader_type.to_string(),
+        settings.modloader_version
     );
     let instance_name = settings.instance_name.clone();
 
-    create_instance(
-        settings,
-        &app_handle,
-    )
-    .await?;
+    create_instance(settings, &app_handle).await?;
     let instance_state: State<InstanceState> = app_handle
         .try_state()
         .expect("`InstanceState` should already be managed.");
@@ -247,7 +246,6 @@ pub async fn get_account_skin(app_handle: AppHandle<Wry>) -> String {
         .expect("`AccountState` should already be managed.");
     let account_manager = account_state.0.lock().await;
 
-    // FIXME: Unwraping here causes an error sometimes since the async thread (in main) isnt finished yet and there is no active account loaded.
     let account = account_manager.get_active_account().unwrap();
     debug!("Skin URL: {}", account.skin_url);
     account.skin_url.clone()
@@ -354,34 +352,16 @@ pub async fn get_screenshots(app_handle: AppHandle<Wry>) -> HashMap<String, Vec<
     instance_screenshots
 }
 
-// Read bytes of log file and extract lines, decompressing gzip'd fiels if necessary
-fn read_log_file(path: &Path) -> io::Result<Vec<String>> {
-    let bytes = fs::read(path)?;
-    if bytes[..2] == GZIP_SIGNATURE {
-        let mut decoder = GzDecoder::new(bytes.as_bytes());
-        let mut tmp_str = String::new();
-        decoder.read_to_string(&mut tmp_str)?;
-
-        Ok(tmp_str.lines().map(|line| line.into()).collect())
-    } else {
-        Ok(BufReader::new(bytes.as_bytes())
-            .lines()
-            .filter_map(|line| line.ok())
-            .collect())
-    }
-}
-
-fn create_log_map(
+fn create_instance_log_map(
     instance_dir: &Path,
     instance_names: &[String],
-) -> io::Result<HashMap<String, HashMap<String, Vec<String>>>> {
-    let mut result: HashMap<String, HashMap<String, Vec<String>>> = HashMap::new();
+) -> io::Result<HashMap<String, Vec<String>>> {
+    let mut result = HashMap::new();
 
-    // Create map that maps instances to the log lines.
     for instance in instance_names {
         let directory_entries = fs::read_dir(instance_dir.join(instance).join("logs"));
         if directory_entries.is_err() {
-            result.insert(instance.clone(), HashMap::new());
+            result.insert(instance.clone(), Vec::new());
             continue;
         }
 
@@ -389,14 +369,12 @@ fn create_log_map(
         for dir_entry in directory_entries.unwrap() {
             let path = dir_entry?.path();
             if path.is_file() {
-                let log_lines = read_log_file(&path)?;
-                let file_name = path.file_name().unwrap().to_str().unwrap().into();
-                // Append to existing map if key already exists.
+                let filename = path.file_name().unwrap().to_str().unwrap().into();
                 if result.contains_key(instance) {
-                    let inner_map = result.get_mut(instance).unwrap();
-                    inner_map.insert(file_name, log_lines);
+                    let existing_vec = result.get_mut(instance).unwrap();
+                    existing_vec.push(filename);
                 } else {
-                    result.insert(instance.clone(), HashMap::from([(file_name, log_lines)]));
+                    result.insert(instance.to_owned(), vec![filename]);
                 }
             }
         }
@@ -407,20 +385,102 @@ fn create_log_map(
 
 // FIXME: This nested map is not a great idea, could just send over the file names and have js access the lines.
 #[tauri::command(async)]
-pub async fn get_logs(app_handle: AppHandle<Wry>) -> HashMap<String, HashMap<String, Vec<String>>> {
+pub async fn get_logs(app_handle: AppHandle<Wry>) -> HashMap<String, Vec<String>> {
     let instance_state: State<InstanceState> = app_handle
         .try_state()
         .expect("`InstanceState` should already be managed.");
     let instance_manager = instance_state.0.lock().await;
     let instance_dir = instance_manager.instances_dir();
 
-    match create_log_map(&instance_dir, &instance_manager.get_instance_names()) {
+    match create_instance_log_map(&instance_dir, &instance_manager.get_instance_names()) {
         Ok(map) => map,
         Err(e) => {
             error!("Error creating logging maps: {}", e);
             HashMap::new()
         }
     }
+}
+
+#[derive(Debug, Serialize, PartialEq, Clone)]
+#[serde(rename_all = "lowercase")]
+#[repr(u8)]
+enum LineType {
+    Unknown,
+    Normal,
+    Error,
+    Warning,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaggedLine {
+    line: String,
+    line_type: LineType,
+}
+
+fn get_tag_for_line(line: &String) -> LineType {
+    if line.contains("/ERROR]:") {
+        LineType::Error
+    } else if line.contains("/WARN]:") {
+        LineType::Warning
+    } else if line.contains("/INFO]:") || line.contains("/DEBUG]:") {
+        LineType::Normal
+    } else {
+        LineType::Unknown
+    }
+}
+
+// Read bytes of log file and extract lines, decompressing gzip'd files if necessary
+pub fn read_log_file(path: &Path) -> io::Result<Vec<TaggedLine>> {
+    let bytes = fs::read(path)?;
+    let lines: Vec<String> = if !bytes.is_empty() && bytes[..2] == GZIP_SIGNATURE {
+        let mut decoder = GzDecoder::new(bytes.as_bytes());
+        let mut tmp_str = String::new();
+        decoder.read_to_string(&mut tmp_str)?;
+
+        tmp_str.lines().map(|line| line.into()).collect()
+    } else {
+        BufReader::new(bytes.as_bytes())
+            .lines()
+            .filter_map(|line| line.ok())
+            .collect()
+    };
+    let mut tagged_lines = Vec::with_capacity(lines.len());
+    let mut previous_tag = LineType::Normal;
+    for line in lines.into_iter() {
+        let line_type = get_tag_for_line(&line);
+        tagged_lines.push(if line_type != LineType::Unknown {
+            previous_tag = line_type.clone();
+            TaggedLine {
+                line, 
+                line_type
+            }
+        } else {
+            TaggedLine {
+                line, 
+                line_type: previous_tag.clone()
+            }
+        });
+    }
+
+    Ok(tagged_lines)
+}
+
+#[tauri::command(async)]
+pub async fn read_log_lines(
+    instance_name: String,
+    log_name: String,
+    app_handle: AppHandle<Wry>,
+) -> Vec<TaggedLine> {
+    let instance_state: State<InstanceState> = app_handle
+        .try_state()
+        .expect("`InstanceState` should already be managed.");
+    let instance_manager = instance_state.0.lock().await;
+    let instance_dir = instance_manager.instances_dir();
+
+    let path = instance_dir.join(instance_name).join("logs").join(log_name);
+    debug!("path: {:#?}", path);
+    read_log_file(&path).unwrap()
 }
 
 #[tauri::command(async)]

@@ -1322,5 +1322,6 @@ pub async fn create_instance(
         start.elapsed().as_millis()
     );
     tmp_dir.close()?;
+    app_handle.emit_to("main", "instance-done", "").unwrap();
     Ok(())
 }

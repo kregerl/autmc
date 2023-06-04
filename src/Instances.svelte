@@ -8,6 +8,10 @@
     } from "./store/instancestore";
     import Loader from "./components/Loader.svelte";
     import RightClickModal from "./modal/RightClickModal/RightClickModal.svelte";
+    import { onDestroy, onMount } from "svelte";
+    import { UnlistenFn, listen } from "@tauri-apps/api/event";
+
+    let promise: Promise<InstanceConfiguration[]> = retrieveInstances();
 
     function newInstance() {
         navigate("/newinstance-version");
@@ -18,18 +22,30 @@
         console.log("launch_instance -- this", this);
     }
 
-    async function retrieveInstances(): Promise<InstanceConfiguration[]> {
-        if ($instanceStore === undefined) {
+    async function retrieveInstances(force: boolean = false): Promise<InstanceConfiguration[]> {
+        if ($instanceStore === undefined || force) {
             $instanceStore = await invoke("load_instances");
             $instanceStore.sort((a,b) => a.instance_name.localeCompare(b.instance_name, "en", {numeric: true}));
         }
         return $instanceStore;
     }
+
+    let instanceCreatedListener: UnlistenFn;
+    onMount(async () => {
+        instanceCreatedListener = await listen("instance-done", (event) => {
+            console.log("Here");
+            promise = retrieveInstances(true);
+        });
+    });
+
+    onDestroy(() => {
+        instanceCreatedListener();
+    })
 </script>
 
 <div class="instances-wrapper">
     <div class="instances">
-        {#await retrieveInstances()}
+        {#await promise}
             <Loader />
         {:then instances}
             {#each instances as instance}
