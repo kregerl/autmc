@@ -15,7 +15,6 @@
             value.reverse();
             $logStore.set(key, value);
         }
-        console.log("Here!", $logStore);
         return $logStore;
     }
 </script>
@@ -45,7 +44,7 @@
 
 <style>
     div.header {
-        z-index: 100;
+        z-index: 2;
         margin: 8px 0 0 8px;
         grid-area: var(--grid-area);
     }

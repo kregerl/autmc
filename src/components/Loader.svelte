@@ -12,7 +12,7 @@
 <style>
     .loader {
         --line-height: 3.2rem;
-        background-color: var(--dark-black);
+        background-color: var(--color, var(--dark-black));
         width: 100%;
         height: 100%;
         display: flex;

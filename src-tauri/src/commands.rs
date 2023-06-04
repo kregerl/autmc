@@ -462,6 +462,7 @@ pub fn read_log_file(path: &Path) -> io::Result<Vec<TaggedLine>> {
             }
         });
     }
+    debug!("Done tagging log lines");
 
     Ok(tagged_lines)
 }

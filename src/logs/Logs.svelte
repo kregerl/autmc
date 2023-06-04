@@ -17,6 +17,7 @@
         selectedInstance: string,
         selectedLog: string
     ): Promise<TaggedLine[]> {
+        console.log(selectedInstance, selectedLog);
         return await invoke("read_log_lines", {
             instanceName: selectedInstance,
             logName: selectedLog,
@@ -30,13 +31,13 @@
         <h1 class="high-emphasis">No Logs</h1>
     {:else}
         {#await retrieveLogLines(selectedInstance, selectedLog)}
-            <Loader />
+            <Loader --color="var(--medium-black)" />
         {:then lines}
             {#if lines.length == 0}
                 <h1 class="high-emphasis">No lines in {selectedLog}</h1>
             {:else}
                 <VirtualList items={lines} let:item>
-                    <p class="{item.lineType} high-emphasis">
+                    <p class="{item.lineType} line high-emphasis">
                         {item.line}
                     </p>
                 </VirtualList>
@@ -54,9 +55,15 @@
 
     p {
         font-size: 1.8rem;
+        line-height: 1.8rem;
         color: white;
         word-wrap: break-word;
         white-space: pre-wrap;
+    }
+
+    p.line {
+        margin: 4px;
+        padding: 12px;
     }
 
     h1 {
