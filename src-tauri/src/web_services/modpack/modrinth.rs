@@ -1,14 +1,24 @@
-use std::{fs::{File, self}, io::{self, Write}, path::{Path, PathBuf}, time::Instant};
+use std::{
+    fs::{self, File},
+    io::{self, Write},
+    path::{Path, PathBuf},
+    time::Instant,
+};
 
-use log::{debug, info, error};
+use log::{debug, error, info};
+use regex::internal::Inst;
 use serde::Deserialize;
-use tauri::{AppHandle, Wry, State, Manager};
+use tauri::{AppHandle, Manager, State, Wry};
 use zip::ZipArchive;
 
-use crate::{web_services::{
-    manifest::bytes_from_zip_file,
-    resources::{create_instance, ModloaderType}, downloader::{buffered_download_stream, Downloadable, validate_hash_sha1, DownloadError},
-}, state::instance_manager::InstanceState};
+use crate::{
+    state::instance_manager::InstanceState,
+    web_services::{
+        downloader::{buffered_download_stream, validate_hash_sha1, DownloadError, Downloadable},
+        manifest::bytes_from_zip_file,
+        resources::{create_instance, ModloaderType, InstanceSettings},
+    },
+};
 
 #[derive(Debug, Deserialize)]
 struct ModrinthManifest {
@@ -98,15 +108,14 @@ pub async fn import_modrinth_zip(
         ),
     };
 
-    create_instance(
+    let settings = InstanceSettings::new(
+        manifest.name.clone(),
         manifest.dependencies.minecraft,
         modloader_type,
         modloader_version,
-        manifest.name.clone(),
-        app_handle,
-    )
-    .await
-    .unwrap();
+    );
+
+    create_instance(settings, app_handle).await.unwrap();
 
     let instance_state: State<InstanceState> = app_handle
         .try_state()
@@ -122,8 +131,10 @@ pub async fn import_modrinth_zip(
     Ok(())
 }
 
-
-async fn download_mods_from_modrinth(files: Vec<ModrinthFile>, instance_dir: &Path) -> io::Result<()> {
+async fn download_mods_from_modrinth(
+    files: Vec<ModrinthFile>,
+    instance_dir: &Path,
+) -> io::Result<()> {
     fs::create_dir_all(&instance_dir)?;
 
     let x = buffered_download_stream(&files, &instance_dir, |bytes, file| {
@@ -137,7 +148,8 @@ async fn download_mods_from_modrinth(files: Vec<ModrinthFile>, instance_dir: &Pa
         let mut file = File::create(path)?;
         file.write_all(bytes)?;
         Ok(())
-    }).await;
+    })
+    .await;
 
     Ok(())
 }

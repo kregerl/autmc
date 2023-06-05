@@ -4,13 +4,13 @@ use std::{
     fs::{self, File},
     io::{self, Write},
     path::{Path, PathBuf},
-    time::Instant,
+    time::Instant, fmt::Display,
 };
 
 use bytes::Bytes;
 use futures::future::BoxFuture;
 use log::{debug, error, info, warn};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use tauri::{AppHandle, Manager, State, Wry};
 use tempdir::TempDir;
 use xmltree::{Element, XMLNode};
@@ -226,6 +226,9 @@ fn construct_jvm_arguments112(
 
 fn construct_arguments(
     main_class: String,
+    additional_arguments: String,
+    // (Width, Height)
+    resolution: (String, String),
     arguments: &LaunchArguments,
     modloader_arguments: Option<LaunchArguments>,
     modloader_type: &ModloaderType,
@@ -236,6 +239,11 @@ fn construct_arguments(
     // IDEA: Vec could be 'with_capacity' if we calculate capacity first.
     let mut formatted_arguments: Vec<String> = Vec::new();
     let mut game_args: Vec<Argument> = Vec::new();
+
+    // Empty strings will screw up the jvm arguments
+    if !additional_arguments.is_empty() {
+        formatted_arguments.push(additional_arguments);
+    }
 
     // Create game arguments from the launch arguments.
     game_args.append(&mut match arguments {
@@ -314,8 +322,13 @@ fn construct_arguments(
         match game_arg {
             // For normal arguments, check if it has something that should be replaced and replace it
             Argument::Arg(value) => {
-                let sub_arg =
-                    substitute_game_arguments(value, mc_version, asset_index, &argument_paths);
+                let sub_arg = substitute_game_arguments(
+                    value,
+                    &resolution,
+                    mc_version,
+                    asset_index,
+                    &argument_paths,
+                );
                 formatted_arguments.push(match sub_arg {
                     Some(argument) => argument,
                     None => value.into(),
@@ -327,8 +340,13 @@ fn construct_arguments(
                     continue;
                 }
                 for value in values {
-                    let sub_arg =
-                        substitute_game_arguments(value, mc_version, asset_index, &argument_paths);
+                    let sub_arg = substitute_game_arguments(
+                        value,
+                        &resolution,
+                        mc_version,
+                        asset_index,
+                        &argument_paths,
+                    );
                     formatted_arguments.push(match sub_arg {
                         Some(argument) => argument,
                         None => value.into(),
@@ -425,6 +443,7 @@ fn substitute_jvm_arguments(
 
 fn substitute_game_arguments(
     arg: &str,
+    resolution: &(String, String),
     mc_version: &VanillaManifestVersion,
     asset_index: &str,
     argument_paths: &LaunchArgumentPaths,
@@ -448,8 +467,8 @@ fn substitute_game_arguments(
             "${assets_index_name}" => Some(arg.replace(substr, asset_index)),
             "${user_type}" => Some(arg.replace(substr, "mojang")),
             "${version_type}" => Some(arg.replace(substr, &mc_version.version_type)),
-            "${resolution_width}" => None, // TODO: Launcher option specific
-            "${resolution_height}" => None, // TODO: Launcher option specific
+            "${resolution_width}" => Some(arg.replace(substr, &resolution.0)),
+            "${resolution_height}" => Some(arg.replace(substr, &resolution.1)),
             "${user_properties}" => {
                 debug!("Substituting user_properties at substr: {}", substr);
                 Some(arg.replace(substr, "{}"))
@@ -929,7 +948,7 @@ fn apply_library_rules(libraries: Vec<Library>) -> Vec<Library> {
         .collect()
 }
 
-#[derive(Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Deserialize, Serialize, PartialEq, Clone)]
 pub enum ModloaderType {
     Forge,
     Fabric,
@@ -969,11 +988,60 @@ fn seperate_nondownloadables(libraries: Vec<Library>) -> (Vec<Library>, Vec<Libr
     })
 }
 
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct InstanceSettings {
+    pub instance_name: String,
+    pub vanilla_version: String,
+    #[serde(deserialize_with = "as_modloader_type")]
+    pub modloader_type: ModloaderType,
+    pub modloader_version: String,
+    additional_jvm_arguments: String,
+    java_path_override: String,
+    resolution_width: String,
+    resolution_height: String,
+    start_window_maximized: bool,
+    record_playtime: bool,
+    show_recorded_playtime: bool,
+    override_options_txt: bool,
+    override_servers_dat: bool,
+}
+
+fn as_modloader_type<'de, D>(deserializer: D) -> Result<ModloaderType, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let modloader_str: String = Deserialize::deserialize(deserializer)?;
+    Ok(ModloaderType::from(modloader_str.as_str()))
+}
+
+impl InstanceSettings {
+    pub fn new(
+        instance_name: String,
+        vanilla_version: String,
+        modloader_type: ModloaderType,
+        modloader_version: String,
+    ) -> Self {
+        Self {
+            instance_name,
+            vanilla_version,
+            modloader_type,
+            modloader_version,
+            additional_jvm_arguments: "".into(),
+            java_path_override: "".into(),
+            resolution_width: "800".into(),
+            resolution_height: "600".into(),
+            start_window_maximized: false,
+            record_playtime: true,
+            show_recorded_playtime: true,
+            override_options_txt: false,
+            override_servers_dat: false,
+        }
+    }
+}
+
 pub async fn create_instance(
-    vanilla_version: String,
-    modloader_type: ModloaderType,
-    modloader_version: String,
-    instance_name: String,
+    settings: InstanceSettings,
     app_handle: &AppHandle<Wry>,
 ) -> ManifestResult<()> {
     let resource_state: State<ResourceState> = app_handle
@@ -983,7 +1051,7 @@ pub async fn create_instance(
     let start = Instant::now();
 
     let version: VanillaVersion = resource_manager
-        .download_vanilla_version(&vanilla_version)
+        .download_vanilla_version(&settings.vanilla_version)
         .await?;
 
     // java versions is optional for versions 1.6.4 and older. We select java 8 for them by default.
@@ -995,7 +1063,11 @@ pub async fn create_instance(
         },
     };
 
-    let java_path = download_java_version(&resource_manager.java_dir(), java_version).await?;
+    let java_path = if settings.java_path_override.is_empty() {
+        download_java_version(&resource_manager.java_dir(), java_version).await?
+    } else {
+        PathBuf::from(settings.java_path_override)
+    };
 
     // Init vec of libraries to download.
     let mut all_libraries: Vec<Box<dyn Downloadable + Send + Sync>> = Vec::new();
@@ -1025,9 +1097,11 @@ pub async fn create_instance(
     // Temp dir for extracting forge installer into, closed/deleted at end of function.
     let tmp_dir = TempDir::new("temp")?;
 
-    let modloader_launch_arguments = match modloader_type {
+    let modloader_launch_arguments = match settings.modloader_type {
         ModloaderType::Fabric => {
-            let profile = download_fabric_profile(&vanilla_version, &modloader_version).await?;
+            let profile =
+                download_fabric_profile(&settings.vanilla_version, &settings.modloader_version)
+                    .await?;
             main_class = profile.main_class;
             for fabric_library in obtain_fabric_library_hashes(&profile.libraries).await? {
                 all_libraries.push(Box::new(fabric_library));
@@ -1035,10 +1109,10 @@ pub async fn create_instance(
             Some(profile.arguments)
         }
         ModloaderType::Forge => {
-            let forge_hashes = download_forge_hashes(&modloader_version).await?;
+            let forge_hashes = download_forge_hashes(&settings.modloader_version).await?;
             let forge_installer_profile = download_forge_version(
-                &modloader_version,
-                &vanilla_version,
+                &settings.modloader_version,
+                &settings.vanilla_version,
                 forge_hashes.installer_hash(),
                 &resource_manager.version_dir(),
                 tmp_dir.path(),
@@ -1111,8 +1185,8 @@ pub async fn create_instance(
                     let forge_installer_paths = InstallerArgumentPaths {
                         libraries_path: resource_manager.libraries_dir(),
                         versions_dir_path: resource_manager.version_dir(),
-                        minecraft_version: vanilla_version.clone(),
-                        forge_loader_version: modloader_version.clone(),
+                        minecraft_version: settings.vanilla_version.clone(),
+                        forge_loader_version: settings.modloader_version.clone(),
                         tmp_dir: tmp_dir.path().to_path_buf(),
                     };
 
@@ -1134,7 +1208,7 @@ pub async fn create_instance(
                         all_libraries.push(Box::new(library));
                     }
 
-                    // Forge versions <= 1.11 supply the entire launch argument string, including 
+                    // Forge versions <= 1.11 supply the entire launch argument string, including
                     // the vanilla arguments. We can overwrite the vanilla arguments and return no
                     // modloader arguments.
                     vanilla_arguments = version.metadata.arguments;
@@ -1153,6 +1227,15 @@ pub async fn create_instance(
             .drain(..)
             .collect::<HashSet<_>>()
             .into_iter()
+            .filter(|path| {
+                // Filter out the classifier paths from the library paths since they were all donwloaded together but cannot be part of the 
+                // launch argument's classpath. 
+                let found = library_data.classifiers.iter().find(|classifier| {
+                    let classifier_path = classifier.path(&resource_manager.libraries_dir());
+                    classifier_path == *path
+                });
+                found.is_none()
+            })
             .collect::<Vec<PathBuf>>(),
     );
 
@@ -1168,7 +1251,9 @@ pub async fn create_instance(
     } else {
         None
     };
-    let instance_dir = resource_manager.instances_dir().join(&instance_name);
+    let instance_dir = resource_manager
+        .instances_dir()
+        .join(&settings.instance_name);
     fs::create_dir_all(&instance_dir)?;
 
     let asset_index = download_assets(
@@ -1178,18 +1263,21 @@ pub async fn create_instance(
     )
     .await?;
 
-    let mc_version_manifest = resource_manager.get_vanilla_manifest_from_version(&vanilla_version);
+    let mc_version_manifest =
+        resource_manager.get_vanilla_manifest_from_version(&settings.vanilla_version);
     if mc_version_manifest.is_none() {
         warn!(
             "Could not retrieve manifest for unknown version: {}.",
-            &vanilla_version
+            &settings.vanilla_version
         );
     }
     let persitent_arguments = construct_arguments(
         main_class,
+        settings.additional_jvm_arguments,
+        (settings.resolution_width, settings.resolution_height),
         &vanilla_arguments,
         modloader_launch_arguments,
-        &modloader_type,
+        &settings.modloader_type,
         mc_version_manifest.unwrap(),
         &asset_index,
         LaunchArgumentPaths {
@@ -1208,12 +1296,20 @@ pub async fn create_instance(
         .expect("`ResourceState` should already be managed.");
     let instance_manager = instance_state.0.lock().await;
 
+    // If there is no modloader, then set the "modloader_version" to the vanilla version for displaying
+    // on the instances screen
+    let instance_version = if settings.modloader_type == ModloaderType::None {
+        settings.vanilla_version
+    } else {
+        settings.modloader_version
+    };
+
     instance_manager.add_instance(InstanceConfiguration {
-        instance_name,
+        instance_name: settings.instance_name,
         jvm_path: java_path.clone(),
         arguments: persitent_arguments,
-        modloader_type,
-        modloader_version,
+        modloader_type: settings.modloader_type,
+        modloader_version: instance_version,
     })?;
     debug!("After persistent args");
     extract_natives(
@@ -1226,5 +1322,6 @@ pub async fn create_instance(
         start.elapsed().as_millis()
     );
     tmp_dir.close()?;
+    app_handle.emit_to("main", "instance-done", "").unwrap();
     Ok(())
 }

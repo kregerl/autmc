@@ -10,21 +10,22 @@ use log::{debug, error, info};
 use reqwest::header::HeaderMap;
 use serde::Deserialize;
 use serde_json::json;
-use tauri::{AppHandle, Wry, State, Manager};
 #[cfg(test)]
 use tauri::async_runtime::block_on;
+use tauri::{AppHandle, Manager, State, Wry};
 use zip::ZipArchive;
 
 use crate::{
     consts::{CURSEFORGE_API_URL, CURSEFORGE_FORGECDN_URL, CURSEFORGE_MODPACK_CLASS_ID},
+    state::instance_manager::InstanceState,
     web_services::{
         downloader::{
             buffered_download_stream, download_json_object, validate_hash_sha1, DownloadError,
             DownloadResult, Downloadable,
         },
         manifest::bytes_from_zip_file,
-        resources::{ModloaderType, create_instance},
-    }, state::instance_manager::InstanceState,
+        resources::{create_instance, InstanceSettings, ModloaderType},
+    },
 };
 
 // -----------------------------
@@ -452,7 +453,10 @@ struct CurseforgeModule {
     fingerprint: u32,
 }
 
-pub async fn import_curseforge_zip(mut archive: &mut ZipArchive<&File>, app_handle: &AppHandle<Wry>) -> io::Result<()> {
+pub async fn import_curseforge_zip(
+    mut archive: &mut ZipArchive<&File>,
+    app_handle: &AppHandle<Wry>,
+) -> io::Result<()> {
     // Pull out the manifest.json from the zip
     let curseforge_manifest = extract_manifest_from_curseforge_zip(&mut archive)?;
 
@@ -478,15 +482,14 @@ pub async fn import_curseforge_zip(mut archive: &mut ZipArchive<&File>, app_hand
     // Create corrected modloader version string for instance creation
     let full_modloader_version = format!("{}-{}", vanilla_version, modloader_version);
 
-    create_instance(
+    let settings = InstanceSettings::new(
+        instance_name.into(),
         vanilla_version.into(),
         modloader_type.into(),
         full_modloader_version,
-        instance_name.into(),
-        &app_handle,
-    )
-    .await
-    .unwrap();
+    );
+
+    create_instance(settings, &app_handle).await.unwrap();
 
     let instance_state: State<InstanceState> = app_handle
         .try_state()

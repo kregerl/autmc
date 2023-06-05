@@ -129,7 +129,7 @@ impl AccountManager {
         let account = self.get_account(uuid).unwrap().clone();
         // Spawn a thread to refresh access tokens once they expire.
         tauri::async_runtime::spawn(async move {
-            // Refresh the tokens 5s earlier than needed. 
+            // Refresh the tokens 10s earlier than needed. 
             // Assumes SystemTime is after UNIX_EPOCH
             let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() - 10;
             let auth_mode =
@@ -145,8 +145,8 @@ impl AccountManager {
                     }
                 } else {
                     // Microsoft
-                    let secs_until_expire = account.microsoft_access_token_expiry - now;
-                    sleep(Duration::from_secs(secs_until_expire)).await;
+                    let secs_until_expire = account.microsoft_access_token_expiry.checked_sub(now);
+                    sleep(Duration::from_secs(secs_until_expire.unwrap_or(0))).await;
                     info!("Refreshing Microsoft access token");
                     AuthMode::MicrosoftRefresh(account.microsoft_refresh_token)
                 };

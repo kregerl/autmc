@@ -1,0 +1,179 @@
+<script lang="ts">
+    import { invoke } from "@tauri-apps/api/tauri";
+    import { navigate } from "svelte-navigator";
+
+    import {
+        InstanceConfiguration,
+        instanceStore,
+    } from "./store/instancestore";
+    import Loader from "./components/Loader.svelte";
+    import RightClickModal from "./modal/RightClickModal/RightClickModal.svelte";
+    import { onDestroy, onMount } from "svelte";
+    import { UnlistenFn, listen } from "@tauri-apps/api/event";
+
+    let promise: Promise<InstanceConfiguration[]> = retrieveInstances();
+
+    function newInstance() {
+        navigate("/newinstance-version");
+    }
+
+    async function launchInstance() {
+        await invoke("launch_instance", { instanceName: this.id });
+        console.log("launch_instance -- this", this);
+    }
+
+    async function retrieveInstances(force: boolean = false): Promise<InstanceConfiguration[]> {
+        if ($instanceStore === undefined || force) {
+            $instanceStore = await invoke("load_instances");
+            $instanceStore.sort((a,b) => a.instance_name.localeCompare(b.instance_name, "en", {numeric: true}));
+        }
+        return $instanceStore;
+    }
+
+    let instanceCreatedListener: UnlistenFn;
+    onMount(async () => {
+        instanceCreatedListener = await listen("instance-done", (event) => {
+            console.log("Here");
+            promise = retrieveInstances(true);
+        });
+    });
+
+    onDestroy(() => {
+        instanceCreatedListener();
+    })
+</script>
+
+<div class="instances-wrapper">
+    <div class="instances">
+        {#await promise}
+            <Loader />
+        {:then instances}
+            {#each instances as instance}
+                <div
+                    id={instance.instance_name}
+                    class="instance"
+                    on:click={launchInstance}
+                    on:keydown
+                >
+                    <div class="background">
+                        <div class="version-info high-emphasis">
+                            {instance.modloader_type}
+                            {instance.modloader_version}
+                        </div>
+                    </div>
+                    <div class="footer">
+                        <h2 class="high-emphasis">{instance.instance_name}</h2>
+                        <!-- TODO: Add actual author here. -->
+                        <p class="medium-emphasis">Created By: You</p>
+                    </div>
+                </div>
+            {/each}
+        {/await}
+    </div>
+    <button class="flex-row" on:click={newInstance}>
+        <img
+            class="medium-emphasis"
+            src="svg/PlusSign.svg"
+            alt="New Instance"
+        />
+        <h3 class="medium-emphasis">New Instance</h3>
+    </button>
+    <RightClickModal validClasses={["instance"]}/>
+</div>
+
+<style>
+    button {
+        position: absolute;
+        bottom: 0;
+        right: 0;
+        margin: 0 16px 16px 0;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 1.6rem;
+        background-color: var(--dark-black);
+        border: none;
+        color: white;
+        box-shadow: 3px 3px 10px 2px rgba(0, 0, 0, 0.5);
+        transition: 0.15s linear;
+    }
+
+    button > h3 {
+        margin: 4px;
+    }
+
+    button > img {
+        margin-top: 4px;
+        width: 22px;
+    }
+
+    button:hover {
+        background-color: var(--light-black);
+    }
+
+    h2,
+    p {
+        color: white;
+        margin: 0 0 0 6px;
+    }
+
+    h2 {
+        font-size: 1.8rem;
+    }
+
+    p {
+        margin-top: 2px;
+        font-size: 1.4rem;
+    }
+
+    .instances-wrapper {
+        grid-area: var(--grid-area);
+        margin: 0 24px 0 24px;
+    }
+
+    .instances {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        grid-template-rows: repeat(auto-fill, minmax(0, 250px));
+        gap: 16px;
+        width: 100%;
+        height: 100%;
+    }
+
+    .instance {
+        background-color: var(--light-black);
+        width: 100%;
+        border-radius: 4px;
+        aspect-ratio: 3/2;
+    }
+
+    .instance:hover {
+        background-color: var(--lightest-black);
+        cursor: pointer;
+    }
+
+    .instance > .background {
+        position: relative;
+        background: linear-gradient(
+                0deg,
+                rgba(0, 0, 0, 0.35),
+                rgba(0, 0, 0, 0.35)
+            ),
+            url(https://media.forgecdn.net/avatars/611/496/637995823847751059.png)
+                100% 20% / cover no-repeat;
+        height: 75%;
+        margin: 4px;
+    }
+
+    .version-info {
+        position: absolute;
+        right: 0;
+        bottom: 0;
+        margin: 4px;
+        width: fit-content;
+        height: fit-content;
+        font-size: 1.4rem;
+        padding: 3px;
+        background-color: var(--dark-black);
+        color: white;
+    }
+</style>

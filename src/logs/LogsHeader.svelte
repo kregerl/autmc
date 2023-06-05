@@ -1,0 +1,59 @@
+<script lang="ts">
+    import { invoke } from "@tauri-apps/api/tauri";
+    import DropdownMenu from "../components/dropdown/DropdownMenu.svelte";
+    import { logStore } from "../store/logstore";
+    import TextBoxInput from "../components/input/TextBoxInput.svelte";
+
+    export let selectedInstance: string;
+    export let selectedLog: string;
+    export let filter: string;
+
+    async function getLogs(): Promise<Map<string, string[]>> {
+        if ($logStore === undefined) $logStore = new Map();
+
+        for (let [key, value] of Object.entries(await invoke("get_logs"))) {
+            // Sort and reverse are done in-place
+            value.sort((a, b) => a.localeCompare(b, "en", { numeric: true }));
+            value.reverse();
+            $logStore.set(key, value);
+        }
+        return $logStore;
+    }
+</script>
+
+<div class="header flex-row">
+    {#await getLogs() then logs}
+        <div class="wrapper">
+            <DropdownMenu
+                options={[...logs.keys()]}
+                bind:selected={selectedInstance}
+                --color="var(--dark-black)"
+                --hover-color="var(--light-black)"
+                --max-height="220px"
+            />
+        </div>
+        <div class="wrapper">
+            <DropdownMenu
+                options={logs.get(selectedInstance)}
+                bind:selected={selectedLog}
+                --color="var(--dark-black)"
+                --hover-color="var(--light-black)"
+                --max-height="220px"
+            />
+        </div>
+        <TextBoxInput id="filter" label="Filter lines" bind:value={filter} />
+    {/await}
+</div>
+
+<style>
+    div.header {
+        z-index: 2;
+        margin: 8px 0 0 8px;
+        grid-area: var(--grid-area);
+    }
+
+    .wrapper {
+        margin: 4px;
+        justify-content: center;
+    }
+</style>

@@ -6,7 +6,7 @@ function createStore() {
     return {
         subscribe,
         set,
-        sort: () => update(map => sortMap(map)) 
+        sort: () => update(map => sortMap(map))
     };
 }
 

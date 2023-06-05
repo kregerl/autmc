@@ -3,6 +3,7 @@ use phf::phf_map;
 pub const CLIENT_ID: &str = "94fd28d0-faa6-4d85-920d-69a2abe16bcd";
 pub const SCOPE: &str = "XboxLive.signin offline_access";
 pub const REDIRECT_URL: &str = "https://login.microsoftonline.com/common/oauth2/nativeclient";
+pub const MICROSOFT_DEVICE_CODE_URL: &str = "https://login.microsoftonline.com/consumers/oauth2/v2.0/devicecode";
 pub const MICROSOFT_LOGIN_URL: &str = "https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize";
 pub const MICROSOFT_TOKEN_URL: &str = "https://login.microsoftonline.com/consumers/oauth2/v2.0/token";
 pub const XBOX_LIVE_AUTHENTICATE_URL: &str = "https://user.auth.xboxlive.com/user/authenticate";
