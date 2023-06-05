@@ -44,7 +44,7 @@
         line-height: 1.6rem;
         background-color: var(--color);
         color: white;
-        padding: 8px;
+        padding: 6px;
         cursor: pointer;
         transition: 0.15s linear;
         border-radius: 4px;
@@ -73,7 +73,7 @@
         font-size: 1.4rem;
         line-height: 1.4rem;
         margin: 0;
-        padding: 8px;
+        padding: 6px;
     }
 
     .menu > .menu-item:hover {

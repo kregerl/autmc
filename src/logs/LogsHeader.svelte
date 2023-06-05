@@ -2,9 +2,11 @@
     import { invoke } from "@tauri-apps/api/tauri";
     import DropdownMenu from "../components/dropdown/DropdownMenu.svelte";
     import { logStore } from "../store/logstore";
+    import TextBoxInput from "../components/input/TextBoxInput.svelte";
 
     export let selectedInstance: string;
     export let selectedLog: string;
+    export let filter: string;
 
     async function getLogs(): Promise<Map<string, string[]>> {
         if ($logStore === undefined) $logStore = new Map();
@@ -39,6 +41,7 @@
                 --max-height="220px"
             />
         </div>
+        <TextBoxInput id="filter" label="Filter lines" bind:value={filter} />
     {/await}
 </div>
 

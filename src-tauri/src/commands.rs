@@ -383,7 +383,6 @@ fn create_instance_log_map(
     Ok(result)
 }
 
-// FIXME: This nested map is not a great idea, could just send over the file names and have js access the lines.
 #[tauri::command(async)]
 pub async fn get_logs(app_handle: AppHandle<Wry>) -> HashMap<String, Vec<String>> {
     let instance_state: State<InstanceState> = app_handle

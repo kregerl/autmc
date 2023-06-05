@@ -1,11 +1,13 @@
 <script lang="ts">
     import { invoke } from "@tauri-apps/api";
+    
     import LogsHeader from "./LogsHeader.svelte";
     import Loader from "../components/Loader.svelte";
     import VirtualList from "../components/virtuallist/VirtualList.svelte";
 
     let selectedInstance: string;
     let selectedLog: string;
+    let filter: string;
 
     interface TaggedLine {
         line: string;
@@ -15,22 +17,27 @@
     // TODO: Cache lines once theyre already loaded once.
     async function retrieveLogLines(
         selectedInstance: string,
-        selectedLog: string
+        selectedLog: string,
+        filter: string
     ): Promise<TaggedLine[]> {
         console.log(selectedInstance, selectedLog);
-        return await invoke("read_log_lines", {
+        let lines: TaggedLine[] = await invoke("read_log_lines", {
             instanceName: selectedInstance,
             logName: selectedLog,
         });
+        if (filter) {
+            return lines.filter(line => line.line.includes(filter));
+        } 
+        return lines;
     }
 </script>
 
-<LogsHeader --grid-area="header" bind:selectedInstance bind:selectedLog />
+<LogsHeader --grid-area="header" bind:selectedInstance bind:selectedLog bind:filter/>
 <div>
     {#if !selectedInstance || !selectedLog}
         <h1 class="high-emphasis">No Logs</h1>
     {:else}
-        {#await retrieveLogLines(selectedInstance, selectedLog)}
+        {#await retrieveLogLines(selectedInstance, selectedLog, filter)}
             <Loader --color="var(--medium-black)" />
         {:then lines}
             {#if lines.length == 0}
