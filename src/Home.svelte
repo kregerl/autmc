@@ -104,11 +104,6 @@
 </main>
 
 <style>
-    /* TODO: Remove this  */
-    h1 {
-        color: white;
-    }
-
     main {
         display: grid;
         grid-template-columns: 64px 1fr;

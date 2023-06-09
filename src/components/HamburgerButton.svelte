@@ -19,6 +19,8 @@
         width: 55.5px;
         height: 55.5px;
         margin: var(--margin);
+        -webkit-user-select: none;
+        user-select: none;
     }
 
     .hamburger-container {

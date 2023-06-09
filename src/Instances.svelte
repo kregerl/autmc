@@ -10,6 +10,9 @@
     import RightClickModal from "./modal/RightClickModal/RightClickModal.svelte";
     import { onDestroy, onMount } from "svelte";
     import { UnlistenFn, listen } from "@tauri-apps/api/event";
+    import TextBoxInput from "./components/input/TextBoxInput.svelte";
+
+    let instanceFilters: string;
 
     let promise: Promise<InstanceConfiguration[]> = retrieveInstances();
 
@@ -42,6 +45,10 @@
         instanceCreatedListener();
     })
 </script>
+
+<div class="instances-header">
+    <TextBoxInput id="searchinstances" bind:value={instanceFilters} label="Filter Instances"/>
+</div>
 
 <div class="instances-wrapper">
     <div class="instances">
@@ -128,6 +135,8 @@
     .instances-wrapper {
         grid-area: var(--grid-area);
         margin: 0 24px 0 24px;
+        -webkit-user-select: none;
+        user-select: none;
     }
 
     .instances {
@@ -144,6 +153,8 @@
         width: 100%;
         border-radius: 4px;
         aspect-ratio: 3/2;
+        -webkit-user-select: none;
+        user-select: none;
     }
 
     .instance:hover {
@@ -175,5 +186,10 @@
         padding: 3px;
         background-color: var(--dark-black);
         color: white;
+    }
+
+    .instances-header {
+        margin: 12px 0 0 24px;
+        grid-area: header;
     }
 </style>

@@ -111,6 +111,8 @@
         background-color: var(--dark-black);
         opacity: 95%;
         transition-duration: 200ms;
+        -webkit-user-select: none;
+        user-select: none;
     }
 
     .guide-buttons {

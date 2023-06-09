@@ -21,6 +21,8 @@
         margin-left: var(--margin-left);
         padding: var(--padding);
         cursor: pointer;
+        -webkit-user-select: none;
+        user-select: none;
     }
 
     .active {

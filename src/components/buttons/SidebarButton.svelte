@@ -31,6 +31,8 @@
         margin-bottom: 6px;
         border-radius: 8px;
         cursor: pointer;
+        -webkit-user-select: none;
+        user-select: none;
     }
 
     .button:hover {
