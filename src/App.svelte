@@ -5,8 +5,8 @@
     import Login from "./account/Login.svelte";
     import Home from "./Home.svelte";
     import SwitchAccounts from "./account/SwitchAccounts.svelte";
-    import NewInstanceVersion from "./components/newinstance/NewInstanceVersion.svelte";
-    import NewInstanceSettings from "./components/newinstance/NewInstanceSettings.svelte";
+    import NewInstanceVersion from "./components/new-instance/NewInstanceVersion.svelte";
+    import NewInstanceSettings from "./components/new-instance/NewInstanceSettings.svelte";
 
     async function init() {
         await new Promise((resolve) => setTimeout(resolve, 200));

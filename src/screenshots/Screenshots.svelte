@@ -1,7 +1,7 @@
 <script lang="ts">
     import { invoke } from "@tauri-apps/api";
     
-    import VirtualList from "../components/virtuallist/VirtualList.svelte";
+    import VirtualList from "../components/virtual-list/VirtualList.svelte";
     import Loader from "../components/Loader.svelte";
     import ScreenshotRow from "./ScreenshotRow.svelte";
     import { screenshotStore } from "../store/screenshotstore";

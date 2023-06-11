@@ -3,7 +3,7 @@
     
     import LogsHeader from "./LogsHeader.svelte";
     import Loader from "../components/Loader.svelte";
-    import VirtualList from "../components/virtuallist/VirtualList.svelte";
+    import VirtualList from "../components/virtual-list/VirtualList.svelte";
 
     let selectedInstance: string;
     let selectedLog: string;

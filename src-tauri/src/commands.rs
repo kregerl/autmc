@@ -516,8 +516,6 @@ pub async fn get_curseforge_categories() -> Vec<CurseforgeCategory> {
 
 #[tauri::command(async)]
 pub async fn search_curseforge(page: u32, search_filter: String, selected_version: String, selected_category: u32, selected_sort: String) -> Vec<String> {
-    info!("Searching curseforge for modpacks on page {}", page);
-
     debug!("selected_sort: {}", selected_sort);
     let field = CurseforgeSortField::from(selected_sort);
     let version = if selected_version == "All Versions" {

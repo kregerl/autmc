@@ -18,7 +18,7 @@
     import { VersionManifest, manifestStore } from "../../store/manifeststore";
     import { onMount } from "svelte";
     import ImportZip from "./ImportZip.svelte";
-    import BrowseCurseforge from "./BrowseCurseforge.svelte";
+    import BrowseCurseforge from "./thirdparty-content/BrowseCurseforge.svelte";
 
     export let selectedInstanceType: InstanceType = InstanceType.Vanilla;
 

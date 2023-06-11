@@ -1,6 +1,6 @@
 <script lang="ts">
-    import VirtualList from "../virtuallist/VirtualList.svelte";
-    import VirtualListRow from "../virtuallist/VirtualListRow.svelte";
+    import VirtualList from "../virtual-list/VirtualList.svelte";
+    import VirtualListRow from "../virtual-list/VirtualListRow.svelte";
     import type {
         VersionEntry,
         VersionManifest,
@@ -276,7 +276,8 @@
         margin: 0;
         padding: 4px 0 4px 0;
         height: 32px;
-        font-size: 2vmin;
+        line-height: 32px;
+        font-size: 2.2vmin;
         font-weight: bold;
         text-align: center;
         background-color: var(--dark-black);
@@ -318,7 +319,7 @@
     }
 
     .header > span {
-        font-size: 2vmin;
+        font-size: 2.2vmin;
         font-weight: bold;
         margin: 0px;
         width: 33%;

@@ -1,7 +1,7 @@
 <script lang="ts">
     import { convertFileSrc } from "@tauri-apps/api/tauri";
     import { slide } from "svelte/transition";
-    import VirtualList from "../components/virtuallist/VirtualList.svelte";
+    import VirtualList from "../components/virtual-list/VirtualList.svelte";
     import { lazyload } from "../lazyload";
 
     export let instance: string;

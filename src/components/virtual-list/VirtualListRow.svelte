@@ -21,7 +21,7 @@
 <style>
     .row {
         color: white;
-        font-size: 1.5vmin;
+        font-size: 2.0vmin;
         padding: 4px 0 4px 0;
         cursor: pointer;
     }
