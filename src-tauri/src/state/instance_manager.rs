@@ -77,12 +77,21 @@ impl InstanceManager {
             return;
         }
         for path in paths.unwrap().filter_map(|path| path.ok()) {
+            // Skip over non-directory files
+            let path_meta = path.metadata();
+            if let Ok(metadata) = path_meta {
+                if !metadata.is_dir() {
+                    continue;
+                }
+            }
+            // Append "config.json" to the dir path
             let instance_path = path.path().join("config.json");
             let file = File::open(&instance_path);
             if let Err(e) = file {
                 warn!("Error with instance at {}: {}", instance_path.display(), e);
                 continue;
             }
+            // Deserialize the instance configuration
             let reader = BufReader::new(file.unwrap());
             let instance =
                 serde_json::from_reader::<BufReader<File>, InstanceConfiguration>(reader);
