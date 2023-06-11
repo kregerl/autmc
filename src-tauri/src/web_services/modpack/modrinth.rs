@@ -122,12 +122,12 @@ pub async fn import_modrinth_zip(
         .expect("`InstanceState` should already be managed.");
     let instance_manager = instance_state.0.lock().await;
     let instances_dir = instance_manager.instances_dir();
-    let instance_dir = instances_dir.join(manifest.name);
+    let instance_dir = instances_dir.join(&manifest.name);
 
     download_mods_from_modrinth(manifest.files, &instance_dir).await?;
 
     extract_overrides(&instance_dir, archive)?;
-
+    info!("Succcessfully imported modrinth modpack {}", manifest.name);
     Ok(())
 }
 

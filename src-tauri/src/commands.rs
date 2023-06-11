@@ -25,7 +25,13 @@ use crate::{
     web_services::{
         authentication::{validate_account, AuthResult},
         manifest::{path_to_utf8_str, vanilla::VanillaManifestVersion},
-        modpack::{curseforge::import_curseforge_zip, modrinth::import_modrinth_zip},
+        modpack::{
+            curseforge::{
+                import_curseforge_zip, retrieve_curseforge_categories, search_curseforge_modpacks,
+                CurseforgeCategory, CurseforgeSortField,
+            },
+            modrinth::import_modrinth_zip,
+        },
         resources::{create_instance, InstanceSettings},
     },
 };
@@ -450,14 +456,11 @@ pub fn read_log_file(path: &Path) -> io::Result<Vec<TaggedLine>> {
         let line_type = get_tag_for_line(&line);
         tagged_lines.push(if line_type != LineType::Unknown {
             previous_tag = line_type.clone();
-            TaggedLine {
-                line, 
-                line_type
-            }
+            TaggedLine { line, line_type }
         } else {
             TaggedLine {
-                line, 
-                line_type: previous_tag.clone()
+                line,
+                line_type: previous_tag.clone(),
             }
         });
     }
@@ -472,6 +475,7 @@ pub async fn read_log_lines(
     log_name: String,
     app_handle: AppHandle<Wry>,
 ) -> Vec<TaggedLine> {
+    info!("Getting logs for {}", log_name);
     let instance_state: State<InstanceState> = app_handle
         .try_state()
         .expect("`InstanceState` should already be managed.");
@@ -485,6 +489,7 @@ pub async fn read_log_lines(
 
 #[tauri::command(async)]
 pub async fn import_zip(zip_path: String, app_handle: AppHandle<Wry>) {
+    info!("Imporing modpack from {}", zip_path);
     let path = PathBuf::from(&zip_path);
 
     // Open the zip archive at `zip_path`
@@ -502,4 +507,29 @@ pub async fn import_zip(zip_path: String, app_handle: AppHandle<Wry>) {
     }
 
     debug!("Invoked import_zip: {}", zip_path);
+}
+
+#[tauri::command(async)]
+pub async fn get_curseforge_categories() -> Vec<CurseforgeCategory> {
+    retrieve_curseforge_categories().await.unwrap()
+}
+
+#[tauri::command(async)]
+pub async fn search_curseforge(page: u32, search_filter: String, selected_version: String, selected_category: u32, selected_sort: String) -> Vec<String> {
+    info!("Searching curseforge for modpacks on page {}", page);
+
+    debug!("selected_sort: {}", selected_sort);
+    let field = CurseforgeSortField::from(selected_sort);
+    let version = if selected_version == "All Versions" {
+        ""
+    } else {
+        selected_version.as_str()
+    };
+    debug!("Page: {}", page);
+    debug!("selected_version: {}", selected_version);
+    debug!("selected_category: {}", selected_category);
+
+    let response = search_curseforge_modpacks(page, &search_filter, version, selected_category, field).await.unwrap();
+
+    response.data.into_iter().map(|entry| entry.name).collect()
 }

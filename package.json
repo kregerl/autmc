@@ -29,6 +29,8 @@
   "dependencies": {
     "@tauri-apps/api": "^1.2.0",
     "sirv-cli": "^2.0.0",
-    "svelte-navigator": "^3.2.2"
+    "svelte-infinite-loading": "^1.3.8",
+    "svelte-navigator": "^3.2.2",
+    "svelte-tiny-virtual-list": "^2.0.5"
   }
 }

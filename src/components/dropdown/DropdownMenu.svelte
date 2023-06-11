@@ -2,7 +2,7 @@
     import { slide } from "svelte/transition";
 
     // Inputs
-    export let options: string[] = [];
+    export let options: string[];
     export let disabled: boolean = false;
 
     // Output
@@ -42,7 +42,7 @@
         align-items: center;
         font-size: 1.6rem;
         line-height: 1.6rem;
-        background-color: var(--color);
+        background-color: var(--color, var(--dark-black));
         color: white;
         padding: 6px;
         cursor: pointer;
@@ -51,7 +51,7 @@
     }
 
     .dropdown:hover {
-        background-color: var(--hover-color);
+        background-color: var(--hover-color, var(--light-black));
     }
 
     img {
@@ -60,10 +60,11 @@
     
     .menu {
         position: relative;
-        background-color: var(--color);
+        background-color: var(--color, var(--dark-black));
         max-height: var(--max-height, 100px);
         overflow-y: scroll;
         overflow-x: hidden;
+        z-index: 5;
     }
     
     .menu > .menu-item {

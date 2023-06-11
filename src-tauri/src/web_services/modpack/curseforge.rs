@@ -8,7 +8,7 @@ use std::{
 
 use log::{debug, error, info};
 use reqwest::header::HeaderMap;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 #[cfg(test)]
 use tauri::async_runtime::block_on;
@@ -16,7 +16,7 @@ use tauri::{AppHandle, Manager, State, Wry};
 use zip::ZipArchive;
 
 use crate::{
-    consts::{CURSEFORGE_API_URL, CURSEFORGE_FORGECDN_URL, CURSEFORGE_MODPACK_CLASS_ID},
+    consts::{CURSEFORGE_API_URL, CURSEFORGE_FORGECDN_URL, CURSEFORGE_MODPACK_CLASS_ID, CURSEFORGE_PAGE_SIZE},
     state::instance_manager::InstanceState,
     web_services::{
         downloader::{
@@ -514,6 +514,7 @@ pub async fn import_curseforge_zip(
         &mut archive,
         curseforge_manifest.overrides(),
     )?;
+    info!("Succcessfully imported curseforge modpack {}", instance_name);
     Ok(())
 }
 
@@ -526,17 +527,17 @@ pub async fn import_curseforge_zip(
 // -----------------------------------------
 
 #[derive(Debug, Deserialize)]
-struct CurseforgeSearchResponse {
-    data: Vec<CurseforgeSearchEntry>,
+pub struct CurseforgeSearchResponse {
+    pub data: Vec<CurseforgeSearchEntry>,
     pagination: CurseforgeSearchPagination,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CurseforgeSearchEntry {
+pub struct CurseforgeSearchEntry {
     id: u32,
     game_id: u32,
-    name: String,
+    pub name: String,
     slug: String,
     links: CurseforgeSearchEntryLinks,
     summary: String,
@@ -636,7 +637,47 @@ struct CurseforgeSearchPagination {
     total_count: u32,
 }
 
-async fn search_curseforge_modpacks() -> reqwest::Result<CurseforgeSearchResponse> {
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[repr(u8)]
+pub enum CurseforgeSortField {
+    Featured = 1,
+    Popularity,
+    LastUpdated,
+    Name,
+    Author,
+    TotalDownloads,
+    // Category,
+    // GameVersion
+}
+
+impl From<String> for CurseforgeSortField {
+    fn from(value: String) -> Self {
+        match value.as_str() {
+            "Featured" => Self::Featured,
+            "Popularity" => Self::Popularity,
+            "LastUpdated" => Self::LastUpdated,
+            "Name" => Self::Name,
+            "Author" => Self::Author,
+            "TotalDownloads" => Self::TotalDownloads,
+            _ => unreachable!("Unknown sort field: {}", value),
+        }
+    }
+}
+
+impl CurseforgeSortField {
+    pub fn as_number_str(self) -> String {
+        (self as u8).to_string()
+    }
+}
+
+pub async fn search_curseforge_modpacks(
+    page: u32,
+    search_filter: &str,
+    selected_version: &str,
+    selected_category: u32,
+    selected_sort: CurseforgeSortField,
+) -> reqwest::Result<CurseforgeSearchResponse> {
     let mut header_map = HeaderMap::new();
     header_map.insert(
         "X-API-KEY",
@@ -652,12 +693,14 @@ async fn search_curseforge_modpacks() -> reqwest::Result<CurseforgeSearchRespons
         .headers(header_map)
         .query(&[
             ("gameId", "432"),
-            ("categoryId", "0"),
-            ("pageSize", "40"),
-            ("index", "0"),
-            ("sortField", "1"),
-            ("sortOrder", "desc"),
             ("classId", &CURSEFORGE_MODPACK_CLASS_ID.to_string()),
+            ("categoryId", selected_category.to_string().as_str()),
+            ("gameVersion", selected_version),
+            ("searchFilter", search_filter),
+            ("sortField", &selected_sort.as_number_str()),
+            ("sortOrder", "desc"),
+            ("index", &(page * CURSEFORGE_PAGE_SIZE).to_string()),
+            ("pageSize", &CURSEFORGE_PAGE_SIZE.to_string()),
         ])
         .send()
         .await?;
@@ -666,7 +709,63 @@ async fn search_curseforge_modpacks() -> reqwest::Result<CurseforgeSearchRespons
 
 #[test]
 fn test_curseforge_search() {
-    let x = block_on(search_curseforge_modpacks()).unwrap();
+    let x = block_on(search_curseforge_modpacks(
+        1,
+        "",
+        "",
+        4475,
+        CurseforgeSortField::Popularity,
+    ))
+    .unwrap();
+    // println!("Here: {:#?}", x);
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CurseforgeCategory {
+    id: u32,
+    // game_id: u32,
+    pub name: String,
+    // slug: String,
+    // url: String,
+    icon_url: String,
+    // date_modified: String,
+    // class_id: u32,
+    // parent_category_id: u32,
+    // display_index: u32,
+}
+
+pub async fn retrieve_curseforge_categories() -> reqwest::Result<Vec<CurseforgeCategory>> {
+    let mut header_map = HeaderMap::new();
+    header_map.insert(
+        "X-API-KEY",
+        "$2a$10$5BgCleD8.rLQ5Ix17Xm2lOjgfoeTJV26a1BXmmpwrOemgI517.nuC"
+            .parse()
+            .unwrap(),
+    );
+    header_map.insert("Content-Type", "application/json".parse().unwrap());
+
+    #[derive(Deserialize)]
+    struct Categories {
+        data: Vec<CurseforgeCategory>,
+    }
+
+    let client = reqwest::Client::new();
+    let response = client
+        .get(format!("{}/categories", CURSEFORGE_API_URL))
+        .headers(header_map)
+        .query(&[
+            ("gameId", "432"),
+            ("classId", &CURSEFORGE_MODPACK_CLASS_ID.to_string()),
+        ])
+        .send()
+        .await?;
+    Ok(response.json::<Categories>().await?.data)
+}
+
+#[test]
+fn test_curseforge_categories() {
+    let x = block_on(retrieve_curseforge_categories()).unwrap();
     println!("Here: {:#?}", x);
 }
 

@@ -18,6 +18,7 @@
     import { VersionManifest, manifestStore } from "../../store/manifeststore";
     import { onMount } from "svelte";
     import ImportZip from "./ImportZip.svelte";
+    import BrowseCurseforge from "./BrowseCurseforge.svelte";
 
     export let selectedInstanceType: InstanceType = InstanceType.Vanilla;
 
@@ -133,7 +134,7 @@
                     bind:modloaderType
                 />
             {:else if selectedInstanceType === InstanceType.Curseforge}
-                <h1>TODO: Curseforge</h1>
+                <BrowseCurseforge />
             {:else if selectedInstanceType === InstanceType.Modrinth}
                 <h1>TODO: Modrinth</h1>
             {:else if selectedInstanceType === InstanceType.Zip}

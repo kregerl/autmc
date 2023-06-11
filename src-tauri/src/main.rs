@@ -29,7 +29,7 @@ use web_services::authentication::{authenticate, validate_account, AuthMode};
 use crate::{
     commands::{
         get_account_skin, get_accounts, get_logs, get_screenshots, import_zip, launch_instance,
-        load_instances, login_to_account, obtain_manifests, obtain_version, open_folder, read_log_lines,
+        load_instances, login_to_account, obtain_manifests, obtain_version, open_folder, read_log_lines, search_curseforge, get_curseforge_categories,
     },
     state::{instance_manager::InstanceState, resource_manager::ResourceState},
 };
@@ -63,7 +63,9 @@ fn main() {
             get_screenshots,
             get_logs,
             read_log_lines,
-            import_zip
+            import_zip,
+            search_curseforge,
+            get_curseforge_categories
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
