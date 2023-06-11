@@ -8,7 +8,7 @@
     export let selectedLog: string;
     export let filter: string;
 
-    async function getLogs(): Promise<Map<string, string[]>> {
+    async function getLogMap(): Promise<Map<string, string[]>> {
         if ($logStore === undefined) $logStore = new Map();
 
         for (let [key, value] of Object.entries(await invoke("get_logs"))) {
@@ -19,10 +19,17 @@
         }
         return $logStore;
     }
+
+    function getLogs(logs: Map<string, string[]>): string[] {
+        if (!selectedInstance) {
+            selectedInstance = [...logs.keys()].at(0);
+        } 
+        return logs.get(selectedInstance);
+    }
 </script>
 
 <div class="header flex-row">
-    {#await getLogs() then logs}
+    {#await getLogMap() then logs}
         <div class="wrapper">
             <DropdownMenu
                 options={[...logs.keys()]}
@@ -34,7 +41,7 @@
         </div>
         <div class="wrapper">
             <DropdownMenu
-                options={logs.get(selectedInstance)}
+                options={getLogs(logs)}
                 bind:selected={selectedLog}
                 --color="var(--dark-black)"
                 --hover-color="var(--light-black)"
