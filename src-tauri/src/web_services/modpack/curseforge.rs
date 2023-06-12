@@ -16,7 +16,10 @@ use tauri::{AppHandle, Manager, State, Wry};
 use zip::ZipArchive;
 
 use crate::{
-    consts::{CURSEFORGE_API_URL, CURSEFORGE_FORGECDN_URL, CURSEFORGE_MODPACK_CLASS_ID, CURSEFORGE_PAGE_SIZE},
+    consts::{
+        CURSEFORGE_API_URL, CURSEFORGE_FORGECDN_URL, CURSEFORGE_MODPACK_CLASS_ID,
+        CURSEFORGE_PAGE_SIZE,
+    },
     state::instance_manager::InstanceState,
     web_services::{
         downloader::{
@@ -514,7 +517,10 @@ pub async fn import_curseforge_zip(
         &mut archive,
         curseforge_manifest.overrides(),
     )?;
-    info!("Succcessfully imported curseforge modpack {}", instance_name);
+    info!(
+        "Succcessfully imported curseforge modpack {}",
+        instance_name
+    );
     Ok(())
 }
 
@@ -535,23 +541,36 @@ pub struct CurseforgeSearchResponse {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CurseforgeSearchEntry {
-    id: u32,
+    pub id: u32,
     game_id: u32,
     pub name: String,
     slug: String,
     links: CurseforgeSearchEntryLinks,
-    summary: String,
+    pub summary: String,
     status: u32,
-    download_count: u32,
+    pub download_count: u32,
     is_featured: bool,
     primary_category_id: u32,
     categories: Vec<CurseforgeSearchCategory>,
     class_id: u32,
-    authors: Vec<CurseforgeSearchAuthors>,
-    logo: CurseforgeSearchImage,
+    pub authors: Vec<CurseforgeSearchAuthors>,
+    pub logo: CurseforgeSearchImage,
     screenshots: Vec<CurseforgeSearchImage>,
     main_file_id: u32,
     latest_files: Vec<CurseforgeSearchLatestFiles>,
+}
+
+impl CurseforgeSearchEntry {
+    pub fn get_basic_categories(&self) -> Vec<CurseforgeCategory> {
+        self.categories
+            .iter()
+            .map(|category| CurseforgeCategory {
+                id: category.id,
+                name: category.name.to_owned(),
+                icon_url: category.icon_url.to_owned(),
+            })
+            .collect()
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -586,21 +605,27 @@ struct CurseforgeSearchModule {
     fingerprint: u32,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CurseforgeSearchImage {
+pub struct CurseforgeSearchImage {
+    #[serde(skip_serializing)]
     id: u32,
+    #[serde(skip_serializing)]
     mod_id: u32,
     title: String,
+    #[serde(skip_serializing)]
     description: String,
+    #[serde(skip_serializing)]
     thumbnail_url: String,
     url: String,
 }
 
-#[derive(Debug, Deserialize)]
-struct CurseforgeSearchAuthors {
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CurseforgeSearchAuthors {
+    #[serde(skip_serializing)]
     id: u32,
     name: String,
+    #[serde(skip_serializing)]
     url: String,
 }
 

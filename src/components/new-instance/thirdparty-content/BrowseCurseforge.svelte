@@ -1,3 +1,24 @@
+<script context="module" lang="ts">
+    export interface Author {
+        name: string;
+    }
+
+    export interface Image {
+        title: string;
+        url: string;
+    }
+
+    export interface ModpackInformation {
+        id: number;
+        name: string;
+        summary: string;
+        downloadCount: number;
+        authors: Author[];
+        logo: Image;
+        categories: CurseforgeCategory[];
+    }
+</script>
+
 <script lang="ts">
     import { invoke } from "@tauri-apps/api/tauri";
 
@@ -11,6 +32,7 @@
 
     import VirtualList from "svelte-tiny-virtual-list";
     import InfiniteLoading from "svelte-infinite-loading";
+    import CurseforgeModpackRow from "./CurseforgeModpackRow.svelte";
 
     let selectedVersion: string;
     let selectedCategory: string;
@@ -20,9 +42,14 @@
 
     let page = 0;
     let listHeight: number = 0;
-    let modpacks: string[] = [];
+    let modpacks: ModpackInformation[] = [];
 
-    $: reloadModpacks(searchFilter, selectedVersion, selectedCategory, selectedSort);
+    $: reloadModpacks(
+        searchFilter,
+        selectedVersion,
+        selectedCategory,
+        selectedSort
+    );
 
     const sortFields = [
         "Popularity",
@@ -72,7 +99,7 @@
     }
 
     async function infiniteHandler({ detail: { loaded, complete, error } }) {
-        let newData = await invoke<string[]>("search_curseforge", {
+        let newData = await invoke<ModpackInformation[]>("search_curseforge", {
             page: page,
             searchFilter: searchFilter,
             selectedVersion: selectedVersion,
@@ -111,6 +138,12 @@
             page = 0;
         }
     }
+
+    function selectModpack() {
+        // TODO: Go to version selection
+        let modpackId = this.id;
+    }
+
 </script>
 
 {#await getCategories() then categories}
@@ -145,12 +178,21 @@
             <VirtualList
                 height={listHeight}
                 itemCount={modpacks.length}
-                itemSize={24}
+                itemSize={124}
             >
-                <h1 slot="item" let:index let:style {style}>
-                    {modpacks[index]}
-                </h1>
-
+                <div
+                    class="row-wrapper"
+                    slot="item"
+                    let:index
+                    let:style
+                    {style}
+                >
+                    <CurseforgeModpackRow
+                        {index}
+                        modpackInformation={modpacks[index]}
+                        on:click={selectModpack}
+                    />
+                </div>
                 <div slot="footer">
                     <InfiniteLoading on:infinite={infiniteHandler} />
                 </div>
@@ -164,6 +206,7 @@
         z-index: 1;
         width: 100%;
         height: 100%;
+        box-shadow: 3px 3px 10px 2px rgba(0, 0, 0, 0.5);
     }
 
     .modpacks {
@@ -176,7 +219,8 @@
         height: 48px;
     }
 
-    h1 {
-        color: white;
+    .row-wrapper {
+        width: 100%;
+        height: 100%;
     }
 </style>

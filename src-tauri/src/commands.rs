@@ -28,7 +28,7 @@ use crate::{
         modpack::{
             curseforge::{
                 import_curseforge_zip, retrieve_curseforge_categories, search_curseforge_modpacks,
-                CurseforgeCategory, CurseforgeSortField,
+                CurseforgeCategory, CurseforgeSortField, CurseforgeSearchAuthors, CurseforgeSearchImage, CurseforgeSearchEntry,
             },
             modrinth::import_modrinth_zip,
         },
@@ -514,8 +514,35 @@ pub async fn get_curseforge_categories() -> Vec<CurseforgeCategory> {
     retrieve_curseforge_categories().await.unwrap()
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModpackInformation {
+    id: u32,
+    name: String,
+    summary: String,
+    download_count: u32,
+    authors: Vec<CurseforgeSearchAuthors>,
+    logo: CurseforgeSearchImage,
+    categories: Vec<CurseforgeCategory>,
+}
+
+impl From<CurseforgeSearchEntry> for ModpackInformation {
+    fn from(value: CurseforgeSearchEntry) -> Self {
+        let categories = value.get_basic_categories();
+        Self {
+            id: value.id,
+            name: value.name,
+            summary: value.summary,
+            download_count: value.download_count,
+            authors: value.authors,
+            logo: value.logo,
+            categories,
+        }
+    }
+}
+
 #[tauri::command(async)]
-pub async fn search_curseforge(page: u32, search_filter: String, selected_version: String, selected_category: u32, selected_sort: String) -> Vec<String> {
+pub async fn search_curseforge(page: u32, search_filter: String, selected_version: String, selected_category: u32, selected_sort: String) -> Vec<ModpackInformation> {
     debug!("selected_sort: {}", selected_sort);
     let field = CurseforgeSortField::from(selected_sort);
     let version = if selected_version == "All Versions" {
@@ -529,5 +556,7 @@ pub async fn search_curseforge(page: u32, search_filter: String, selected_versio
 
     let response = search_curseforge_modpacks(page, &search_filter, version, selected_category, field).await.unwrap();
 
-    response.data.into_iter().map(|entry| entry.name).collect()
+    debug!("Data: {:#?}", response.data.get(0));
+
+    response.data.into_iter().map(|entry| ModpackInformation::from(entry)).collect()
 }
