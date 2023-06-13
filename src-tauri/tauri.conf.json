@@ -65,7 +65,7 @@
       }
     },
     "security": {
-      "csp": "default-src 'self'; img-src 'self' asset: https://asset.localhost http://textures.minecraft.net/texture/;"
+      "csp": "default-src 'self'; img-src 'self' asset: https://asset.localhost http://textures.minecraft.net/texture/ https://media.forgecdn.net/;"
       
     },
     "updater": {

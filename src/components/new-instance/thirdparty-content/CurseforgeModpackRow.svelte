@@ -1,6 +1,8 @@
 <script lang="ts">
+    import { convertFileSrc } from "@tauri-apps/api/tauri";
     import { formatDownloads } from "../../../downloadfmt";
     import type { ModpackInformation } from "./BrowseCurseforge.svelte";
+    import { formatImageUrl } from "../../../image";
 
     export let modpackInformation: ModpackInformation;
     export let index: number;
@@ -10,12 +12,27 @@
         .join(", ");
 </script>
 
-<div id={modpackInformation.id.toString()} class="row flex-row {index % 2 == 0 ? "even" : "odd"}" on:click on:keydown>
+<!-- 
+Webkitgtk is always going to perform worse, but first thing you might wanna look into is making the images an appropriate size for where they are being displayed. 
+You can use the Rust backend in a couple different ways to provide image optimization at runtime. For example, you can add an image:// protocol to your app then 
+get images using image://some/image?width=100&height=100 and have the Rust backend resize that image for you blazingly fast™️
+
+Another "solution" is to just sit tight until we finish some alternative webview alternative for Linux. We're looking into both Chromium and Servo for it. So this issue wont' be there forever
+ -->
+
+<div
+    id={modpackInformation.id.toString()}
+    class="row flex-row {index % 2 == 0 ? 'even' : 'odd'}"
+    on:click
+    on:keydown
+>
     <div class="img-wrapper">
         <img
             class="logo"
-            src={modpackInformation.logo.url}
+            src={formatImageUrl(modpackInformation.logo.url, 100, 100)}
             alt={modpackInformation.logo.title}
+            width="100"
+            height="100"
         />
         <span class="downloads high-emphasis"
             >{formatDownloads(modpackInformation.downloadCount)}</span
@@ -29,7 +46,7 @@
     <div class="categories-wrapper flex-row">
         {#each modpackInformation.categories as category}
             <div class="category flex-row">
-                <img src={category.iconUrl} alt={category.name}/>
+                <!-- <img src={category.iconUrl} alt={category.name}/> -->
                 <p class="high-emphasis">{category.name}</p>
             </div>
         {/each}
