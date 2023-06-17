@@ -11,11 +11,13 @@
     import { onDestroy, onMount } from "svelte";
     import { UnlistenFn, listen } from "@tauri-apps/api/event";
     import TextBoxInput from "./components/input/TextBoxInput.svelte";
+    import CheckboxInput from "./components/input/CheckboxInput.svelte";
 
+    let useRegex: boolean;
     let instanceFilters: string;
-    let promise: Promise<InstanceConfiguration[]> = retrieveInstances(instanceFilters);
+    let promise: Promise<InstanceConfiguration[]> = retrieveInstances(useRegex, instanceFilters);
 
-    $: promise = retrieveInstances(instanceFilters);
+    $: promise = retrieveInstances(useRegex, instanceFilters);
 
     function newInstance() {
         navigate("/newinstance-version");
@@ -26,14 +28,18 @@
         console.log("launch_instance -- this", this);
     }
 
-    async function retrieveInstances(filter: string, force: boolean = false): Promise<InstanceConfiguration[]> {
+    async function retrieveInstances(useRegex: boolean, filter: string, force: boolean = false): Promise<InstanceConfiguration[]> {
         if ($instanceStore === undefined || force) {
             $instanceStore = await invoke("load_instances");
             $instanceStore.sort((a,b) => a.instance_name.localeCompare(b.instance_name, "en", {numeric: true}));
         }
         
         if (filter) {
-            return $instanceStore.filter((instance) => instance.instance_name.includes(filter))
+            if (useRegex) {
+                return $instanceStore.filter((instance) => instance.instance_name.match(filter))
+            } else {
+                return $instanceStore.filter((instance) => instance.instance_name.includes(filter))
+            }
         } 
 
         return $instanceStore;
@@ -43,7 +49,7 @@
     onMount(async () => {
         instanceCreatedListener = await listen("instance-done", (event) => {
             console.log("Here");
-            promise = retrieveInstances(instanceFilters, true);
+            promise = retrieveInstances(useRegex, instanceFilters, true);
         });
     });
 
@@ -52,8 +58,11 @@
     })
 </script>
 
-<div class="instances-header">
+<div class="flex-row instances-header">
     <TextBoxInput id="searchinstances" bind:value={instanceFilters} label="Filter Instances"/>
+    <div class="regex-wrapper">
+        <CheckboxInput text="Use Regex" bind:checked={useRegex}/>
+    </div>
 </div>
 
 <div class="instances-wrapper">
@@ -91,7 +100,7 @@
         />
         <h3 class="medium-emphasis">New Instance</h3>
     </button>
-    <RightClickModal validClasses={["instance"]}/>
+    <!-- <RightClickModal validClasses={["instance"]}/> -->
 </div>
 
 <style>
@@ -199,5 +208,9 @@
     .instances-header {
         margin: 12px 0 0 24px;
         grid-area: header;
+    }
+
+    .regex-wrapper {
+        margin: 12px 0 0 8px;
     }
 </style>

@@ -3,10 +3,12 @@
     import DropdownMenu from "../components/dropdown/DropdownMenu.svelte";
     import { logStore } from "../store/logstore";
     import TextBoxInput from "../components/input/TextBoxInput.svelte";
+    import CheckboxInput from "../components/input/CheckboxInput.svelte";
 
     export let selectedInstance: string;
     export let selectedLog: string;
     export let filter: string;
+    export let useRegex: boolean;
 
     async function getLogMap(): Promise<Map<string, string[]>> {
         if ($logStore === undefined) $logStore = new Map();
@@ -49,6 +51,9 @@
             />
         </div>
         <TextBoxInput id="filter" label="Filter lines" bind:value={filter} />
+        <div class="regex-wrapper">
+            <CheckboxInput text="Use Regex" bind:checked={useRegex}/>
+        </div>
     {/await}
 </div>
 
@@ -62,5 +67,9 @@
     .wrapper {
         margin: 4px;
         justify-content: center;
+    }
+
+    .regex-wrapper {
+        margin: 12px 0 0 8px;
     }
 </style>

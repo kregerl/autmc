@@ -8,6 +8,7 @@
     let selectedInstance: string;
     let selectedLog: string;
     let filter: string;
+    let useRegex: boolean;
 
     interface TaggedLine {
         line: string;
@@ -16,6 +17,7 @@
 
     // TODO: Cache lines once theyre already loaded once.
     async function retrieveLogLines(
+        useRegex: boolean,
         selectedInstance: string,
         selectedLog: string,
         filter: string
@@ -26,18 +28,22 @@
             logName: selectedLog,
         });
         if (filter) {
-            return lines.filter(line => line.line.includes(filter));
+            if (useRegex) {
+                return lines.filter(line => line.line.match(filter));
+            } else {
+                return lines.filter(line => line.line.includes(filter));
+            }
         } 
         return lines;
     }
 </script>
 
-<LogsHeader --grid-area="header" bind:selectedInstance bind:selectedLog bind:filter/>
+<LogsHeader --grid-area="header" bind:selectedInstance bind:selectedLog bind:filter bind:useRegex/>
 <div>
     {#if !selectedInstance || !selectedLog}
         <h1 class="high-emphasis">No Logs</h1>
     {:else}
-        {#await retrieveLogLines(selectedInstance, selectedLog, filter)}
+        {#await retrieveLogLines(useRegex, selectedInstance, selectedLog, filter)}
             <Loader --color="var(--medium-black)" />
         {:then lines}
             {#if lines.length == 0}
