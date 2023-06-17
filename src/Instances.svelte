@@ -13,8 +13,9 @@
     import TextBoxInput from "./components/input/TextBoxInput.svelte";
 
     let instanceFilters: string;
+    let promise: Promise<InstanceConfiguration[]> = retrieveInstances(instanceFilters);
 
-    let promise: Promise<InstanceConfiguration[]> = retrieveInstances();
+    $: promise = retrieveInstances(instanceFilters);
 
     function newInstance() {
         navigate("/newinstance-version");
@@ -25,11 +26,16 @@
         console.log("launch_instance -- this", this);
     }
 
-    async function retrieveInstances(force: boolean = false): Promise<InstanceConfiguration[]> {
+    async function retrieveInstances(filter: string, force: boolean = false): Promise<InstanceConfiguration[]> {
         if ($instanceStore === undefined || force) {
             $instanceStore = await invoke("load_instances");
             $instanceStore.sort((a,b) => a.instance_name.localeCompare(b.instance_name, "en", {numeric: true}));
         }
+        
+        if (filter) {
+            return $instanceStore.filter((instance) => instance.instance_name.includes(filter))
+        } 
+
         return $instanceStore;
     }
 
@@ -37,7 +43,7 @@
     onMount(async () => {
         instanceCreatedListener = await listen("instance-done", (event) => {
             console.log("Here");
-            promise = retrieveInstances(true);
+            promise = retrieveInstances(instanceFilters, true);
         });
     });
 
@@ -155,11 +161,13 @@
         aspect-ratio: 3/2;
         -webkit-user-select: none;
         user-select: none;
+        transition: 0.15s linear;
     }
 
     .instance:hover {
         background-color: var(--lightest-black);
         cursor: pointer;
+        border-radius: 0px;
     }
 
     .instance > .background {

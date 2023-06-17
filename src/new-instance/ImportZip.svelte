@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { path } from "@tauri-apps/api";
     import { open } from "@tauri-apps/api/dialog";
     import { UnlistenFn, listen } from "@tauri-apps/api/event";
     import { onDestroy, onMount } from "svelte";
@@ -41,7 +42,9 @@
                 <span class="high-emphasis">Browse...</span>
             </div>
             {#if zipPath}
-                <p class="high-emphasis">Importing {zipPath}</p>
+                {#await path.basename(zipPath) then name}
+                    <p class="high-emphasis">Importing <span>{name}</span></p>
+                {/await}
             {:else}
                 <p class="low-emphasis">No file selected.</p>
             {/if}
@@ -67,13 +70,6 @@
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        /* display: flex;
-        width: 50vw;
-        height: 60vh;
-        border: 2px dashed var(--light-blue);
-        justify-content: center;
-        align-content: center;
-        text-align: center; */
     }
 
     .or {
@@ -84,6 +80,9 @@
         margin-left: 12px;
         color: white;
         font-size: 1.4rem;
+    }
+    p > span {
+        font-weight: bold;
     }
 
     h3 {

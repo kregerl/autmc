@@ -20,8 +20,7 @@
     import Loader from "../components/Loader.svelte";
     import SvgButton from "../components/buttons/SvgButton.svelte";
 
-    export let selectedInstanceType: InstanceType = InstanceType.Curseforge;
-    // export let selectedInstanceType: InstanceType = InstanceType.Vanilla;
+    export let selectedInstanceType: InstanceType = InstanceType.Vanilla;
 
     const location = useLocation();
     onMount(() => {

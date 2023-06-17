@@ -1,5 +1,4 @@
 <script lang="ts">
-    import { invoke } from "@tauri-apps/api/tauri";
     import type { ModpackInformation } from "./BrowseCurseforge.svelte";
     import CanvasImage from "../../components/CanvasImage.svelte";
     import { formatDownloads } from "../../downloadfmt";
@@ -10,10 +9,6 @@
     $: authors = modpackInformation.authors
         .map((author) => author.name)
         .join(", ");
-
-    async function cache_image(url: string) {
-        await invoke("cache_image", {url: url, width: 100, height: 100});
-    }
 </script>
 
 <div

@@ -548,7 +548,6 @@ pub async fn search_curseforge(
     selected_version: String,
     selected_category: u32,
     selected_sort: String,
-    app_handle: AppHandle<Wry>,
 ) -> Vec<ModpackInformation> {
     debug!("selected_sort: {}", selected_sort);
     let field = CurseforgeSortField::from(selected_sort);
