@@ -12,36 +12,29 @@ mod tests;
 mod web_services;
 
 use commands::show_microsoft_login_page;
-use image::{
-    error::ImageFormatHint, imageops::FilterType, load_from_memory_with_format, ImageError,
-    ImageFormat,
-};
-use log::{debug, error, info, warn};
+use log::{error, info, warn};
 use regex::Regex;
 use serde::ser::StdError;
 use state::{account_manager::AccountState, redirect};
 use std::{
-    collections::HashMap,
     fs::{self},
-    io::Cursor,
     path::{Path, PathBuf},
 };
 use tauri::{
-    async_runtime::block_on,
     http::{Request, Response, ResponseBuilder},
     App, AppHandle, Manager, Wry,
 };
-use url::Url;
 use web_services::authentication::{authenticate, validate_account, AuthMode};
 
 use crate::{
     commands::{
-        get_account_skin, get_accounts, get_curseforge_categories, get_logs, get_screenshots,
-        import_zip, launch_instance, load_instances, login_to_account, obtain_manifests,
-        obtain_version, open_folder, read_log_lines, search_curseforge,
+        get_account_skin, get_accounts, get_curseforge_categories, get_logs,
+        get_screenshots, import_zip, launch_instance, load_instances, login_to_account,
+        obtain_manifests, obtain_version, open_folder, read_log_lines, search_curseforge,
     },
-    state::{instance_manager::InstanceState, resource_manager::ResourceState},
-    web_services::downloader::download_bytes_from_url,
+    state::{
+        instance_manager::InstanceState, resource_manager::ResourceState,
+    },
 };
 
 const MAX_LOGS: usize = 20;
@@ -55,7 +48,6 @@ fn main() {
             Ok(())
         })
         .register_uri_scheme_protocol("autmc", autmc_uri_scheme)
-        .register_uri_scheme_protocol("image", image_uri_scheme)
         .on_window_event(|event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event.event() {
                 info!("Closing");
@@ -76,7 +68,7 @@ fn main() {
             read_log_lines,
             import_zip,
             search_curseforge,
-            get_curseforge_categories
+            get_curseforge_categories,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -209,56 +201,6 @@ fn autmc_uri_scheme(
     });
     let body: Vec<u8> = "<h1>Hello World!</h1>".as_bytes().to_vec();
     ResponseBuilder::new().mimetype("text/html").body(body)
-}
-
-/// Callback for whem a query is sent to `image://` for image manipulation
-fn image_uri_scheme(
-    app_handle: &AppHandle<Wry>,
-    request: &Request,
-) -> Result<Response, Box<dyn std::error::Error>> {
-    info!("Retrieved request to custom uri scheme 'image://'");
-
-    let bad_response = ResponseBuilder::new().status(404).body(Vec::new());
-
-    let parsed_url: Url = Url::parse(request.uri())?;
-    let maybe_domain = parsed_url.domain();
-    if maybe_domain.is_none() || maybe_domain.is_some_and(|domain| domain != "resize") {
-        return bad_response;
-    }
-
-    let pairs: HashMap<_, _> = parsed_url.query_pairs().into_owned().collect();
-    if let (Some(url), Some(width), Some(height)) =
-        (pairs.get("url"), pairs.get("width"), pairs.get("height"))
-    {
-        // Splits at the '.' char and takes only the last element which should be the extension
-        let extension = url.split(".").collect::<Vec<&str>>().pop().unwrap();
-        let image_format = ImageFormat::from_extension(extension)
-            .ok_or(ImageError::Unsupported(ImageFormatHint::Unknown.into()))?;
-        
-        // Download the image bytes
-        // FIXME: Try to avoid blocking on download of bytes.
-        debug!("Blocking...");
-        let bytes = block_on(download_bytes_from_url(url))?;
-        debug!("Done Blocking");
-
-        // Load bytes into image with correct format and resize it
-        let image = load_from_memory_with_format(&bytes, image_format)?;
-        let resized_image = image.thumbnail(width.parse()?, height.parse()?);
-        
-        // Write the resized image to bytes
-        let mut result_bytes = Cursor::new(Vec::new());
-        resized_image.write_to(
-            &mut result_bytes,
-            image::ImageOutputFormat::from(ImageFormat::Png),
-        )?;
-
-        // Respond with the correct mimetype and image bytes
-        ResponseBuilder::new()
-            .mimetype(format!("image/{}", extension).as_str())
-            .body(result_bytes.into_inner())
-    } else {
-        bad_response
-    }
 }
 
 /// Sets up the logger and saves launcher logs to ${app_dir}/logs/launcher_log_${datetime}.log

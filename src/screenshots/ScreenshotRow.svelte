@@ -1,8 +1,6 @@
 <script lang="ts">
     import { convertFileSrc } from "@tauri-apps/api/tauri";
     import { slide } from "svelte/transition";
-    import VirtualList from "../components/virtual-list/VirtualList.svelte";
-    import { lazyload } from "../lazyload";
 
     export let instance: string;
     export let screenshots: string[];
@@ -26,7 +24,7 @@
 {#if shown}
     <div class="images" out:slide={{ duration: 350 }}>
         {#each formattedScreenshots as screenshot}
-            <img use:lazyload={screenshot} alt={screenshot} on:click on:keydown />
+            <img src={screenshot} alt={screenshot} on:click on:keydown />
         {/each}
     </div>
 {/if}
@@ -67,8 +65,8 @@
 
     .images > img {
         object-fit: cover;
-        max-width: 100%;
-        max-height: 100%;
+        width: 100%;
+        height: 100%;
         cursor: pointer;
     }
 

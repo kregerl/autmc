@@ -22,17 +22,17 @@
 <script lang="ts">
     import { invoke } from "@tauri-apps/api/tauri";
 
-    import DropdownMenu from "../../dropdown/DropdownMenu.svelte";
-    import { manifestStore } from "../../../store/manifeststore";
-    import TextBoxInput from "../../input/TextBoxInput.svelte";
+    import { manifestStore } from "../../store/manifeststore";
     import {
         CurseforgeCategory,
         categoryStore,
-    } from "../../../store/categorystore";
+    } from "../../store/categorystore";
 
     import VirtualList from "svelte-tiny-virtual-list";
     import InfiniteLoading from "svelte-infinite-loading";
     import CurseforgeModpackRow from "./CurseforgeModpackRow.svelte";
+    import DropdownMenu from "../../components/dropdown/DropdownMenu.svelte";
+    import TextBoxInput from "../../components/input/TextBoxInput.svelte";
 
     let selectedVersion: string;
     let selectedCategory: string;

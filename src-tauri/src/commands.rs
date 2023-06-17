@@ -8,7 +8,6 @@ use std::{
 };
 
 use flate2::read::GzDecoder;
-use image::EncodableLayout;
 use log::{debug, error, info, warn};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
@@ -28,7 +27,8 @@ use crate::{
         modpack::{
             curseforge::{
                 import_curseforge_zip, retrieve_curseforge_categories, search_curseforge_modpacks,
-                CurseforgeCategory, CurseforgeSortField, CurseforgeSearchAuthors, CurseforgeSearchImage, CurseforgeSearchEntry,
+                CurseforgeCategory, CurseforgeSearchAuthors, CurseforgeSearchEntry,
+                CurseforgeSearchImage, CurseforgeSortField,
             },
             modrinth::import_modrinth_zip,
         },
@@ -439,13 +439,13 @@ fn get_tag_for_line(line: &String) -> LineType {
 pub fn read_log_file(path: &Path) -> io::Result<Vec<TaggedLine>> {
     let bytes = fs::read(path)?;
     let lines: Vec<String> = if !bytes.is_empty() && bytes[..2] == GZIP_SIGNATURE {
-        let mut decoder = GzDecoder::new(bytes.as_bytes());
+        let mut decoder = GzDecoder::new(bytes.as_slice());
         let mut tmp_str = String::new();
         decoder.read_to_string(&mut tmp_str)?;
 
         tmp_str.lines().map(|line| line.into()).collect()
     } else {
-        BufReader::new(bytes.as_bytes())
+        BufReader::new(bytes.as_slice())
             .lines()
             .filter_map(|line| line.ok())
             .collect()
@@ -542,7 +542,14 @@ impl From<CurseforgeSearchEntry> for ModpackInformation {
 }
 
 #[tauri::command(async)]
-pub async fn search_curseforge(page: u32, search_filter: String, selected_version: String, selected_category: u32, selected_sort: String) -> Vec<ModpackInformation> {
+pub async fn search_curseforge(
+    page: u32,
+    search_filter: String,
+    selected_version: String,
+    selected_category: u32,
+    selected_sort: String,
+    app_handle: AppHandle<Wry>,
+) -> Vec<ModpackInformation> {
     debug!("selected_sort: {}", selected_sort);
     let field = CurseforgeSortField::from(selected_sort);
     let version = if selected_version == "All Versions" {
@@ -554,9 +561,16 @@ pub async fn search_curseforge(page: u32, search_filter: String, selected_versio
     debug!("selected_version: {}", selected_version);
     debug!("selected_category: {}", selected_category);
 
-    let response = search_curseforge_modpacks(page, &search_filter, version, selected_category, field).await.unwrap();
+    let response =
+        search_curseforge_modpacks(page, &search_filter, version, selected_category, field)
+            .await
+            .unwrap();
 
     debug!("Data: {:#?}", response.data.get(0));
 
-    response.data.into_iter().map(|entry| ModpackInformation::from(entry)).collect()
+    response
+        .data
+        .into_iter()
+        .map(|entry| ModpackInformation::from(entry))
+        .collect()
 }

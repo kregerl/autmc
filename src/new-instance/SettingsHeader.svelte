@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { Emphasis, classFromEmphasis } from "../../menu";
+    import { Emphasis, classFromEmphasis } from "../menu";
+
 
     export let text: string;
     export let emphasis: Emphasis = Emphasis.High;

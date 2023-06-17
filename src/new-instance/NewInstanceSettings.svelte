@@ -6,13 +6,13 @@
 
     import { navigate, useLocation } from "svelte-navigator";
 
-    import SvgButton, { Order } from "../buttons/SvgButton.svelte";
-    import TextBoxInput from "../input/TextBoxInput.svelte";
     import type { VersionState } from "./NewInstanceVersion.svelte";
-    import { Emphasis, ModloaderType, modloaderTypeToString } from "../../menu";
-    import CheckboxInput from "../input/CheckboxInput.svelte";
-    import SvgCircleHoverButton from "../buttons/SvgCircleHoverButton.svelte";
-    import { instanceStore } from "../../store/instancestore";
+    import { Emphasis, ModloaderType, modloaderTypeToString } from "../menu";
+    import { instanceStore } from "../store/instancestore";
+    import TextBoxInput from "../components/input/TextBoxInput.svelte";
+    import SvgCircleHoverButton from "../components/buttons/SvgCircleHoverButton.svelte";
+    import CheckboxInput from "../components/input/CheckboxInput.svelte";
+    import SvgButton, { Order } from "../components/buttons/SvgButton.svelte";
 
     interface InstanceSettings {
         instanceName: string;

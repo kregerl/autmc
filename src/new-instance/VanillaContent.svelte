@@ -1,12 +1,9 @@
 <script lang="ts">
-    import VirtualList from "../virtual-list/VirtualList.svelte";
-    import VirtualListRow from "../virtual-list/VirtualListRow.svelte";
-    import type {
-        VersionEntry,
-        VersionManifest,
-    } from "../../store/manifeststore";
-    import { ModloaderType } from "../../menu";
-    import CheckboxInput from "../input/CheckboxInput.svelte";
+    import CheckboxInput from "../components/input/CheckboxInput.svelte";
+    import VirtualList from "../components/virtual-list/VirtualList.svelte";
+    import VirtualListRow from "../components/virtual-list/VirtualListRow.svelte";
+    import { ModloaderType } from "../menu";
+    import type { VersionEntry, VersionManifest } from "../store/manifeststore";
 
     // Input
     export let versionManifest: VersionManifest;
@@ -84,7 +81,10 @@
         versionManifest.forge_versions.get(selectedVanillaVersion) ?? [];
 
     // On change of vanilla version on forge tabs, make sure to update the selection
-    $: if (selectedVanillaVersion == "" && modloaderType === ModloaderType.Forge) {
+    $: if (
+        selectedVanillaVersion == "" &&
+        modloaderType === ModloaderType.Forge
+    ) {
         selectedModloaderVersion = filteredForgeVersions.at(0);
     }
 
@@ -223,7 +223,7 @@
     <div class="filters flex-col">
         <span class="high-emphasis">Version Filters</span>
         {#each FILTERS as filter}
-            <CheckboxInput text={filter.name} bind:checked={filter.checked}/>
+            <CheckboxInput text={filter.name} bind:checked={filter.checked} />
         {/each}
     </div>
 </div>

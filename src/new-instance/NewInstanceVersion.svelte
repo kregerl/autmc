@@ -11,16 +11,17 @@
 
     import { navigate, useLocation } from "svelte-navigator";
 
-    import SvgButton from "../buttons/SvgButton.svelte";
     import VanillaContent from "./VanillaContent.svelte";
-    import Loader from "../Loader.svelte";
-    import { InstanceType, ModloaderType } from "../../menu";
-    import { VersionManifest, manifestStore } from "../../store/manifeststore";
     import { onMount } from "svelte";
     import ImportZip from "./ImportZip.svelte";
     import BrowseCurseforge from "./thirdparty-content/BrowseCurseforge.svelte";
+    import { InstanceType, ModloaderType } from "../menu";
+    import { VersionManifest, manifestStore } from "../store/manifeststore";
+    import Loader from "../components/Loader.svelte";
+    import SvgButton from "../components/buttons/SvgButton.svelte";
 
-    export let selectedInstanceType: InstanceType = InstanceType.Vanilla;
+    export let selectedInstanceType: InstanceType = InstanceType.Curseforge;
+    // export let selectedInstanceType: InstanceType = InstanceType.Vanilla;
 
     const location = useLocation();
     onMount(() => {
@@ -45,7 +46,7 @@
     }
 
     function importZip() {
-        invoke("import_zip", {zipPath: zipPath});
+        invoke("import_zip", { zipPath: zipPath });
         back();
     }
 
@@ -138,7 +139,7 @@
             {:else if selectedInstanceType === InstanceType.Modrinth}
                 <h1>TODO: Modrinth</h1>
             {:else if selectedInstanceType === InstanceType.Zip}
-                <ImportZip bind:zipPath/>
+                <ImportZip bind:zipPath />
             {/if}
         </div>
 
@@ -151,9 +152,19 @@
             />
 
             {#if selectedInstanceType === InstanceType.Zip && zipPath}
-                <SvgButton src="svg/Check.svg" alt="Done" on:click={importZip} />
+                <SvgButton
+                    src="svg/Check.svg"
+                    alt="Done"
+                    on:click={importZip}
+                />
             {:else}
-                <SvgButton disabled={selectedInstanceType === InstanceType.Zip && !zipPath} src="svg/RightArrow.svg" alt="Next" on:click={next} />
+                <SvgButton
+                    disabled={selectedInstanceType === InstanceType.Zip &&
+                        !zipPath}
+                    src="svg/RightArrow.svg"
+                    alt="Next"
+                    on:click={next}
+                />
             {/if}
         </div>
     </main>
