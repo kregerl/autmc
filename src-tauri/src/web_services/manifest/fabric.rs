@@ -89,7 +89,7 @@ pub async fn obtain_fabric_library_hashes(
         let hash_url = format!(
             "{}{}",
             library.url,
-            maven_to_vec(&library.name, Some(".sha1"), None).join(get_directory_separator())
+            maven_to_vec(&library.name, None, Some(".jar.sha1")).join(get_directory_separator())
         );
         let bytes = download_bytes_from_url(&hash_url).await?;
         let hash = String::from_utf8(bytes.to_vec())?;
