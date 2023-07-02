@@ -21,11 +21,22 @@
 
     let buttons: Array<Button | undefined> = [
         {
+            src: "svg/SingleGear.svg",
+            alt: "Manage",
+            callback: manageInstance,
+        },
+        {
             src: "svg/Folder.svg",
             alt: "Open Folder",
             callback: openFolder,
         },
     ];
+
+    function manageInstance(event: MouseEvent) {
+        // TODO: Got a instance management screen
+        
+        close();
+    }
 
     function openFolder(event: MouseEvent) {
         if (lastTarget) {
@@ -96,13 +107,13 @@
         in:slide={{duration: 350}}
     >
         {#each buttons as button}
-            <div class="button" on:click={button.callback} on:keydown>
+            <div class="button high-emphasis" on:click={button.callback} on:keydown>
                 <img src={button.src} alt={button.alt}>
                 {button.alt}    
             </div>
         {/each}
     </div>
-    <Modal on:close={close} />
+    <Modal on:close={close} --bg-opacity="0"/>
 {/if}
 <svelte:window on:contextmenu|preventDefault={onRightClick} />
 
@@ -135,6 +146,5 @@
         margin: 4px;
         margin-right: 8px;
         max-width: 1vw;
-        filter: invert(0.8);
     }
 </style>
