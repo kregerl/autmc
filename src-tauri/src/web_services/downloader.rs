@@ -8,7 +8,7 @@ use bytes::Bytes;
 use crypto::{digest::Digest, md5::Md5, sha1::Sha1};
 use futures::StreamExt;
 use log::{debug, error, info};
-use reqwest::header::HeaderMap;
+use reqwest::{header::HeaderMap};
 use serde::{de::DeserializeOwned, Serialize};
 
 const BUFFER_SIZE: usize = 8;
@@ -155,6 +155,7 @@ where
 
 /// Download the bytes for a file at the specified `url`
 pub async fn download_bytes_from_url(url: &str) -> reqwest::Result<Bytes> {
+    // FIXME: If the http request fails, this just ignores it. We should be checking status codes.
     let client = reqwest::Client::new();
     let response = client.get(url).send().await?;
     response.bytes().await

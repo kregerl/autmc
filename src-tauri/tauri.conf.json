@@ -75,11 +75,24 @@
       {
         "fullscreen": false,
         "height": 720,
+        "minHeight": 720,
         "resizable": true,
         "title": "Mc Launcher",
         "width": 1280,
+        "minWidth": 1280,
         "url": "index.html"
       }
-    ]
+    ],
+    "cli": {
+      "description": "Launches the headless launcher to run a given minecraft version.",
+      "args": [
+        {
+         "name": "version",
+         "short": "v",
+         "takesValue": true, 
+         "multiple": false
+        }
+      ]
+    }
   }
 }

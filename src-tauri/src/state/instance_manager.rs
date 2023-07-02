@@ -36,6 +36,8 @@ impl InstanceState {
     }
 }
 
+// TODO: Maybe "double fork" to keep the Minecraft instance once the launcher is closed. 
+// Would be an option in the launcher settings.
 pub struct InstanceManager {
     app_dir: PathBuf,
     instance_map: HashMap<String, InstanceConfiguration>,
