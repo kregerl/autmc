@@ -1,6 +1,6 @@
 <script lang="ts">
     import { invoke } from "@tauri-apps/api";
-    
+
     import LogsHeader from "./LogsHeader.svelte";
     import Loader from "../components/Loader.svelte";
     import VirtualList from "../components/virtual-list/VirtualList.svelte";
@@ -29,16 +29,22 @@
         });
         if (filter) {
             if (useRegex) {
-                return lines.filter(line => line.line.match(filter));
+                return lines.filter((line) => line.line.match(filter));
             } else {
-                return lines.filter(line => line.line.includes(filter));
+                return lines.filter((line) => line.line.includes(filter));
             }
-        } 
+        }
         return lines;
     }
 </script>
 
-<LogsHeader --grid-area="header" bind:selectedInstance bind:selectedLog bind:filter bind:useRegex/>
+<LogsHeader
+    --grid-area="header"
+    bind:selectedInstance
+    bind:selectedLog
+    bind:filter
+    bind:useRegex
+/>
 <div>
     {#if !selectedInstance || !selectedLog}
         <h1 class="high-emphasis">No Logs</h1>
@@ -64,6 +70,7 @@
         margin-left: 8px;
         grid-area: var(--grid-area);
         overflow: hidden;
+
     }
 
     p {

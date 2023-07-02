@@ -6,6 +6,10 @@
     export let modpackInformation: ModpackInformation;
     export let index: number;
 
+    $: sortedCateogories = modpackInformation.categories.sort((a, b) =>
+        a.name.localeCompare(b.name, "en", { numeric: true })
+    );
+
     $: authors = modpackInformation.authors
         .map((author) => author.name)
         .join(", ");
@@ -18,7 +22,7 @@
     on:keydown
 >
     <div class="img-wrapper">
-        <CanvasImage src={modpackInformation.logo.url} size={[100, 100]}/>
+        <CanvasImage src={modpackInformation.logo.url} size={[100, 100]} />
         <span class="downloads high-emphasis"
             >{formatDownloads(modpackInformation.downloadCount)}</span
         >
@@ -29,9 +33,9 @@
         <p class="summary high-emphasis">{modpackInformation.summary}</p>
     </div>
     <div class="categories-wrapper flex-row">
-        {#each modpackInformation.categories as category}
+        {#each sortedCateogories as category}
             <div class="category flex-row">
-                <CanvasImage src={category.iconUrl} size={[32, 32]}/>
+                <CanvasImage src={category.iconUrl} size={[32, 32]} />
                 <p class="high-emphasis">{category.name}</p>
             </div>
         {/each}
@@ -39,6 +43,15 @@
 </div>
 
 <style>
+    #test {
+        width: 32px;
+        height: 32px;
+    }
+    img {
+        width: 100px;
+        height: 100px;
+    }
+
     .odd {
         background-color: var(--medium-light-black);
     }

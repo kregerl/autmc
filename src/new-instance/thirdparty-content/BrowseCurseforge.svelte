@@ -33,6 +33,7 @@
     import CurseforgeModpackRow from "./CurseforgeModpackRow.svelte";
     import DropdownMenu from "../../components/dropdown/DropdownMenu.svelte";
     import TextBoxInput from "../../components/input/TextBoxInput.svelte";
+    import CurseforgePreviewPage from "./curseforge/CurseforgePreviewPage.svelte";
 
     let selectedVersion: string;
     let selectedCategory: string;
@@ -99,6 +100,7 @@
     }
 
     async function infiniteHandler({ detail: { loaded, complete, error } }) {
+        console.log("Getting page", page);
         let newData = await invoke<ModpackInformation[]>("search_curseforge", {
             page: page,
             searchFilter: searchFilter,
@@ -139,9 +141,11 @@
         }
     }
 
+    let selectedModpackId: number | undefined;
     function selectModpack() {
         // TODO: Go to version selection
-        let modpackId = this.id;
+        selectedModpackId = this.id;
+        console.log("modpackId", selectedModpackId);
     }
 
 </script>
@@ -200,6 +204,9 @@
         </div>
     </div>
 {/await}
+{#if selectedModpackId !== undefined}
+    <CurseforgePreviewPage on:close={() => selectedModpackId = undefined}/>
+{/if}
 
 <style>
     .list-wrapper {
@@ -212,6 +219,7 @@
     .modpacks {
         width: 100%;
         height: 100%;
+        overflow-y: hidden;
     }
 
     .header {

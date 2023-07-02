@@ -156,7 +156,7 @@
                     alt="Done"
                     on:click={importZip}
                 />
-            {:else}
+            {:else if selectedInstanceType !== InstanceType.Curseforge}
                 <SvgButton
                     disabled={selectedInstanceType === InstanceType.Zip &&
                         !zipPath}

@@ -142,6 +142,7 @@
 
 	svelte-virtual-list-contents, svelte-virtual-list-row {
 		display: block;
+		
 	}
 
 	svelte-virtual-list-row {

@@ -12,10 +12,11 @@
     import { UnlistenFn, listen } from "@tauri-apps/api/event";
     import TextBoxInput from "./components/input/TextBoxInput.svelte";
     import CheckboxInput from "./components/input/CheckboxInput.svelte";
+    import CanvasImage from "./components/CanvasImage.svelte";
 
-    let useRegex: boolean;
-    let instanceFilters: string;
-    let promise: Promise<InstanceConfiguration[]> = retrieveInstances(useRegex, instanceFilters);
+    let useRegex: boolean = false;
+    let instanceFilters: string = "";
+    let promise: Promise<InstanceConfiguration[]>;
 
     $: promise = retrieveInstances(useRegex, instanceFilters);
 
@@ -28,19 +29,31 @@
         console.log("launch_instance -- this", this);
     }
 
-    async function retrieveInstances(useRegex: boolean, filter: string, force: boolean = false): Promise<InstanceConfiguration[]> {
+    async function retrieveInstances(
+        useRegex: boolean,
+        filter: string,
+        force: boolean = false
+    ): Promise<InstanceConfiguration[]> {
         if ($instanceStore === undefined || force) {
             $instanceStore = await invoke("load_instances");
-            $instanceStore.sort((a,b) => a.instance_name.localeCompare(b.instance_name, "en", {numeric: true}));
+            $instanceStore.sort((a, b) =>
+                a.instance_name.localeCompare(b.instance_name, "en", {
+                    numeric: true,
+                })
+            );
         }
-        
+
         if (filter) {
             if (useRegex) {
-                return $instanceStore.filter((instance) => instance.instance_name.match(filter))
+                return $instanceStore.filter((instance) =>
+                    instance.instance_name.match(filter)
+                );
             } else {
-                return $instanceStore.filter((instance) => instance.instance_name.includes(filter))
+                return $instanceStore.filter((instance) =>
+                    instance.instance_name.includes(filter)
+                );
             }
-        } 
+        }
 
         return $instanceStore;
     }
@@ -55,13 +68,17 @@
 
     onDestroy(() => {
         instanceCreatedListener();
-    })
+    });
 </script>
 
 <div class="flex-row instances-header">
-    <TextBoxInput id="searchinstances" bind:value={instanceFilters} label="Filter Instances"/>
+    <TextBoxInput
+        id="searchinstances"
+        bind:value={instanceFilters}
+        label="Filter Instances"
+    />
     <div class="regex-wrapper">
-        <CheckboxInput text="Use Regex" bind:checked={useRegex}/>
+        <CheckboxInput text="Use Regex" bind:checked={useRegex} />
     </div>
 </div>
 
@@ -77,15 +94,21 @@
                     on:click={launchInstance}
                     on:keydown
                 >
-                    <div class="background">
+                    <div class="instance-image-wrapper">
+                        <img
+                            src="https://media.forgecdn.net/avatars/611/496/637995823847751059.png"
+                            alt=""
+                        />
                         <div class="version-info high-emphasis">
                             {instance.modloader_type}
                             {instance.modloader_version}
                         </div>
                     </div>
+
                     <div class="footer">
-                        <h2 class="high-emphasis">{instance.instance_name}</h2>
-                        <!-- TODO: Add actual author here. -->
+                        <h3 class="high-emphasis instance-name">
+                            {instance.instance_name}
+                        </h3>
                         <p class="medium-emphasis">Created By: You</p>
                     </div>
                 </div>
@@ -100,7 +123,7 @@
         />
         <h3 class="medium-emphasis">New Instance</h3>
     </button>
-    <!-- <RightClickModal validClasses={["instance"]}/> -->
+    <RightClickModal validClasses={["instance"]} />
 </div>
 
 <style>
@@ -132,13 +155,13 @@
         background-color: var(--light-black);
     }
 
-    h2,
+    h3,
     p {
         color: white;
         margin: 0 0 0 6px;
     }
 
-    h2 {
+    h3 {
         font-size: 1.8rem;
     }
 
@@ -154,42 +177,71 @@
         user-select: none;
     }
 
+    .instance-name {
+        width: 90%;
+        text-overflow: ellipsis;
+        overflow: hidden;
+        white-space: nowrap;
+        margin-top: 8px;
+    }
+
     .instances {
+        /* Change these */
+        --grid-layout-gap: 10px;
+        --grid-column-count: 6;
+        --grid-item--min-width: 100px;
+
+        --gap-count: calc(var(--grid-column-count) - 1);
+        --total-gap-width: calc(var(--gap-count) * var(--grid-layout-gap));
+        --grid-item--max-width: calc(
+            (100% - var(--total-gap-width)) / var(--grid-column-count)
+        );
+
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-        grid-template-rows: repeat(auto-fill, minmax(0, 250px));
-        gap: 16px;
-        width: 100%;
-        height: 100%;
+        grid-template-columns: repeat(
+            auto-fill,
+            minmax(
+                max(var(--grid-item--min-width), var(--grid-item--max-width)),
+                1fr
+            )
+        );
+        grid-gap: var(--grid-layout-gap);
+        overflow-y: scroll;
+    }
+
+    @media only screen and (max-width: 1300px) {
+        .instances {
+            --grid-column-count: 4;
+        }
     }
 
     .instance {
+        display: flex;
+        flex-direction: column;
         background-color: var(--light-black);
         width: 100%;
+        aspect-ratio: 1/1.2;
         border-radius: 4px;
-        aspect-ratio: 3/2;
         -webkit-user-select: none;
         user-select: none;
         transition: 0.15s linear;
+    }
+
+    .instance > .instance-image-wrapper {
+        position: relative;
+        height: 75%;
+        margin: 8px;
+    }
+
+
+    .instance-image-wrapper > img {
+        width: 100%;
     }
 
     .instance:hover {
         background-color: var(--lightest-black);
         cursor: pointer;
         border-radius: 0px;
-    }
-
-    .instance > .background {
-        position: relative;
-        background: linear-gradient(
-                0deg,
-                rgba(0, 0, 0, 0.35),
-                rgba(0, 0, 0, 0.35)
-            ),
-            url(https://media.forgecdn.net/avatars/611/496/637995823847751059.png)
-                100% 20% / cover no-repeat;
-        height: 75%;
-        margin: 4px;
     }
 
     .version-info {
@@ -208,6 +260,7 @@
     .instances-header {
         margin: 12px 0 0 24px;
         grid-area: header;
+        z-index: 2;
     }
 
     .regex-wrapper {
