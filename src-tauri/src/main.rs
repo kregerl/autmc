@@ -150,6 +150,14 @@ fn setup(app: &mut App<Wry>) -> Result<(), Box<(dyn StdError + 'static)>> {
             }
         }
     });
+    match app.get_cli_matches() {
+        Ok(matches) => {
+            info!("Matches: {:#?}", matches);
+        },
+        Err(e) => {
+            error!("Error retrieving cli arguments: {}", e);
+        }
+    }
     Ok(())
 }
 
