@@ -156,7 +156,7 @@ pub async fn obtain_version(
     );
     let instance_name = settings.instance_name.clone();
 
-    create_instance(settings, &app_handle).await?;
+    create_instance(settings, &app_handle, None).await?;
     let instance_state: State<InstanceState> = app_handle
         .try_state()
         .expect("`InstanceState` should already be managed.");

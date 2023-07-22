@@ -996,6 +996,7 @@ pub struct InstanceSettings {
     #[serde(deserialize_with = "as_modloader_type")]
     pub modloader_type: ModloaderType,
     pub modloader_version: String,
+    pub instance_icon: Option<PathBuf>,
     additional_jvm_arguments: String,
     java_path_override: String,
     resolution_width: String,
@@ -1021,12 +1022,14 @@ impl InstanceSettings {
         vanilla_version: String,
         modloader_type: ModloaderType,
         modloader_version: String,
+        instance_icon: Option<PathBuf>
     ) -> Self {
         Self {
             instance_name,
             vanilla_version,
             modloader_type,
             modloader_version,
+            instance_icon,
             additional_jvm_arguments: "".into(),
             java_path_override: "".into(),
             resolution_width: "800".into(),
@@ -1043,6 +1046,7 @@ impl InstanceSettings {
 pub async fn create_instance(
     settings: InstanceSettings,
     app_handle: &AppHandle<Wry>,
+    author: Option<&str>,
 ) -> ManifestResult<()> {
     let resource_state: State<ResourceState> = app_handle
         .try_state()
@@ -1310,6 +1314,9 @@ pub async fn create_instance(
         arguments: persitent_arguments,
         modloader_type: settings.modloader_type,
         modloader_version: instance_version,
+        author: author.unwrap_or("You").into(),
+        instance_icon: None,
+        playtime: Some(0)
     })?;
     debug!("After persistent args");
     extract_natives(

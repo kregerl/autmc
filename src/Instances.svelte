@@ -12,7 +12,6 @@
     import { UnlistenFn, listen } from "@tauri-apps/api/event";
     import TextBoxInput from "./components/input/TextBoxInput.svelte";
     import CheckboxInput from "./components/input/CheckboxInput.svelte";
-    import CanvasImage from "./components/CanvasImage.svelte";
 
     let useRegex: boolean = false;
     let instanceFilters: string = "";
@@ -96,11 +95,11 @@
                 >
                     <div class="instance-image-wrapper">
                         <img
-                            src="https://media.forgecdn.net/avatars/611/496/637995823847751059.png"
+                            src="grass.png"
                             alt=""
                         />
                         <div class="version-info high-emphasis">
-                            {instance.modloader_type}
+                            {instance.modloader_type !== "None" ? instance.modloader_type : ""}
                             {instance.modloader_version}
                         </div>
                     </div>
@@ -234,8 +233,10 @@
     }
 
 
+
     .instance-image-wrapper > img {
         width: 100%;
+        image-rendering: crisp-edges;
     }
 
     .instance:hover {

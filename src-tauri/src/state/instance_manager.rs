@@ -26,6 +26,9 @@ pub struct InstanceConfiguration {
     pub arguments: Vec<String>,
     pub modloader_type: ModloaderType,
     pub modloader_version: String,
+    pub author: String,
+    pub instance_icon: Option<PathBuf>,
+    pub playtime: Option<u32>,
 }
 
 pub struct InstanceState(pub Arc<AsyncMutex<InstanceManager>>);
@@ -192,7 +195,7 @@ impl InstanceManager {
                     result = stdout_reader.next_line() => {
                         match result {
                             Ok(Some(line)) => {
-                                app_handle.emit_all("instance-logging", Logging { instance_name: instance_name.clone(), category: "running".into(), line }).unwrap();
+                                app_handle.emit_all("instance-logging", Logging { instance_name: instance_name.clone(), category: "Running".into(), line }).unwrap();
                             },
                             Err(_) => break,
                             _ => (),

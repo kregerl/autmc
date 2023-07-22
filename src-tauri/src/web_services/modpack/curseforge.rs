@@ -42,7 +42,7 @@ pub struct CurseforgeManifest {
     // manifest_version: u32,
     name: String,
     // version: String,
-    // author: String,
+    author: String,
     files: Vec<CurseforgeFile>,
     overrides: String,
 }
@@ -490,9 +490,10 @@ pub async fn import_curseforge_zip(
         vanilla_version.into(),
         modloader_type.into(),
         full_modloader_version,
+        None
     );
 
-    create_instance(settings, &app_handle).await.unwrap();
+    create_instance(settings, &app_handle, Some(&curseforge_manifest.author)).await.unwrap();
 
     let instance_state: State<InstanceState> = app_handle
         .try_state()

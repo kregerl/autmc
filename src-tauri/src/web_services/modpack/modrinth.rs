@@ -6,7 +6,6 @@ use std::{
 };
 
 use log::{debug, error, info};
-use regex::internal::Inst;
 use serde::Deserialize;
 use tauri::{AppHandle, Manager, State, Wry};
 use zip::ZipArchive;
@@ -113,9 +112,10 @@ pub async fn import_modrinth_zip(
         manifest.dependencies.minecraft,
         modloader_type,
         modloader_version,
+        None
     );
 
-    create_instance(settings, app_handle).await.unwrap();
+    create_instance(settings, app_handle, Some("Modrinth")).await.unwrap();
 
     let instance_state: State<InstanceState> = app_handle
         .try_state()

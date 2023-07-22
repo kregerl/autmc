@@ -84,11 +84,11 @@
       }
     ],
     "cli": {
-      "description": "Launches the headless launcher to run a given minecraft version.",
+      "description": "Launches the headless launcher to run a given minecraft instance.",
       "args": [
         {
-         "name": "version",
-         "short": "v",
+         "name": "instance",
+         "short": "i",
          "takesValue": true, 
          "multiple": false
         }
