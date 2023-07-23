@@ -177,11 +177,11 @@
     }
 
     .instance-name {
-        width: 90%;
+        width: 95%;
         display: inline-block;
         overflow: hidden;
         white-space: nowrap;
-        margin-top: 8px;
+        margin-top: 4px;
         text-overflow: ellipsis;
         font-weight: bold;
     }
