@@ -68,6 +68,7 @@
     onDestroy(() => {
         instanceCreatedListener();
     });
+
 </script>
 
 <div class="flex-row instances-header">
@@ -94,20 +95,19 @@
                     on:keydown
                 >
                     <div class="instance-image-wrapper">
-                        <img
-                            src="grass.png"
-                            alt=""
-                        />
+                        <img src="grass.png" alt="" />
                         <div class="version-info high-emphasis">
-                            {instance.modloader_type !== "None" ? instance.modloader_type : ""}
+                            {instance.modloader_type !== "None"
+                                ? instance.modloader_type
+                                : ""}
                             {instance.modloader_version}
                         </div>
                     </div>
 
                     <div class="footer">
-                        <h3 class="high-emphasis instance-name">
+                        <p class="high-emphasis instance-name">
                             {instance.instance_name}
-                        </h3>
+                        </p>
                         <p class="medium-emphasis">Created By: You</p>
                     </div>
                 </div>
@@ -178,16 +178,18 @@
 
     .instance-name {
         width: 90%;
-        text-overflow: ellipsis;
+        display: inline-block;
         overflow: hidden;
         white-space: nowrap;
         margin-top: 8px;
+        text-overflow: ellipsis;
+        font-weight: bold;
     }
 
     .instances {
         /* Change these */
         --grid-layout-gap: 10px;
-        --grid-column-count: 6;
+        --grid-column-count: 8;
         --grid-item--min-width: 100px;
 
         --gap-count: calc(var(--grid-column-count) - 1);
@@ -210,7 +212,7 @@
 
     @media only screen and (max-width: 1300px) {
         .instances {
-            --grid-column-count: 4;
+            --grid-column-count: 6;
         }
     }
 
@@ -231,8 +233,6 @@
         height: 75%;
         margin: 8px;
     }
-
-
 
     .instance-image-wrapper > img {
         width: 100%;

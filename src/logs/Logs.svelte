@@ -4,6 +4,9 @@
     import LogsHeader from "./LogsHeader.svelte";
     import Loader from "../components/Loader.svelte";
     import VirtualList from "../components/virtual-list/VirtualList.svelte";
+    import { onDestroy, onMount } from "svelte";
+    import { UnlistenFn, listen } from "@tauri-apps/api/event";
+    import { logStore } from "../store/logstore";
 
     let selectedInstance: string;
     let selectedLog: string;
@@ -36,6 +39,27 @@
         }
         return lines;
     }
+
+    interface Logging {
+        instance_name: string;
+        category: string;
+        line: string;
+    }
+
+    let loggingUnlistener: UnlistenFn;
+    onMount(async () => {
+        loggingUnlistener = await listen<Logging>(
+            "instance-logging",
+            (event) => {
+                const payload = event.payload;
+                // selectedInstance = payload.instance_name;
+                // $logStore.set(selectedInstance, [
+                //     ...$logStore.get(selectedInstance),
+                //     payload.category,
+                // ]);
+            }
+        );
+    });
 </script>
 
 <LogsHeader
@@ -48,6 +72,12 @@
 <div>
     {#if !selectedInstance || !selectedLog}
         <h1 class="high-emphasis">No Logs</h1>
+        <!-- {:else if selectedLog === "Running"}
+    <VirtualList items={runningLogLines} let:item>
+        <p class=" line high-emphasis">
+            {item}
+        </p>
+    </VirtualList> -->
     {:else}
         {#await retrieveLogLines(useRegex, selectedInstance, selectedLog, filter)}
             <Loader --color="var(--medium-black)" />
@@ -70,7 +100,6 @@
         margin-left: 8px;
         grid-area: var(--grid-area);
         overflow: hidden;
-
     }
 
     p {

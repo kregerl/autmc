@@ -15,12 +15,14 @@ use commands::show_microsoft_login_page;
 use log::{error, info, warn};
 use regex::Regex;
 use serde::ser::StdError;
+use serde_json::Value;
 use state::{account_manager::AccountState, redirect};
 use std::{
     fs::{self},
     path::{Path, PathBuf},
 };
 use tauri::{
+    api::cli::Matches,
     http::{Request, Response, ResponseBuilder},
     App, AppHandle, Manager, Wry,
 };
@@ -28,12 +30,14 @@ use web_services::authentication::{authenticate, validate_account, AuthMode};
 
 use crate::{
     commands::{
-        get_account_skin, get_accounts, get_curseforge_categories, get_logs,
-        get_screenshots, import_zip, launch_instance, load_instances, login_to_account,
-        obtain_manifests, obtain_version, open_folder, read_log_lines, search_curseforge,
+        get_account_skin, get_accounts, get_curseforge_categories, get_logs, get_screenshots,
+        import_zip, launch_instance, load_instances, login_to_account, obtain_manifests,
+        obtain_version, open_folder, read_log_lines, search_curseforge,
     },
     state::{
-        instance_manager::InstanceState, resource_manager::ResourceState,
+        account_manager::{self, Account},
+        instance_manager::InstanceState,
+        resource_manager::ResourceState,
     },
 };
 
@@ -95,9 +99,24 @@ fn setup(app: &mut App<Wry>) -> Result<(), Box<(dyn StdError + 'static)>> {
     app.manage(InstanceState::new(&app_dir));
     let app_handle = app.handle();
 
+    let cli_matches = match app.get_cli_matches() {
+        Ok(matches) => matches,
+        Err(e) => {
+            error!("Invalid CLI Arguments: {}", e);
+            app_handle.exit(1);
+            Matches::default()
+        }
+    };
+
+    info!("Arguments: {:#?}", cli_matches);
+    // let arguments = cli_matches.args.get("instance").unwrap();
+    // if let Value::String(value) = &arguments.value {
+    //     launch_instance(value.into(), app_handle.clone()).await;
+    // }
+
     // Spawn an async thread and use the app_handle to refresh active account.
     // TODO: Maybe emit event to display a toast telling the user what happened.
-    tauri::async_runtime::spawn(async move {
+    tauri::async_runtime::block_on(async move {
         let account_state: tauri::State<AccountState> = app_handle
             .try_state()
             .expect("`AccountState` should already be managed.");
@@ -141,7 +160,8 @@ fn setup(app: &mut App<Wry>) -> Result<(), Box<(dyn StdError + 'static)>> {
                         "Could not properly serialize account information: {}",
                         error
                     );
-                }
+                } 
+                
             }
             None => {
                 if let Err(error) = redirect(&app_handle, "login") {
@@ -150,14 +170,7 @@ fn setup(app: &mut App<Wry>) -> Result<(), Box<(dyn StdError + 'static)>> {
             }
         }
     });
-    match app.get_cli_matches() {
-        Ok(matches) => {
-            info!("Matches: {:#?}", matches);
-        },
-        Err(e) => {
-            error!("Error retrieving cli arguments: {}", e);
-        }
-    }
+   
     Ok(())
 }
 
