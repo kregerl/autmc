@@ -1,17 +1,22 @@
 <script lang="ts">
     import { invoke } from "@tauri-apps/api/tauri";
+    import { UnlistenFn, listen } from "@tauri-apps/api/event";
+    import { onDestroy, onMount } from "svelte";
     import { navigate } from "svelte-navigator";
 
     import {
         InstanceConfiguration,
         instanceStore,
     } from "./store/instancestore";
-    import Loader from "./components/Loader.svelte";
+    import TextLoader from "./components/loader/TextLoader.svelte";
     import RightClickModal from "./modal/RightClickModal/RightClickModal.svelte";
-    import { onDestroy, onMount } from "svelte";
-    import { UnlistenFn, listen } from "@tauri-apps/api/event";
     import TextBoxInput from "./components/input/TextBoxInput.svelte";
     import CheckboxInput from "./components/input/CheckboxInput.svelte";
+    import {
+        InstanceState,
+        instanceStateStore,
+    } from "./store/instancestatetore";
+    import CircleLoader from "./components/loader/CircleLoader.svelte";
 
     let useRegex: boolean = false;
     let instanceFilters: string = "";
@@ -25,7 +30,12 @@
 
     async function launchInstance() {
         await invoke("launch_instance", { instanceName: this.id });
+        $instanceStateStore = new Map([
+            ...$instanceStateStore,
+            [this.id, InstanceState.Initializing],
+        ]);
         console.log("launch_instance -- this", this);
+        console.log("states", $instanceStateStore);
     }
 
     async function retrieveInstances(
@@ -58,17 +68,47 @@
     }
 
     let instanceCreatedListener: UnlistenFn;
+    let loggingUnlistener: UnlistenFn;
+    interface Logging {
+        instance_name: string;
+        category: string;
+        line: string;
+    }
     onMount(async () => {
         instanceCreatedListener = await listen("instance-done", (event) => {
             console.log("Here");
             promise = retrieveInstances(useRegex, instanceFilters, true);
         });
+
+        loggingUnlistener = await listen<Logging>(
+            "instance-logging",
+            (event) => {
+                const payload = event.payload;
+                console.log("payload", payload);
+                if (
+                    $instanceStateStore.get(payload.instance_name) ===
+                    InstanceState.Initialized
+                )
+                    return;
+
+                if (
+                    payload.line.includes("Setting user:") ||
+                    payload.line.includes("Initializing LWJGL OpenAL")
+                ) {
+                    $instanceStateStore = new Map([
+                        ...$instanceStateStore,
+                        [payload.instance_name, InstanceState.Initialized],
+                    ]);
+                }
+            }
+        );
+
     });
 
     onDestroy(() => {
         instanceCreatedListener();
+        loggingUnlistener();
     });
-
 </script>
 
 <div class="flex-row instances-header">
@@ -85,7 +125,7 @@
 <div class="instances-wrapper">
     <div class="instances">
         {#await promise}
-            <Loader />
+            <TextLoader />
         {:then instances}
             {#each instances as instance}
                 <div
@@ -95,6 +135,20 @@
                     on:keydown
                 >
                     <div class="instance-image-wrapper">
+                        {#if $instanceStateStore.get(instance.instance_name) !== undefined}
+                            <div class="loader-overlay">
+                                {#if $instanceStateStore.get(instance.instance_name) == InstanceState.Initializing}
+                                    <CircleLoader />
+                                {:else if $instanceStateStore.get(instance.instance_name) == InstanceState.Initialized}
+                                    <img
+                                        src="svg/Play.svg"
+                                        alt="Running"
+                                        width="36"
+                                        height="36"
+                                    />
+                                {/if}
+                            </div>
+                        {/if}
                         <img src="grass.png" alt="" />
                         <div class="version-info high-emphasis">
                             {instance.modloader_type !== "None"
@@ -108,7 +162,9 @@
                         <p class="high-emphasis instance-name">
                             {instance.instance_name}
                         </p>
-                        <p class="author medium-emphasis">Created By: {instance.author}</p>
+                        <p class="author medium-emphasis">
+                            Created By: {instance.author}
+                        </p>
                     </div>
                 </div>
             {/each}
@@ -168,7 +224,6 @@
         margin-top: 2px;
         font-size: 1.4rem;
     }
-
 
     .author {
         text-overflow: ellipsis;
@@ -271,5 +326,17 @@
 
     .regex-wrapper {
         margin: 12px 0 0 8px;
+    }
+
+    .loader-overlay {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        z-index: 1;
+        background-color: rgba(0, 0, 0, 0.65);
+        padding-bottom: 5px;
     }
 </style>

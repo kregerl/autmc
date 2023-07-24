@@ -8,6 +8,10 @@
     import { fade } from "svelte/transition";
     import Logs from "./logs/Logs.svelte";
     import Screenshots from "./screenshots/Screenshots.svelte";
+    import { onDestroy, onMount } from "svelte";
+    import type { Unlisten } from "svelte-navigator/types/NavigatorHistory";
+    import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+    import { ExitCode, instanceStateStore } from "./store/instancestatetore";
 
     let activeMenuId: MenuId = MenuId.Instances;
     let openModal: OpenModalType = OpenModalType.None;
@@ -26,9 +30,29 @@
     function closeSettingsModal() {
         openModal = OpenModalType.None;
     }
+
+    let instanceStatusListener: UnlistenFn;
+    onMount(async () => {
+        instanceStatusListener = await listen<ExitCode>(
+            "instance-exit",
+            (event) => {
+                let exitCode = event.payload;
+                if (exitCode.code != 0) {
+                    // TODO: Display errors to user
+                    console.log("Log error here");
+                }
+                $instanceStateStore.delete(exitCode.instanceName);
+                $instanceStateStore = $instanceStateStore;
+            }
+        );
+    });
+
+    onDestroy(() => {
+        instanceStatusListener();
+    });
 </script>
 
-<main out:fade={{duration: 100}}>
+<main out:fade={{ duration: 100 }}>
     <div class="side-menu flex-col">
         <div class="side-menu-top">
             <HamburgerButton
@@ -97,9 +121,9 @@
     {#if activeMenuId == MenuId.Instances}
         <Instances --grid-area="content" />
     {:else if activeMenuId == MenuId.Screenshots}
-        <Screenshots --grid-area="header / header / content / content"/>
+        <Screenshots --grid-area="header / header / content / content" />
     {:else if activeMenuId == MenuId.Logs}
-        <Logs --grid-area="content"/>
+        <Logs --grid-area="content" />
     {/if}
 </main>
 

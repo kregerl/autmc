@@ -17,7 +17,7 @@
     import BrowseCurseforge from "./thirdparty-content/BrowseCurseforge.svelte";
     import { InstanceType, ModloaderType } from "../menu";
     import { VersionManifest, manifestStore } from "../store/manifeststore";
-    import Loader from "../components/Loader.svelte";
+    import TextLoader from "../components/loader/TextLoader.svelte";
     import SvgButton from "../components/buttons/SvgButton.svelte";
 
     export let selectedInstanceType: InstanceType = InstanceType.Vanilla;
@@ -80,7 +80,7 @@
 </script>
 
 {#await retrieveManifests()}
-    <Loader />
+    <TextLoader />
 {:then versionManifest}
     <main>
         <div class="tabs flex-row">

@@ -39,7 +39,7 @@ impl InstanceState {
     }
 }
 
-// TODO: Maybe "double fork" to keep the Minecraft instance once the launcher is closed. 
+// TODO: Maybe "double fork" to keep the Minecraft instance once the launcher is closed.
 // Would be an option in the launcher settings.
 pub struct InstanceManager {
     app_dir: PathBuf,
@@ -114,7 +114,10 @@ impl InstanceManager {
     }
 
     pub fn get_instance_configurations(&self) -> Vec<InstanceConfiguration> {
-        self.instance_map.values().map(|instance| instance.clone()).collect()
+        self.instance_map
+            .values()
+            .map(|instance| instance.clone())
+            .collect()
     }
 
     pub fn get_instance_names(&self) -> Vec<String> {
@@ -156,6 +159,7 @@ impl InstanceManager {
                 let child_handle = Arc::new(AsyncMutex::new(child));
                 self.tick_instance(instance_name.into(), child_handle.clone(), app_handle);
                 self.children.insert(instance_name.into(), child_handle);
+                debug!("After instance launch");
             }
             None => error!("Unknown instance name: {}", instance_name),
         }
@@ -212,6 +216,13 @@ impl InstanceManager {
                         match result {
                             Ok(exit_status) => {
                                 debug!("Child exited with exit code: {}", exit_status);
+                                #[derive(Serialize, Clone)]
+                                #[serde(rename_all = "camelCase")]
+                                struct ExitCode {
+                                    instance_name: String,
+                                    code: Option<i32>
+                                }
+                                app_handle.emit_all("instance-exit", ExitCode {instance_name: instance_name.clone(), code: exit_status.code()}).unwrap();
                                 break;
                             },
                             Err(_) => break,

@@ -2,7 +2,7 @@
     import { invoke } from "@tauri-apps/api";
 
     import LogsHeader from "./LogsHeader.svelte";
-    import Loader from "../components/Loader.svelte";
+    import TextLoader from "../components/loader/TextLoader.svelte";
     import VirtualList from "../components/virtual-list/VirtualList.svelte";
     import { onDestroy, onMount } from "svelte";
     import { UnlistenFn, listen } from "@tauri-apps/api/event";
@@ -80,7 +80,7 @@
     </VirtualList> -->
     {:else}
         {#await retrieveLogLines(useRegex, selectedInstance, selectedLog, filter)}
-            <Loader --color="var(--medium-black)" />
+            <TextLoader --color="var(--medium-black)" />
         {:then lines}
             {#if lines.length == 0}
                 <h1 class="high-emphasis">No lines in {selectedLog}</h1>

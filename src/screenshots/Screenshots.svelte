@@ -2,7 +2,7 @@
     import { invoke } from "@tauri-apps/api";
     
     import VirtualList from "../components/virtual-list/VirtualList.svelte";
-    import Loader from "../components/Loader.svelte";
+    import TextLoader from "../components/loader/TextLoader.svelte";
     import ScreenshotRow from "./ScreenshotRow.svelte";
     import { screenshotStore } from "../store/screenshotstore";
 
@@ -23,7 +23,7 @@
 
 <div>
     {#await getScreenshots()}
-        <Loader />
+        <TextLoader />
     {:then screenshots}
     <VirtualList items={[...screenshots]} let:item>
         <ScreenshotRow instance={item[0]} screenshots={item[1]} />
