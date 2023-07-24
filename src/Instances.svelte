@@ -108,7 +108,7 @@
                         <p class="high-emphasis instance-name">
                             {instance.instance_name}
                         </p>
-                        <p class="medium-emphasis">Created By: You</p>
+                        <p class="author medium-emphasis">Created By: {instance.author}</p>
                     </div>
                 </div>
             {/each}
@@ -167,6 +167,11 @@
     p {
         margin-top: 2px;
         font-size: 1.4rem;
+    }
+
+
+    .author {
+        text-overflow: ellipsis;
     }
 
     .instances-wrapper {

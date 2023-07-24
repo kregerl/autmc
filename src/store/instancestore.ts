@@ -8,4 +8,7 @@ export interface InstanceConfiguration {
     arguments: string;
     modloader_type: string;
     modloader_version: string;
+    author: string;
+    instance_icon?: string;
+    playtime: number;
 }
