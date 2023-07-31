@@ -1,6 +1,6 @@
 import { writable } from "svelte/store";
 
-export const instanceStore = writable<InstanceConfiguration[]>([]);
+export const instanceStore = writable<InstanceConfiguration[]>();
 
 export interface InstanceConfiguration {
     instance_name: string;

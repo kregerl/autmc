@@ -116,7 +116,7 @@ fn setup(app: &mut App<Wry>) -> Result<(), Box<(dyn StdError + 'static)>> {
 
     // Spawn an async thread and use the app_handle to refresh active account.
     // TODO: Maybe emit event to display a toast telling the user what happened.
-    tauri::async_runtime::block_on(async move {
+    tauri::async_runtime::spawn(async move {
         let account_state: tauri::State<AccountState> = app_handle
             .try_state()
             .expect("`AccountState` should already be managed.");
