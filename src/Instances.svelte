@@ -17,7 +17,9 @@
         instanceStateStore,
     } from "./store/instancestatetore";
     import CircleLoader from "./components/loader/CircleLoader.svelte";
+    import ErrorModal from "./modal/ErrorModal.svelte";
 
+    let isErrorModalOpen = true;
     let useRegex: boolean = false;
     let instanceFilters: string = "";
     let promise: Promise<InstanceConfiguration[]>;
@@ -65,6 +67,10 @@
         }
 
         return $instanceStore;
+    }
+
+    function closeErrorModal() {
+        isErrorModalOpen = false;
     }
 
     let instanceCreatedListener: UnlistenFn;
@@ -180,6 +186,9 @@
     </button>
     <RightClickModal validClasses={["instance"]} />
 </div>
+{#if isErrorModalOpen}
+    <ErrorModal on:close={closeErrorModal}/>
+{/if}
 
 <style>
     button {
