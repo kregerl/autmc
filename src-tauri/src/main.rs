@@ -12,6 +12,7 @@ mod tests;
 mod web_services;
 
 use commands::show_microsoft_login_page;
+use futures::executor::block_on;
 use log::{error, info, warn};
 use regex::Regex;
 use serde::ser::StdError;
@@ -40,6 +41,11 @@ use crate::{
         resource_manager::ResourceState,
     },
 };
+
+#[test]
+fn test_device_code() {
+    tauri::async_runtime::block_on(autmc_authentication::authenticate_with_device_code()).unwrap();
+}
 
 const MAX_LOGS: usize = 20;
 fn main() {

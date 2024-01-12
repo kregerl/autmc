@@ -327,7 +327,7 @@ pub async fn authenticate(auth_mode: AuthMode) -> AuthResult<Account> {
         obtain_minecraft_token(&xsts_auth_response.token, &user_hash).await?;
     let minecraft_auth_expiry = now as u64 + (minecraft_auth_response.expires_in - 10) as u64;
     debug!("Minecraft Token: {:#?}", minecraft_auth_response);
-    // REVIEW: Since Xbox Game Pass users don't technically own the game, the entitlement endpoint will show as such.
+    // NOTE: Since Xbox Game Pass users don't technically own the game, the entitlement endpoint will show as such.
     // It should be used to check the official public key from liblauncher.so but whats the point in checking if
     // a user owns the game before attempting the next step, if it won't work for Xbox Game Pass users anyway?
     // let _ = check_license(&minecraft_auth_response.access_token).await?;
