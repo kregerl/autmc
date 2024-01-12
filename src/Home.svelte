@@ -12,6 +12,7 @@
     import type { Unlisten } from "svelte-navigator/types/NavigatorHistory";
     import { listen, type UnlistenFn } from "@tauri-apps/api/event";
     import { ExitCode, instanceStateStore } from "./store/instancestatetore";
+    import ScreenshotRow from "./screenshots/ScreenshotRow.svelte";
 
     let activeMenuId: MenuId = MenuId.Instances;
     let openModal: OpenModalType = OpenModalType.None;
@@ -43,7 +44,7 @@
                 }
                 $instanceStateStore.delete(exitCode.instanceName);
                 $instanceStateStore = $instanceStateStore;
-            }
+            },
         );
     });
 
@@ -88,6 +89,17 @@
                 alt="Logs"
                 active={activeMenuId === MenuId.Logs}
                 on:click={() => (activeMenuId = MenuId.Logs)}
+                --svg-size="33px"
+                --hover-size="55.5px"
+                --margin-top="8px"
+                --margin-left="8px"
+                --padding="7.5px"
+            />
+            <SvgCircleHoverButton
+                src="svg/Servers.svg"
+                alt="Servers"
+                active={activeMenuId === MenuId.Servers}
+                on:click={() => (activeMenuId = MenuId.Servers)}
                 --svg-size="33px"
                 --hover-size="55.5px"
                 --margin-top="8px"

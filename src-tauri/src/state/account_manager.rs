@@ -7,25 +7,11 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+use autmc_authentication::{refresh_access_tokens, MinecraftAccount, OAuthRefreshMode};
 use log::{debug, error, info};
 use serde::{Deserialize, Serialize};
-use tauri::{async_runtime::Mutex, AppHandle, Wry, Manager};
+use tauri::{async_runtime::Mutex, AppHandle, Manager, Wry};
 use tokio::time::sleep;
-
-use crate::web_services::authentication::{authenticate, AuthMode};
-
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
-pub struct Account {
-    pub uuid: String,
-    pub name: String,
-    // FIXME: Cache downloaded skins instead of saving url to download everytime.
-    pub skin_url: String,
-    pub microsoft_access_token: String,
-    pub microsoft_access_token_expiry: u64,
-    pub microsoft_refresh_token: String,
-    pub minecraft_access_token: String,
-    pub minecraft_access_token_expiry: u64,
-}
 
 #[derive(Debug)]
 pub struct AccountState(pub Arc<Mutex<AccountManager>>);
@@ -41,7 +27,7 @@ pub struct AccountManager {
     #[serde(skip)]
     path: PathBuf,
     active: Option<String>,
-    accounts: HashMap<String, Account>,
+    accounts: HashMap<String, MinecraftAccount>,
 }
 
 // FIXME: Storing tokens in plaintext is bad... store them in the platform keystore using keyring-rs
@@ -78,12 +64,12 @@ impl AccountManager {
     }
 
     /// Get a stored account by uuid.
-    pub fn get_account(&self, uuid: &str) -> Option<&Account> {
+    pub fn get_account(&self, uuid: &str) -> Option<&MinecraftAccount> {
         self.accounts.get(uuid)
     }
 
     /// Get the active account
-    pub fn get_active_account(&self) -> Option<&Account> {
+    pub fn get_active_account(&self) -> Option<&MinecraftAccount> {
         if let Some(active_uuid) = &self.active {
             self.get_account(active_uuid)
         } else {
@@ -97,12 +83,16 @@ impl AccountManager {
     }
 
     /// Return the hashmap of uuid -> account
-    pub fn get_all_accounts(&self) -> HashMap<String, Account> {
+    pub fn get_all_accounts(&self) -> HashMap<String, MinecraftAccount> {
         self.accounts.clone()
     }
 
     /// Add and activate an account, overwriting any existing accounts with the same uuid.
-    pub fn add_and_activate_account(&mut self, account: Account, app_handle: AppHandle<Wry>) {
+    pub fn add_and_activate_account(
+        &mut self,
+        account: MinecraftAccount,
+        app_handle: AppHandle<Wry>,
+    ) {
         let uuid = &account.uuid.clone();
         let start = SystemTime::now();
         let since_the_epoch = start
@@ -126,45 +116,46 @@ impl AccountManager {
     pub fn activate_account(&mut self, uuid: &str, app_handle: AppHandle<Wry>) {
         self.active = Some(uuid.to_owned());
         // Can unwrap here since we just set `self.active`
-        let account = self.get_account(uuid).unwrap().clone();
+        let account = self.get_active_account().unwrap().clone();
         // Spawn a thread to refresh access tokens once they expire.
         tauri::async_runtime::spawn(async move {
-            // Refresh the tokens 10s earlier than needed. 
             // Assumes SystemTime is after UNIX_EPOCH
-            let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() - 10;
-            let auth_mode =
+            let now = chrono::Local::now().timestamp() as u64;
+            let refresh_mode =
                 if account.minecraft_access_token_expiry < account.microsoft_access_token_expiry {
                     // Minecraft
                     let secs_until_expire = account.minecraft_access_token_expiry - now;
                     sleep(Duration::from_secs(secs_until_expire)).await;
                     info!("Refreshing minecraft access token");
-                    AuthMode::MinecraftRefresh {
-                        access_token: account.microsoft_access_token,
-                        refresh_token: account.microsoft_refresh_token,
-                        access_token_expiry: account.microsoft_access_token_expiry,
+                    OAuthRefreshMode::Minecraft {
+                        token: account.into(),
                     }
                 } else {
                     // Microsoft
                     let secs_until_expire = account.microsoft_access_token_expiry.checked_sub(now);
                     sleep(Duration::from_secs(secs_until_expire.unwrap_or(0))).await;
                     info!("Refreshing Microsoft access token");
-                    AuthMode::MicrosoftRefresh(account.microsoft_refresh_token)
+                    OAuthRefreshMode::Minecraft {
+                        token: account.into(),
+                    }
                 };
             let account_state: tauri::State<AccountState> = app_handle
                 .try_state()
                 .expect("`AccountState` should already be managed.");
             let mut account_manager = account_state.0.lock().await;
 
-            let account_res = authenticate(auth_mode).await;
+            let account_res = refresh_access_tokens(refresh_mode).await;
             match account_res {
-                Ok(account) => account_manager.add_and_activate_account(account, app_handle.clone()),
+                Ok(account) => {
+                    account_manager.add_and_activate_account(account, app_handle.clone())
+                }
                 Err(e) => error!("Issue re-authenticating with microsoft: {}", e.to_string()),
             }
         });
     }
 
     /// Adds an account, overwriting any existing accounts with the same uuid.
-    pub fn add_account(&mut self, account: Account) {
+    pub fn add_account(&mut self, account: MinecraftAccount) {
         self.accounts.insert(account.uuid.clone(), account);
     }
 }

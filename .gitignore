@@ -10,3 +10,4 @@ callgrind*
 # Added by cargo
 
 /target
+**/target

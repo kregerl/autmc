@@ -2,6 +2,7 @@ export enum MenuId {
     Instances,
     Screenshots,
     Logs,
+    Servers,
 }
 
 export enum OpenModalType {

@@ -1,3 +1,4 @@
+use autmc_authentication::MinecraftAccount;
 use log::{debug, error, warn};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -16,8 +17,6 @@ use tokio::io::{AsyncBufReadExt, BufReader as AsyncBufReader};
 use tokio::process::{Child, Command};
 
 use crate::web_services::resources::{substitute_account_specific_arguments, ModloaderType};
-
-use super::account_manager::Account;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct InstanceConfiguration {
@@ -130,7 +129,7 @@ impl InstanceManager {
     pub fn launch_instance(
         &mut self,
         instance_name: &str,
-        active_account: &Account,
+        active_account: &MinecraftAccount,
         app_handle: AppHandle<Wry>,
     ) {
         debug!("Instance Name: {}", instance_name);

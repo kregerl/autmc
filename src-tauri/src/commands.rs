@@ -7,6 +7,9 @@ use std::{
     process::{Command, Stdio},
 };
 
+use autmc_authentication::{
+    poll_device_code_status, start_device_code_authentication, AuthenticationResult, DeviceCode,
+};
 use flate2::read::GzDecoder;
 use log::{debug, error, info, warn};
 use reqwest::Url;
@@ -22,7 +25,6 @@ use crate::{
         resource_manager::{ManifestResult, ResourceState},
     },
     web_services::{
-        authentication::{validate_account, AuthResult},
         manifest::{path_to_utf8_str, vanilla::VanillaManifestVersion},
         modpack::{
             curseforge::{
@@ -55,40 +57,63 @@ fn get_init_script_for_os() -> String {
 }
 
 #[tauri::command(async)]
-pub async fn show_microsoft_login_page(app_handle: tauri::AppHandle<Wry>) -> AuthResult<()> {
-    let login_url = Url::parse_with_params(
-        MICROSOFT_LOGIN_URL,
-        &[
-            ("prompt", "select_account"),
-            ("client_id", CLIENT_ID),
-            ("response_type", "code"),
-            ("scope", "XboxLive.signin offline_access"),
-            (
-                "redirect_uri",
-                "https://login.microsoftonline.com/common/oauth2/nativeclient",
-            ),
-        ],
-    )?;
-
-    debug!("Init script injected");
-    let init_script = get_init_script_for_os();
-    // Redirects to the custom protocol 'autmc://auth', preserving the query parameters.
-    let window_url = tauri::WindowUrl::App(login_url.to_string().parse().unwrap());
-    // Start window with init script
-    let _login_window = tauri::WindowBuilder::new(&app_handle, "login", window_url)
-        .initialization_script(&init_script)
-        .build()?;
-    Ok(())
+pub async fn start_authentication_flow() -> AuthenticationResult<DeviceCode> {
+    let device_code = start_device_code_authentication().await?;
+    debug!("Got device code: {:#?}", device_code);
+    Ok(device_code)
 }
 
 #[tauri::command(async)]
-pub async fn start_microsoft_device_code_authentication(
+pub async fn poll_device_code_authentication(
+    device_code: String,
     app_handle: tauri::AppHandle<Wry>,
-) -> AuthResult<()> {
-    todo!("start_microsoft_device_code_authentication");
+) -> AuthenticationResult<()> {
+    let account = poll_device_code_status(&device_code).await?;
+    debug!("Got Account: {:#?}", account);
 
+    let account_state: tauri::State<AccountState> = app_handle
+        .try_state()
+        .expect("`AccountState` should already be managed.");
+    let mut account_manager = account_state.0.lock().await;
+
+    // Save account to account manager.
+    account_manager.add_and_activate_account(account, app_handle.clone());
+
+    if let Err(error) = account_manager.serialize_accounts() {
+        warn!(
+            "Could not properly serialize account information: {}",
+            error
+        );
+    }
     Ok(())
 }
+
+// #[tauri::command(async)]
+// pub async fn show_microsoft_login_page(app_handle: tauri::AppHandle<Wry>) -> Au<()> {
+//     let login_url = Url::parse_with_params(
+//         MICROSOFT_LOGIN_URL,
+//         &[
+//             ("prompt", "select_account"),
+//             ("client_id", CLIENT_ID),
+//             ("response_type", "code"),
+//             ("scope", "XboxLive.signin offline_access"),
+//             (
+//                 "redirect_uri",
+//                 "https://login.microsoftonline.com/common/oauth2/nativeclient",
+//             ),
+//         ],
+//     )?;
+
+//     debug!("Init script injected");
+//     let init_script = get_init_script_for_os();
+//     // Redirects to the custom protocol 'autmc://auth', preserving the query parameters.
+//     let window_url = tauri::WindowUrl::App(login_url.to_string().parse().unwrap());
+//     // Start window with init script
+//     let _login_window = tauri::WindowBuilder::new(&app_handle, "login", window_url)
+//         .initialization_script(&init_script)
+//         .build()?;
+//     Ok(())
+// }
 
 #[derive(Deserialize)]
 pub struct VersionFilter {
@@ -207,43 +232,43 @@ pub async fn get_accounts(app_handle: AppHandle<Wry>) -> AccountInformation {
     }
 }
 
-#[tauri::command(async)]
-pub async fn login_to_account(uuid: String, app_handle: AppHandle<Wry>) {
-    let account_state: tauri::State<AccountState> = app_handle
-        .try_state()
-        .expect("`AccountState` should already be managed.");
-    let mut account_manager = account_state.0.lock().await;
+// #[tauri::command(async)]
+// pub async fn login_to_account(uuid: String, app_handle: AppHandle<Wry>) {
+//     let account_state: tauri::State<AccountState> = app_handle
+//         .try_state()
+//         .expect("`AccountState` should already be managed.");
+//     let mut account_manager = account_state.0.lock().await;
 
-    account_manager.activate_account(&uuid, app_handle.clone());
+//     account_manager.activate_account(&uuid, app_handle.clone());
 
-    // Get the active account that was just set.
-    match account_manager.get_active_account() {
-        Some(active_account) => {
-            let validation_result = validate_account(active_account).await;
+//     // Get the active account that was just set.
+//     match account_manager.get_active_account() {
+//         Some(active_account) => {
+//             let validation_result = validate_account(active_account).await;
 
-            // If the result if an error, emit error to user
-            if let Err(validation_error) = &validation_result {
-                if let Err(error) =
-                    app_handle.emit_to("main", "authentication-error", validation_error.to_string())
-                {
-                    error!("{}", error.to_string());
-                    return;
-                }
-            }
+//             // If the result if an error, emit error to user
+//             if let Err(validation_error) = &validation_result {
+//                 if let Err(error) =
+//                     app_handle.emit_to("main", "authentication-error", validation_error.to_string())
+//                 {
+//                     error!("{}", error.to_string());
+//                     return;
+//                 }
+//             }
 
-            if let Err(error) = account_manager.serialize_accounts() {
-                warn!(
-                    "Could not properly serialize account information: {}",
-                    error
-                );
-            }
-        }
-        None => {
-            // FIXME: Emit error to user
-            error!("No account with uuid: {}", uuid);
-        }
-    }
-}
+//             if let Err(error) = account_manager.serialize_accounts() {
+//                 warn!(
+//                     "Could not properly serialize account information: {}",
+//                     error
+//                 );
+//             }
+//         }
+//         None => {
+//             // FIXME: Emit error to user
+//             error!("No account with uuid: {}", uuid);
+//         }
+//     }
+// }
 
 #[tauri::command(async)]
 pub async fn get_account_skin(app_handle: AppHandle<Wry>) -> String {

@@ -1,9 +1,3 @@
-use std::{collections::HashMap, thread::sleep, time::Duration};
-
-use reqwest::{Client, Response};
-use serde::{de::DeserializeOwned, Deserialize};
-use serde_json::json;
-
 use crate::{
     consts::{
         CLIENT_ID, DEVICE_CODE_GRANT_TYPE, DEVICE_CODE_SCOPE, MICROSOFT_DEVICE_CODE_URL,
@@ -15,31 +9,43 @@ use crate::{
         MincraftProfileErrorResponse, XboxErrorResponse,
     },
 };
+use autmc_log::debug_if;
+use log::debug;
+use reqwest::{Client, Response};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde_json::json;
+use std::{collections::HashMap, thread::sleep, time::Duration};
 
-#[derive(Debug, Default, Clone, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct MinecraftAccount {
-    uuid: String,
-    name: String,
+    pub uuid: String,
+    pub name: String,
     // FIXME: Cache downloaded skins instead of saving url to download everytime.
-    skin_url: String,
-    microsoft_access_token: String,
-    microsoft_access_token_expiry: u64,
-    microsoft_refresh_token: String,
-    minecraft_access_token: String,
-    minecraft_access_token_expiry: u64,
+    pub skin_url: String,
+    pub microsoft_access_token: String,
+    pub microsoft_access_token_expiry: u64,
+    pub microsoft_refresh_token: String,
+    pub minecraft_access_token: String,
+    pub minecraft_access_token_expiry: u64,
+}
+
+impl Into<MicrosoftToken> for MinecraftAccount {
+    fn into(self) -> MicrosoftToken {
+        MicrosoftToken {
+            access_token: self.microsoft_access_token,
+            refresh_token: self.microsoft_refresh_token,
+            access_token_expiry: self.microsoft_access_token_expiry,
+        }
+    }
 }
 
 impl MinecraftAccount {
     fn new(
         minecraft_profile_response: MinecraftProfileResponse,
-        microsoft_token_response: MicrosoftTokenResponse,
+        microsoft_token: MicrosoftToken,
         minecraft_token_response: MinecraftTokenResponse,
     ) -> Self {
         let skin_url = minecraft_profile_response.active_skin().url.clone();
-
-        let microsoft_access_token_expiry = (chrono::Local::now().timestamp()
-            + (microsoft_token_response.expires_in as i64)
-            - 10) as u64;
 
         let minecraft_access_token_expiry = (chrono::Local::now().timestamp()
             + (minecraft_token_response.expires_in as i64)
@@ -48,9 +54,9 @@ impl MinecraftAccount {
             uuid: minecraft_profile_response.id,
             name: minecraft_profile_response.name,
             skin_url,
-            microsoft_access_token: microsoft_token_response.access_token,
-            microsoft_access_token_expiry,
-            microsoft_refresh_token: microsoft_token_response.refresh_token,
+            microsoft_access_token: microsoft_token.access_token,
+            microsoft_access_token_expiry: microsoft_token.access_token_expiry,
+            microsoft_refresh_token: microsoft_token.refresh_token,
             minecraft_access_token: minecraft_token_response.access_token,
             minecraft_access_token_expiry,
         }
@@ -58,74 +64,181 @@ impl MinecraftAccount {
 }
 
 #[derive(Debug, Deserialize)]
+/// Response struct for the Microsoft OAuth process.  
+/// Commented out fields are currenty unused but exist in the response
 struct MicrosoftTokenResponse {
-    token_type: String,
-    scope: String,
+    // token_type: String,
+    // scope: String,
     expires_in: u32,
-    ext_expires_in: u32,
+    // ext_expires_in: u32,
     access_token: String,
     refresh_token: String,
 }
 
-pub async fn authenticate_with_device_code() -> AuthenticationResult<MinecraftAccount> {
+impl Into<MicrosoftToken> for MicrosoftTokenResponse {
+    fn into(self) -> MicrosoftToken {
+        let access_token_expiry =
+            (chrono::Local::now().timestamp() + (self.expires_in as i64) - 10) as u64;
+
+        MicrosoftToken {
+            access_token: self.access_token,
+            refresh_token: self.refresh_token,
+            access_token_expiry,
+        }
+    }
+}
+
+pub struct MicrosoftToken {
+    access_token: String,
+    refresh_token: String,
+    access_token_expiry: u64,
+}
+
+pub enum OAuthRefreshMode {
+    Microsoft { refresh_token: String },
+    Minecraft { token: MicrosoftToken },
+}
+
+pub async fn refresh_access_tokens(
+    refresh_mode: OAuthRefreshMode,
+) -> AuthenticationResult<MinecraftAccount> {
+    let microsoft_token = match refresh_mode {
+        OAuthRefreshMode::Microsoft { refresh_token } => {
+            refresh_microsoft_token(&refresh_token).await?.into()
+        }
+        OAuthRefreshMode::Minecraft { token } => token,
+    };
+
+    continue_authentication_flow(microsoft_token).await
+}
+
+pub async fn start_device_code_authentication() -> AuthenticationResult<DeviceCode> {
+    debug!("Requesting Microsoft device code authentication format.");
     let device_code_response = get_microsoft_devicecode().await?;
+    debug_if!(
+        "AUTHENTICATION",
+        "Received user code '{}' and device code token '{}'",
+        device_code_response.user_code,
+        device_code_response.device_code
+    );
 
-    println!("{}", device_code_response.message);
+    Ok(device_code_response.into())
+}
 
+pub async fn poll_device_code_status(device_code: &str) -> AuthenticationResult<MinecraftAccount> {
     // Maximum number of attempts, each attempts will sleep for 1s
     const MAX_ATTEMPTS: usize = 120;
     let mut attempts = 0;
+    debug!("Polling OAuth device code endpoint");
     let microsoft_token_response = loop {
+        debug_if!(
+            "AUTHENTICATION",
+            "Attempt #{} while polling device code endpoint.",
+            attempts
+        );
         if attempts >= MAX_ATTEMPTS {
-            return Err(AuthenticationError::MaxAttemptsExceeded);
+            return Err(AuthenticationError::MaxAttemptsExceeded(
+                "Device code authentication took longer than 2 minutes.".into(),
+            ));
         }
 
-        let token_response =
-            poll_microsoft_token_endpoint(&device_code_response.device_code).await?;
+        let token_response = poll_microsoft_token_endpoint(device_code).await?;
         if !token_response.status().is_success() {
             sleep(Duration::from_secs(1));
             attempts += 1;
         } else {
-            break get_response_if_ok::<MicrosoftTokenResponse>(token_response).await?;
+            break get_response_if_ok::<MicrosoftTokenResponse, MicrosoftErrorResponse>(
+                token_response,
+            )
+            .await?;
         }
     };
+    debug_if!(
+        "AUTHENTICATION",
+        "Received Microsoft access token '{}'",
+        microsoft_token_response.access_token
+    );
+    continue_authentication_flow(microsoft_token_response.into()).await
+}
 
-    println!("Result {:#?}", microsoft_token_response);
-    let xbl_token_response = get_xbl_token(&microsoft_token_response.access_token).await?;
+async fn continue_authentication_flow(
+    microsoft_token: MicrosoftToken,
+) -> AuthenticationResult<MinecraftAccount> {
+    debug!("Requesting XBox Live access token.");
+    let xbl_token_response = get_xbl_token(&microsoft_token.access_token).await?;
+    debug_if!(
+        "AUTHENTICATION",
+        "Received XBox Live access token '{}'",
+        xbl_token_response.access_token
+    );
 
-    let xsts_token_response = get_xsts_token(&xbl_token_response.token).await?;
+    debug!("Requesting Xbox Secure Token Service access token.");
+    let xsts_token_response = get_xsts_token(&xbl_token_response.access_token).await?;
+    debug_if!(
+        "AUTHENTICATION",
+        "Received Xbox Secure Token Service access token '{}'",
+        xsts_token_response.access_token
+    );
     let user_hash = match xsts_token_response.get_user_hash() {
         Some(user_hash) => user_hash,
         None => return Err(AuthenticationError::XSTSMissingUserHash),
     };
 
+    debug!("Requesting Minecraft access token.");
     let minecraft_token_response =
-        get_minecraft_token(&xsts_token_response.token, &user_hash).await?;
+        get_minecraft_token(&xsts_token_response.access_token, &user_hash).await?;
+    debug_if!(
+        "AUTHENTICATION",
+        "Received Minecraft access token '{}'",
+        minecraft_token_response.access_token
+    );
     // NOTE: Since Xbox Game Pass users don't technically own the game, the entitlement endpoint will show as such.
     // It should be used to check the official public key from liblauncher.so but whats the point in checking if
     // a user owns the game before attempting the next step, if it won't work for Xbox Game Pass users anyway?
     // let _ = check_license(&minecraft_token_response.access_token).await?;
 
+    debug!("Requesting Minecraft profile.");
     let mincraft_profile_response =
         get_minecraft_profile(&minecraft_token_response.access_token).await?;
+    debug_if!(
+        "AUTHENTICATION",
+        "Received Minecraft profile for '{}'",
+        mincraft_profile_response.name
+    );
 
     let account = MinecraftAccount::new(
         mincraft_profile_response,
-        microsoft_token_response,
+        microsoft_token,
         minecraft_token_response,
     );
-    println!("Account: {:#?}", account);
     Ok(account)
 }
 
 #[derive(Debug, Deserialize)]
+/// Response struct for the Microsoft DevicCode polling process.  
+/// Commented out fields are currenty unused but exist in the response
 struct DeviceCodeResponse {
     user_code: String,
     device_code: String,
-    verification_uri: String,
-    expires_in: u32,
-    interval: u32,
+    // verification_uri: String,
+    // expires_in: u32,
+    // interval: u32,
     message: String,
+}
+
+impl Into<DeviceCode> for DeviceCodeResponse {
+    fn into(self) -> DeviceCode {
+        DeviceCode {
+            message: self.message,
+            device_code: self.device_code,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct DeviceCode {
+    pub message: String,
+    pub device_code: String,
 }
 
 async fn get_microsoft_devicecode() -> AuthenticationResult<DeviceCodeResponse> {
@@ -136,7 +249,7 @@ async fn get_microsoft_devicecode() -> AuthenticationResult<DeviceCodeResponse> 
         .send()
         .await?;
 
-    get_response_if_ok::<DeviceCodeResponse>(response).await
+    get_response_if_ok::<DeviceCodeResponse, MicrosoftErrorResponse>(response).await
 }
 
 async fn poll_microsoft_token_endpoint(device_code: &str) -> AuthenticationResult<Response> {
@@ -149,30 +262,46 @@ async fn poll_microsoft_token_endpoint(device_code: &str) -> AuthenticationResul
     Ok(client.post(MICROSOFT_TOKEN_URL).form(&form).send().await?)
 }
 
-async fn get_response_if_ok<'de, T>(response: Response) -> AuthenticationResult<T>
-where
-    T: DeserializeOwned,
-{
-    let status = response.status();
-    if status.is_success() {
-        Ok(response.json::<T>().await?)
-    } else {
-        let err_response = response.json::<MicrosoftErrorResponse>().await;
-        match err_response {
-            Ok(error) => Err(AuthenticationError::from(error)),
-            Err(_) => Err(AuthenticationError::HttpResponseError(status)),
-        }
-    }
+async fn refresh_microsoft_token(
+    refresh_token: &str,
+) -> AuthenticationResult<MicrosoftTokenResponse> {
+    let mut form: HashMap<&str, &str> = HashMap::new();
+    form.insert(CLIENT_ID.0, CLIENT_ID.1);
+    form.insert(DEVICE_CODE_SCOPE.0, DEVICE_CODE_SCOPE.1);
+    form.insert("grant_type", "refresh_token");
+    form.insert("refresh_token", refresh_token);
+
+    let client = Client::new();
+    let response = client.post(MICROSOFT_TOKEN_URL).form(&form).send().await?;
+    get_response_if_ok::<MicrosoftTokenResponse, MicrosoftErrorResponse>(response).await
 }
 
+// async fn get_response_if_ok<T>(response: Response) -> AuthenticationResult<T>
+// where
+//     T: DeserializeOwned,
+// {
+//     let status = response.status();
+//     if status.is_success() {
+//         Ok(response.json::<T>().await?)
+//     } else {
+//         let err_response = response.json::<MicrosoftErrorResponse>().await;
+//         match err_response {
+//             Ok(error) => Err(AuthenticationError::from(error)),
+//             Err(_) => Err(AuthenticationError::HttpResponseError(status)),
+//         }
+//     }
+// }
+
 #[derive(Debug, Deserialize)]
+/// Response struct for the XBox Live authentication process.  
+/// Commented out fields are currenty unused but exist in the response
 pub struct XboxTokenResponse {
-    #[serde(rename = "IssueInstant")]
-    _issue_instant: String,
-    #[serde(rename = "NotAfter")]
-    _not_after: String,
+    // #[serde(rename = "IssueInstant")]
+    // issue_instant: String,
+    // #[serde(rename = "NotAfter")]
+    // not_after: String,
     #[serde(rename = "Token")]
-    token: String,
+    access_token: String,
     #[serde(rename = "DisplayClaims")]
     display_claims: HashMap<String, Vec<HashMap<String, String>>>,
 }
@@ -206,7 +335,7 @@ async fn get_xbl_token(access_token: &str) -> AuthenticationResult<XboxTokenResp
         )
         .send()
         .await?;
-    check_xbox_error(response).await
+    get_response_if_ok::<XboxTokenResponse, XboxErrorResponse>(response).await
 }
 
 /// Sends request to the Xbox Secure Token Service `/authorize` endpoint using an XboxLive access token
@@ -229,35 +358,18 @@ async fn get_xsts_token(xbl_token: &str) -> AuthenticationResult<XboxTokenRespon
         )
         .send()
         .await?;
-
-    check_xbox_error(response).await
-}
-
-/// Retrieves the successful response from a reqwest::Response from an XBL endpoint
-///
-/// On error gather any XBL error hints and add them to the XboxError variant
-///
-/// On a failure response, return the status code of the error.
-async fn check_xbox_error(response: reqwest::Response) -> AuthenticationResult<XboxTokenResponse> {
-    if response.status().is_success() {
-        Ok(response.json::<XboxTokenResponse>().await?)
-    } else {
-        match response.content_length() {
-            Some(content_length) if content_length > 0 => Err(AuthenticationError::from(
-                response.json::<XboxErrorResponse>().await?,
-            )),
-            _ => Err(AuthenticationError::HttpResponseError(response.status())),
-        }
-    }
+    get_response_if_ok::<XboxTokenResponse, XboxErrorResponse>(response).await
 }
 
 #[derive(Debug, Deserialize)]
+/// Response struct for the Minecraft authentication process.  
+/// Commented out fields are currenty unused but exist in the response
 pub struct MinecraftTokenResponse {
     // This is not the uuid of the mc account
-    username: String,
+    // username: String,
     access_token: String,
     expires_in: u32,
-    token_type: String,
+    // token_type: String,
 }
 
 /// Sends request to the mojang `/login_with_xbox` endpoint using the user hash and XSTS token
@@ -302,7 +414,9 @@ async fn get_minecraft_token(
 //     Ok(())
 // }
 
+// TODO: Save the entire skin struct in the accounts file instead of just the URL.
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct MinecraftProfileSkin {
     id: String,
     state: String,
@@ -312,11 +426,11 @@ pub struct MinecraftProfileSkin {
 }
 
 #[derive(Debug, Deserialize)]
+/// Response struct for the Minecraft profile request.  
 struct MinecraftProfileResponse {
     id: String,
     name: String,
     skins: Vec<MinecraftProfileSkin>,
-    // TODO: Missing capes, dont know what the response would look like.
 }
 
 impl MinecraftProfileResponse {
@@ -346,14 +460,24 @@ async fn get_minecraft_profile(
         .send()
         .await?;
 
-    if response.status().is_success() {
-        Ok(response.json::<MinecraftProfileResponse>().await?)
+    get_response_if_ok::<MinecraftProfileResponse, MincraftProfileErrorResponse>(response).await
+}
+
+async fn get_response_if_ok<T, E>(response: Response) -> AuthenticationResult<T>
+where
+    T: DeserializeOwned,
+    E: DeserializeOwned,
+    AuthenticationError: From<E>,
+{
+    let status = response.status();
+    if status.is_success() {
+        Ok(response.json::<T>().await?)
     } else {
         match response.content_length() {
-            Some(content_length) if content_length > 0 => Err(AuthenticationError::from(
-                response.json::<MincraftProfileErrorResponse>().await?,
-            )),
-            _ => Err(AuthenticationError::HttpResponseError(response.status())),
+            Some(content_length) if content_length > 0 => {
+                Err(AuthenticationError::from(response.json::<E>().await?))
+            }
+            _ => Err(AuthenticationError::HttpResponseError(status)),
         }
     }
 }

@@ -86,36 +86,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9c7d0618f0e0b7e8ff11427422b64564d5fb0be1940354bfe2e0529b18a9d9b8"
 
 [[package]]
-name = "app"
-version = "0.1.0"
-dependencies = [
- "async-recursion",
- "autmc-authentication",
- "base64 0.21.2",
- "bytes",
- "chrono",
- "fern",
- "flate2",
- "futures",
- "indexmap",
- "keyring",
- "log",
- "phf 0.11.2",
- "regex",
- "reqwest",
- "rust-crypto",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tempdir",
- "tokio",
- "url",
- "xmltree",
- "zip",
-]
-
-[[package]]
 name = "async-broadcast"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -279,9 +249,41 @@ dependencies = [
 ]
 
 [[package]]
+name = "autmc"
+version = "0.1.0"
+dependencies = [
+ "async-recursion",
+ "autmc-authentication",
+ "autmc-log",
+ "base64 0.21.2",
+ "bytes",
+ "chrono",
+ "fern",
+ "flate2",
+ "futures",
+ "indexmap",
+ "keyring",
+ "log",
+ "phf 0.11.2",
+ "regex",
+ "reqwest",
+ "rust-crypto",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tempdir",
+ "tokio",
+ "url",
+ "xmltree",
+ "zip",
+]
+
+[[package]]
 name = "autmc-authentication"
 version = "0.1.0"
 dependencies = [
+ "autmc-log",
  "chrono",
  "lazy_static",
  "log",
@@ -289,6 +291,13 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "autmc-log"
+version = "0.1.0"
+dependencies = [
+ "log",
 ]
 
 [[package]]

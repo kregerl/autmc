@@ -4,9 +4,10 @@ use std::{
     fs::{self, File},
     io::{self, Write},
     path::{Path, PathBuf},
-    time::Instant, fmt::Display,
+    time::Instant,
 };
 
+use autmc_authentication::MinecraftAccount;
 use bytes::Bytes;
 use futures::future::BoxFuture;
 use log::{debug, error, info, warn};
@@ -19,7 +20,6 @@ use zip::ZipArchive;
 use crate::{
     consts::{JAVA_VERSION_MANIFEST_URL, LAUNCHER_NAME, LAUNCHER_VERSION},
     state::{
-        account_manager::Account,
         instance_manager::{InstanceConfiguration, InstanceState},
         resource_manager::{ManifestError, ManifestResult, ResourceState},
     },
@@ -482,7 +482,7 @@ fn substitute_game_arguments(
 
 pub fn substitute_account_specific_arguments(
     arg: &str,
-    active_account: &Account,
+    active_account: &MinecraftAccount,
 ) -> Option<String> {
     if let Some(substr) = get_arg_substring(arg) {
         match substr {

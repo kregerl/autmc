@@ -19,7 +19,7 @@
     import CircleLoader from "./components/loader/CircleLoader.svelte";
     import ErrorModal from "./modal/ErrorModal.svelte";
 
-    let isErrorModalOpen = true;
+    let isErrorModalOpen = false;
     let useRegex: boolean = false;
     let instanceFilters: string = "";
     let promise: Promise<InstanceConfiguration[]>;

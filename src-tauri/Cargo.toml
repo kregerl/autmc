@@ -1,11 +1,11 @@
 [package]
-name = "app"
+name = "autmc"
 version = "0.1.0"
 description = "A Tauri App"
 authors = ["you"]
 license = ""
 repository = ""
-default-run = "app"
+default-run = "autmc"
 edition = "2021"
 rust-version = "1.57"
 
@@ -16,6 +16,9 @@ tauri-build = { version = "1.1.1", features = [] }
 
 [dependencies.autmc-authentication]
 path = "./autmc-authentication"
+
+[dependencies.autmc-log]
+path = "./autmc-log"
 
 [dependencies]
 serde_json = "1.0.96"
@@ -37,7 +40,7 @@ chrono = "0.4.23"
 regex = "1.7.1"
 bytes = "1.4.0"
 fern = "0.6.1"
-log = "0.4.17"
+log = { version = "0.4.20", features = ["release_max_level_info"] }
 url = "2.3.1"
 zip = "0.6.4"
 base64 = "0.21.2"

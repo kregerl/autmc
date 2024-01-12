@@ -9,6 +9,9 @@ path = "src/lib.rs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[dependencies.autmc-log]
+path = "../autmc-log"
+
 [dependencies]
 chrono = "0.4.31"
 lazy_static = "1.4.0"

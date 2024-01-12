@@ -10,13 +10,11 @@ mod state;
 #[cfg(test)]
 mod tests;
 mod web_services;
+mod authentication;
 
-use commands::show_microsoft_login_page;
-use futures::executor::block_on;
 use log::{error, info, warn};
 use regex::Regex;
 use serde::ser::StdError;
-use serde_json::Value;
 use state::{account_manager::AccountState, redirect};
 use std::{
     fs::{self},
@@ -27,25 +25,17 @@ use tauri::{
     http::{Request, Response, ResponseBuilder},
     App, AppHandle, Manager, Wry,
 };
-use web_services::authentication::{authenticate, validate_account, AuthMode};
+// use web_services::authentication::{authenticate, validate_account, AuthMode};
 
 use crate::{
     commands::{
         get_account_skin, get_accounts, get_curseforge_categories, get_logs, get_screenshots,
-        import_zip, launch_instance, load_instances, login_to_account, obtain_manifests,
-        obtain_version, open_folder, read_log_lines, search_curseforge,
+        import_zip, launch_instance, load_instances, obtain_manifests,
+        obtain_version, open_folder, poll_device_code_authentication, read_log_lines,
+        search_curseforge, start_authentication_flow,
     },
-    state::{
-        account_manager::{self, Account},
-        instance_manager::InstanceState,
-        resource_manager::ResourceState,
-    },
+    state::{instance_manager::InstanceState, resource_manager::ResourceState}, authentication::validate_account,
 };
-
-#[test]
-fn test_device_code() {
-    tauri::async_runtime::block_on(autmc_authentication::authenticate_with_device_code()).unwrap();
-}
 
 const MAX_LOGS: usize = 20;
 fn main() {
@@ -57,21 +47,21 @@ fn main() {
             };
             Ok(())
         })
-        .register_uri_scheme_protocol("autmc", autmc_uri_scheme)
+        // .register_uri_scheme_protocol("autmc", autmc_uri_scheme)
         .on_window_event(|event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event.event() {
                 info!("Closing");
             }
         })
         .invoke_handler(tauri::generate_handler![
-            show_microsoft_login_page,
+            start_authentication_flow,
+            poll_device_code_authentication,
             obtain_manifests,
             obtain_version,
             load_instances,
             get_account_skin,
             launch_instance,
             get_accounts,
-            login_to_account,
             open_folder,
             get_screenshots,
             get_logs,
@@ -143,7 +133,7 @@ fn setup(app: &mut App<Wry>) -> Result<(), Box<(dyn StdError + 'static)>> {
         // If there is some active account, retrieve it and attempt to refresh access tokens.
         match deserialized_account {
             Some(active_account) => {
-                let validation_result = validate_account(active_account).await;
+                let validation_result = validate_account(active_account.clone()).await;
 
                 // If the result if an error, emit error to user
                 if let Err(validation_error) = &validation_result {
@@ -166,8 +156,7 @@ fn setup(app: &mut App<Wry>) -> Result<(), Box<(dyn StdError + 'static)>> {
                         "Could not properly serialize account information: {}",
                         error
                     );
-                } 
-                
+                }
             }
             None => {
                 if let Err(error) = redirect(&app_handle, "login") {
@@ -176,59 +165,59 @@ fn setup(app: &mut App<Wry>) -> Result<(), Box<(dyn StdError + 'static)>> {
             }
         }
     });
-   
+
     Ok(())
 }
 
-/// Callback for when a window is redirected to 'autmc://'
-fn autmc_uri_scheme(
-    app_handle: &AppHandle<Wry>,
-    request: &Request,
-) -> Result<Response, Box<dyn std::error::Error>> {
-    info!("Retrieved request to custom uri scheme 'autmc://'");
-    if let Some(window) = app_handle.get_window("login") {
-        // Neither of the following should be possible in this instance.
-        // - Panics if the event loop is not running yet, usually when called on the [`setup`](crate::Builder#method.setup) closure.
-        // - Panics when called on the main thread, usually on the [`run`](crate::App#method.run) closure.
-        window.close().unwrap();
-    }
-    let url = request.uri().to_owned();
-    let handle = app_handle.clone();
-    // Spawn a thread to handle authentication.
-    tauri::async_runtime::spawn(async move {
-        let auth_mode = AuthMode::Full(url);
-        let authentication_result = authenticate(auth_mode).await;
+// /// Callback for when a window is redirected to 'autmc://'
+// fn autmc_uri_scheme(
+//     app_handle: &AppHandle<Wry>,
+//     request: &Request,
+// ) -> Result<Response, Box<dyn std::error::Error>> {
+//     info!("Retrieved request to custom uri scheme 'autmc://'");
+//     if let Some(window) = app_handle.get_window("login") {
+//         // Neither of the following should be possible in this instance.
+//         // - Panics if the event loop is not running yet, usually when called on the [`setup`](crate::Builder#method.setup) closure.
+//         // - Panics when called on the main thread, usually on the [`run`](crate::App#method.run) closure.
+//         window.close().unwrap();
+//     }
+//     let url = request.uri().to_owned();
+//     let handle = app_handle.clone();
+//     // Spawn a thread to handle authentication.
+//     tauri::async_runtime::spawn(async move {
+//         let auth_mode = AuthMode::Full(url);
+//         let authentication_result = authenticate(auth_mode).await;
 
-        // If the result if an error, emit error to user
-        if let Err(authentication_error) = &authentication_result {
-            if let Err(error) = handle.emit_to(
-                "main",
-                "authentication-error",
-                authentication_error.to_string(),
-            ) {
-                error!("{}", error.to_string())
-            }
-        }
-        let account = authentication_result.unwrap();
+//         // If the result if an error, emit error to user
+//         if let Err(authentication_error) = &authentication_result {
+//             if let Err(error) = handle.emit_to(
+//                 "main",
+//                 "authentication-error",
+//                 authentication_error.to_string(),
+//             ) {
+//                 error!("{}", error.to_string())
+//             }
+//         }
+//         let account = authentication_result.unwrap();
 
-        let account_state: tauri::State<AccountState> = handle
-            .try_state()
-            .expect("`AccountState` should already be managed.");
-        let mut account_manager = account_state.0.lock().await;
+//         let account_state: tauri::State<AccountState> = handle
+//             .try_state()
+//             .expect("`AccountState` should already be managed.");
+//         let mut account_manager = account_state.0.lock().await;
 
-        // Save account to account manager.
-        account_manager.add_and_activate_account(account, handle.clone());
+//         // Save account to account manager.
+//         account_manager.add_and_activate_account(account, handle.clone());
 
-        if let Err(error) = account_manager.serialize_accounts() {
-            warn!(
-                "Could not properly serialize account information: {}",
-                error
-            );
-        }
-    });
-    let body: Vec<u8> = "<h1>Hello World!</h1>".as_bytes().to_vec();
-    ResponseBuilder::new().mimetype("text/html").body(body)
-}
+//         if let Err(error) = account_manager.serialize_accounts() {
+//             warn!(
+//                 "Could not properly serialize account information: {}",
+//                 error
+//             );
+//         }
+//     });
+//     let body: Vec<u8> = "<h1>Hello World!</h1>".as_bytes().to_vec();
+//     ResponseBuilder::new().mimetype("text/html").body(body)
+// }
 
 /// Sets up the logger and saves launcher logs to ${app_dir}/logs/launcher_log_${datetime}.log
 fn init_logger(log_dir: &PathBuf) -> Result<(), fern::InitError> {
@@ -255,7 +244,17 @@ fn init_logger(log_dir: &PathBuf) -> Result<(), fern::InitError> {
                 message
             ))
         })
-        .level(log::LevelFilter::Debug)
+        .level(match std::env::var("DEBUG") {
+            Ok(var) if var == "1" => log::LevelFilter::Debug,
+            _ => log::LevelFilter::Info,
+        })
+        .level_for(
+            "reqwest",
+            match std::env::var("REQWEST_DEBUG") {
+                Ok(var) if var == "1" => log::LevelFilter::Debug,
+                _ => log::LevelFilter::Info,
+            },
+        )
         .chain(std::io::stdout())
         .chain(fern::log_file(log_path.as_os_str())?)
         .chain(fern::log_file(latest_log_path.as_os_str())?)
