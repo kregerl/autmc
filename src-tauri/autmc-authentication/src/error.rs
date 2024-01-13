@@ -1,8 +1,6 @@
-use std::path::Display;
-
 use crate::consts::XERR_HINTS;
 use reqwest::StatusCode;
-use serde::{de, Deserialize, Serialize, Serializer};
+use serde::{Deserialize, Serialize, Serializer};
 
 #[derive(Debug, Serialize)]
 pub enum AuthenticationError {
@@ -21,6 +19,7 @@ pub enum AuthenticationError {
         hint: String,
     },
     XSTSMissingUserHash,
+    MinecraftTokenError(String),
     MinecraftProfileError {
         error: String,
         message: String,
@@ -49,6 +48,7 @@ impl std::fmt::Display for AuthenticationError {
                 hint,
             } => f.write_fmt(format_args!("{}: {} {}", xerr, message, hint)),
             AuthenticationError::XSTSMissingUserHash => f.write_str("XSTSMissingUserHash"),
+            AuthenticationError::MinecraftTokenError(error) => f.write_str(error),
             AuthenticationError::MinecraftProfileError { error, message } => {
                 f.write_fmt(format_args!("{}: {}", error, message))
             }
@@ -80,6 +80,12 @@ impl From<XboxErrorResponse> for AuthenticationError {
             message: value.message,
             hint: hint.to_string(),
         }
+    }
+}
+
+impl From<MinecraftTokenErrorResponse> for AuthenticationError {
+    fn from(value: MinecraftTokenErrorResponse) -> Self {
+        AuthenticationError::MinecraftTokenError(value.error)
     }
 }
 
@@ -133,6 +139,11 @@ pub(crate) struct XboxErrorResponse {
     // Redirect is used for consoles.
     // #[serde(rename = "Redirect")]
     // redirect: String,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct MinecraftTokenErrorResponse {
+    error: String
 }
 
 #[derive(Deserialize)]

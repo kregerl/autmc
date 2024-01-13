@@ -6,7 +6,7 @@ use crate::{
     },
     error::{
         AuthenticationError, AuthenticationResult, MicrosoftErrorResponse,
-        MincraftProfileErrorResponse, XboxErrorResponse,
+        MincraftProfileErrorResponse, XboxErrorResponse, MinecraftTokenErrorResponse,
     },
 };
 use autmc_log::debug_if;
@@ -276,22 +276,6 @@ async fn refresh_microsoft_token(
     get_response_if_ok::<MicrosoftTokenResponse, MicrosoftErrorResponse>(response).await
 }
 
-// async fn get_response_if_ok<T>(response: Response) -> AuthenticationResult<T>
-// where
-//     T: DeserializeOwned,
-// {
-//     let status = response.status();
-//     if status.is_success() {
-//         Ok(response.json::<T>().await?)
-//     } else {
-//         let err_response = response.json::<MicrosoftErrorResponse>().await;
-//         match err_response {
-//             Ok(error) => Err(AuthenticationError::from(error)),
-//             Err(_) => Err(AuthenticationError::HttpResponseError(status)),
-//         }
-//     }
-// }
-
 #[derive(Debug, Deserialize)]
 /// Response struct for the XBox Live authentication process.  
 /// Commented out fields are currenty unused but exist in the response
@@ -392,12 +376,7 @@ async fn get_minecraft_token(
         .send()
         .await?;
 
-    if response.status().is_success() {
-        let token_response = response.json::<MinecraftTokenResponse>().await?;
-        Ok(token_response)
-    } else {
-        Err(AuthenticationError::HttpResponseError(response.status()))
-    }
+    get_response_if_ok::<MinecraftTokenResponse, MinecraftTokenErrorResponse>(response).await
 }
 
 // /// Unused for now, currently cannot show if a Xbox Game Pass user owns the game so whats the point in checking...
@@ -447,7 +426,7 @@ impl MinecraftProfileResponse {
     }
 }
 
-// Obtains the Minecraft profile information like uuid, username, skins, and capes
+/// Obtains the Minecraft profile information like uuid, username, skins, and capes
 async fn get_minecraft_profile(
     access_token: &str,
 ) -> AuthenticationResult<MinecraftProfileResponse> {
@@ -463,6 +442,10 @@ async fn get_minecraft_profile(
     get_response_if_ok::<MinecraftProfileResponse, MincraftProfileErrorResponse>(response).await
 }
 
+/// Deserialize the response into `T` if the status is 200 OK  
+/// Otherwise attempt to deserialize into the error response struct `E`  
+/// 
+/// If all else fails, return a generic HTTP error containing the error code.
 async fn get_response_if_ok<T, E>(response: Response) -> AuthenticationResult<T>
 where
     T: DeserializeOwned,
