@@ -309,7 +309,7 @@ pub fn patch_forge(
             );
 
             fs::copy(tmp_lzma_dir_path.join("client.lzma"), &client_lzma_path)?;
-            // Patches issue wit BINPATCH where it uses a relative path but should use the client_lzma_path created above
+            // Patches issue with BINPATCH where it uses a relative path but should use the client_lzma_path created above
             forge_data_map.insert(
                 "BINPATCH".into(),
                 ForgeData {

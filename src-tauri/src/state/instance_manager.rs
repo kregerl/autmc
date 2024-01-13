@@ -10,13 +10,15 @@ use std::{
     sync::Arc,
 };
 use tauri::{
-    async_runtime::{JoinHandle, Mutex as AsyncMutex},
+    async_runtime::{JoinHandle, Mutex},
     AppHandle, Manager, Wry,
 };
 use tokio::io::{AsyncBufReadExt, BufReader as AsyncBufReader};
 use tokio::process::{Child, Command};
 
 use crate::web_services::resources::{substitute_account_specific_arguments, ModloaderType};
+
+use super::{InnerState, ManagerFromAppHandle};
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct InstanceConfiguration {
@@ -27,14 +29,24 @@ pub struct InstanceConfiguration {
     pub modloader_version: String,
     pub author: String,
     pub instance_icon: Option<PathBuf>,
-    pub playtime: Option<u32>,
+    pub playtime: u32,
 }
 
-pub struct InstanceState(pub Arc<AsyncMutex<InstanceManager>>);
+pub struct InstanceState(pub Arc<Mutex<InstanceManager>>);
+
+impl InnerState<Arc<Mutex<InstanceManager>>> for InstanceState {
+    fn inner_state(&self) -> Arc<Mutex<InstanceManager>> {
+        self.0.clone()
+    }
+}
+
+impl ManagerFromAppHandle for InstanceManager {
+    type State = InstanceState;
+}
 
 impl InstanceState {
     pub fn new(app_dir: &Path) -> Self {
-        Self(Arc::new(AsyncMutex::new(InstanceManager::new(app_dir))))
+        Self(Arc::new(Mutex::new(InstanceManager::new(app_dir))))
     }
 }
 
@@ -44,7 +56,7 @@ pub struct InstanceManager {
     app_dir: PathBuf,
     instance_map: HashMap<String, InstanceConfiguration>,
     // <Instance name, child process>
-    children: HashMap<String, Arc<AsyncMutex<Child>>>,
+    children: HashMap<String, Arc<Mutex<Child>>>,
     logging_threads: HashMap<String, JoinHandle<()>>,
 }
 
@@ -155,7 +167,7 @@ impl InstanceManager {
                 debug!("Command: {:#?}", command);
                 let child = command.spawn().expect("Could not spawn instance.");
 
-                let child_handle = Arc::new(AsyncMutex::new(child));
+                let child_handle = Arc::new(Mutex::new(child));
                 self.tick_instance(instance_name.into(), child_handle.clone(), app_handle);
                 self.children.insert(instance_name.into(), child_handle);
                 debug!("After instance launch");
@@ -167,7 +179,7 @@ impl InstanceManager {
     fn tick_instance(
         &mut self,
         instance_name: String,
-        child_handle: Arc<AsyncMutex<Child>>,
+        child_handle: Arc<Mutex<Child>>,
         app_handle: AppHandle<Wry>,
     ) {
         let name = instance_name.clone();

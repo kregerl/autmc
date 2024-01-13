@@ -26,6 +26,8 @@ use crate::{
     },
 };
 
+use super::{InnerState, ManagerFromAppHandle};
+
 pub type ManifestResult<T> = Result<T, ManifestError>;
 
 #[derive(Debug)]
@@ -107,6 +109,16 @@ impl From<ZipError> for ManifestError {
 }
 
 pub struct ResourceState(pub Arc<Mutex<ResourceManager>>);
+
+impl InnerState<Arc<Mutex<ResourceManager>>> for ResourceState {
+    fn inner_state(&self) -> Arc<Mutex<ResourceManager>> {
+        self.0.clone()
+    }
+}
+
+impl ManagerFromAppHandle for ResourceManager {
+    type State = ResourceState;
+}
 
 impl ResourceState {
     pub fn new(app_dir: &Path) -> Self {

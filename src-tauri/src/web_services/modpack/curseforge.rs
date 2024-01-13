@@ -5,7 +5,7 @@ use std::{
     path::{Path, PathBuf},
     time::Instant,
 };
-
+use crate::state::ManagerFromAppHandle;
 use log::{debug, error, info};
 use reqwest::header::HeaderMap;
 use serde::{Deserialize, Serialize};
@@ -20,7 +20,7 @@ use crate::{
         CURSEFORGE_API_URL, CURSEFORGE_FORGECDN_URL, CURSEFORGE_MODPACK_CLASS_ID,
         CURSEFORGE_PAGE_SIZE,
     },
-    state::instance_manager::InstanceState,
+    state::instance_manager::{InstanceState, InstanceManager},
     web_services::{
         downloader::{
             buffered_download_stream, download_json_object, validate_hash_sha1, DownloadError,
@@ -495,10 +495,8 @@ pub async fn import_curseforge_zip(
 
     create_instance(settings, &app_handle, Some(&curseforge_manifest.author)).await.unwrap();
 
-    let instance_state: State<InstanceState> = app_handle
-        .try_state()
-        .expect("`InstanceState` should already be managed.");
-    let instance_manager = instance_state.0.lock().await;
+    let instance_manager = InstanceManager::from_app_handle(&app_handle).await;
+
     let instances_dir = instance_manager.instances_dir();
 
     let info = CurseforgeManifestInfo {

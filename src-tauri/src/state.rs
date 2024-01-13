@@ -1,9 +1,13 @@
-use log::{error, debug};
+use std::sync::Arc;
+
+use futures::Future;
+use log::{debug, error};
 use tauri::{Manager, Wry};
+use tokio::sync::{Mutex, OwnedMutexGuard};
 
 pub mod account_manager;
-pub mod resource_manager;
 pub mod instance_manager;
+pub mod resource_manager;
 
 /// Attempts to redirect the main window to the specified endpoint
 /// Specify endpoint without a leading `/`.  
@@ -30,5 +34,23 @@ pub fn redirect(app_handle: &tauri::AppHandle<Wry>, endpoint: &str) -> tauri::Re
             error!("{}", error);
             panic!("{}", error);
         }
+    }
+}
+
+pub trait InnerState<T> {
+    fn inner_state(&self) -> T;
+}
+
+pub trait ManagerFromAppHandle {
+    type State;
+
+    fn from_app_handle(app_handle: &tauri::AppHandle) -> impl Future<Output = OwnedMutexGuard<Self>>
+    where
+        <Self as ManagerFromAppHandle>::State: 'static + InnerState<Arc<Mutex<Self>>> + Send + Sync,
+    {
+        let state: tauri::State<Self::State> = app_handle
+            .try_state()
+            .expect("This state should already be managed.");
+        state.inner_state().lock_owned()
     }
 }

@@ -9,9 +9,9 @@ use log::{debug, error, info};
 use serde::Deserialize;
 use tauri::{AppHandle, Manager, State, Wry};
 use zip::ZipArchive;
-
+use crate::state::ManagerFromAppHandle;
 use crate::{
-    state::instance_manager::InstanceState,
+    state::instance_manager::{InstanceState, InstanceManager},
     web_services::{
         downloader::{buffered_download_stream, validate_hash_sha1, DownloadError, Downloadable},
         manifest::bytes_from_zip_file,
@@ -117,10 +117,8 @@ pub async fn import_modrinth_zip(
 
     create_instance(settings, app_handle, Some("Modrinth")).await.unwrap();
 
-    let instance_state: State<InstanceState> = app_handle
-        .try_state()
-        .expect("`InstanceState` should already be managed.");
-    let instance_manager = instance_state.0.lock().await;
+    let instance_manager = InstanceManager::from_app_handle(&app_handle).await;
+
     let instances_dir = instance_manager.instances_dir();
     let instance_dir = instances_dir.join(&manifest.name);
 

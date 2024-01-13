@@ -11,3 +11,5 @@ callgrind*
 
 /target
 **/target
+debug.sh
+*.crt

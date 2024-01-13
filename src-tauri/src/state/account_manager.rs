@@ -10,11 +10,23 @@ use std::{
 use autmc_authentication::{refresh_access_tokens, MinecraftAccount, OAuthRefreshMode};
 use log::{debug, error, info};
 use serde::{Deserialize, Serialize};
-use tauri::{async_runtime::Mutex, AppHandle, Manager, Wry};
+use tauri::{async_runtime::Mutex, AppHandle, Wry};
 use tokio::time::sleep;
+
+use super::{InnerState, ManagerFromAppHandle};
 
 #[derive(Debug)]
 pub struct AccountState(pub Arc<Mutex<AccountManager>>);
+
+impl InnerState<Arc<Mutex<AccountManager>>> for AccountState {
+    fn inner_state(&self) -> Arc<Mutex<AccountManager>> {
+        self.0.clone()
+    }
+}
+
+impl ManagerFromAppHandle for AccountManager {
+    type State = AccountState;
+}
 
 impl AccountState {
     pub fn new(app_dir: &Path) -> Self {
@@ -139,10 +151,7 @@ impl AccountManager {
                         token: account.into(),
                     }
                 };
-            let account_state: tauri::State<AccountState> = app_handle
-                .try_state()
-                .expect("`AccountState` should already be managed.");
-            let mut account_manager = account_state.0.lock().await;
+            let mut account_manager = AccountManager::from_app_handle(&app_handle).await;
 
             let account_res = refresh_access_tokens(refresh_mode).await;
             match account_res {

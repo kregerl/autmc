@@ -6,7 +6,7 @@ use std::{
     path::{Path, PathBuf},
     time::Instant,
 };
-
+use crate::state::{ManagerFromAppHandle, resource_manager::ResourceManager};
 use autmc_authentication::MinecraftAccount;
 use bytes::Bytes;
 use futures::future::BoxFuture;
@@ -20,7 +20,7 @@ use zip::ZipArchive;
 use crate::{
     consts::{JAVA_VERSION_MANIFEST_URL, LAUNCHER_NAME, LAUNCHER_VERSION},
     state::{
-        instance_manager::{InstanceConfiguration, InstanceState},
+        instance_manager::{InstanceConfiguration, InstanceState, self, InstanceManager},
         resource_manager::{ManifestError, ManifestResult, ResourceState},
     },
     web_services::{
@@ -151,7 +151,7 @@ fn determine_key_for_java_manifest<'a>(
         }
         _ => {
             unreachable!(
-                "Unknown java version OS: {}. Expected `linux`, `mac-os` or `windows`",
+                "Unknown java version this OS: {}. Expected `linux`, `mac-os` or `windows`",
                 key
             )
         }
@@ -647,7 +647,7 @@ async fn download_java_from_runtime_manifest(
         {
             use std::os::unix::prelude::PermissionsExt;
 
-            // Markt the file as executable on unix os's
+            // Mark the file as executable on unix os's
             if jrt.executable {
                 let mut permissions = file.metadata()?.permissions();
                 permissions.set_mode(0o775);
@@ -1048,10 +1048,7 @@ pub async fn create_instance(
     app_handle: &AppHandle<Wry>,
     author: Option<&str>,
 ) -> ManifestResult<()> {
-    let resource_state: State<ResourceState> = app_handle
-        .try_state()
-        .expect("`ResourceState` should already be managed.");
-    let resource_manager = resource_state.0.lock().await;
+    let resource_manager = ResourceManager::from_app_handle(&app_handle).await;
     let start = Instant::now();
 
     let version: VanillaVersion = resource_manager
@@ -1146,7 +1143,7 @@ pub async fn create_instance(
                         .any(|library| library.name.contains("log4j"))
                     {
                         // Filter out log4j-core and log4j-api versions from minecraft.
-                        // This fixes an issue with forge providing different versions of log4j-core and log4j-api which
+                        // This fixes an issue with minecraft providing different versions of log4j-core and log4j-api which
                         // conflict with the forge log4j libraries in the classpath.
                         all_libraries.retain(|library| {
                             let url = library.url();
@@ -1295,10 +1292,8 @@ pub async fn create_instance(
     );
     debug!("Persistent Arguments: {}", &persitent_arguments.join(" "));
 
-    let instance_state: State<InstanceState> = app_handle
-        .try_state()
-        .expect("`ResourceState` should already be managed.");
-    let instance_manager = instance_state.0.lock().await;
+    let instance_manager = InstanceManager::from_app_handle(&app_handle).await;
+
 
     // If there is no modloader, then set the "modloader_version" to the vanilla version for displaying
     // on the instances screen
@@ -1316,7 +1311,7 @@ pub async fn create_instance(
         modloader_version: instance_version,
         author: author.unwrap_or("You").into(),
         instance_icon: None,
-        playtime: Some(0)
+        playtime: 0
     })?;
     debug!("After persistent args");
     extract_natives(

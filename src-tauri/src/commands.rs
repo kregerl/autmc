@@ -6,22 +6,21 @@ use std::{
     path::{Path, PathBuf},
     process::{Command, Stdio},
 };
-
+use crate::state::{ManagerFromAppHandle, resource_manager::ResourceManager, account_manager::AccountManager};
 use autmc_authentication::{
     poll_device_code_status, start_device_code_authentication, AuthenticationResult, DeviceCode,
 };
 use flate2::read::GzDecoder;
 use log::{debug, error, info, warn};
-use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State, Wry};
 use zip::ZipArchive;
 
 use crate::{
-    consts::{CLIENT_ID, GZIP_SIGNATURE, MICROSOFT_LOGIN_URL},
+    consts::GZIP_SIGNATURE,
     state::{
         account_manager::AccountState,
-        instance_manager::{InstanceConfiguration, InstanceState},
+        instance_manager::{InstanceConfiguration, InstanceState, InstanceManager},
         resource_manager::{ManifestResult, ResourceState},
     },
     web_services::{
@@ -71,10 +70,7 @@ pub async fn poll_device_code_authentication(
     let account = poll_device_code_status(&device_code).await?;
     debug!("Got Account: {:#?}", account);
 
-    let account_state: tauri::State<AccountState> = app_handle
-        .try_state()
-        .expect("`AccountState` should already be managed.");
-    let mut account_manager = account_state.0.lock().await;
+    let mut account_manager = AccountManager::from_app_handle(&app_handle).await;
 
     // Save account to account manager.
     account_manager.add_and_activate_account(account, app_handle.clone());
@@ -150,10 +146,7 @@ pub struct VersionManifest {
 
 #[tauri::command(async)]
 pub async fn obtain_manifests(app_handle: AppHandle<Wry>) -> ManifestResult<VersionManifest> {
-    let resource_state: State<ResourceState> = app_handle
-        .try_state()
-        .expect("`ResourceState` should already be managed.");
-    let mut resource_manager = resource_state.0.lock().await;
+    let mut resource_manager = ResourceManager::from_app_handle(&app_handle).await;
 
     let vanilla_versions = resource_manager.get_vanilla_version_list().await?;
     let fabric_versions = resource_manager.get_fabric_version_list().await?;
@@ -182,10 +175,7 @@ pub async fn obtain_version(
     let instance_name = settings.instance_name.clone();
 
     create_instance(settings, &app_handle, None).await?;
-    let instance_state: State<InstanceState> = app_handle
-        .try_state()
-        .expect("`InstanceState` should already be managed.");
-    let mut instance_manager = instance_state.0.lock().await;
+    let mut instance_manager = InstanceManager::from_app_handle(&app_handle).await;
 
     instance_manager.deserialize_instances();
     app_handle.emit_all("new-instance", instance_name).unwrap();
@@ -207,10 +197,7 @@ pub struct AccountInformation {
 
 #[tauri::command(async)]
 pub async fn get_accounts(app_handle: AppHandle<Wry>) -> AccountInformation {
-    let account_state: tauri::State<AccountState> = app_handle
-        .try_state()
-        .expect("`AccountState` should already be managed.");
-    let account_manager = account_state.0.lock().await;
+    let account_manager = AccountManager::from_app_handle(&app_handle).await;
     let uuid = account_manager.get_active_uuid();
     let accounts = account_manager
         .get_all_accounts()
@@ -272,10 +259,8 @@ pub async fn get_accounts(app_handle: AppHandle<Wry>) -> AccountInformation {
 
 #[tauri::command(async)]
 pub async fn get_account_skin(app_handle: AppHandle<Wry>) -> String {
-    let account_state: State<AccountState> = app_handle
-        .try_state()
-        .expect("`AccountState` should already be managed.");
-    let account_manager = account_state.0.lock().await;
+    let account_manager = AccountManager::from_app_handle(&app_handle).await;
+
 
     let account = account_manager.get_active_account().unwrap();
     debug!("Skin URL: {}", account.skin_url);
@@ -284,10 +269,7 @@ pub async fn get_account_skin(app_handle: AppHandle<Wry>) -> String {
 
 #[tauri::command(async)]
 pub async fn load_instances(app_handle: AppHandle<Wry>) -> Vec<InstanceConfiguration> {
-    let instance_state: State<InstanceState> = app_handle
-        .try_state()
-        .expect("`InstanceState` should already be managed.");
-    let mut instance_manager = instance_state.0.lock().await;
+    let mut instance_manager = InstanceManager::from_app_handle(&app_handle).await;
 
     instance_manager.deserialize_instances();
     debug!("load_instances");
@@ -296,16 +278,9 @@ pub async fn load_instances(app_handle: AppHandle<Wry>) -> Vec<InstanceConfigura
 
 #[tauri::command(async)]
 pub async fn launch_instance(instance_name: String, app_handle: AppHandle<Wry>) {
-    let instance_state: State<InstanceState> = app_handle
-        .try_state()
-        .expect("`InstanceState` should already be managed.");
-    let mut instance_manager = instance_state.0.lock().await;
+    let mut instance_manager = InstanceManager::from_app_handle(&app_handle).await;
 
-    let account_state: State<AccountState> = app_handle
-        .try_state()
-        .expect("`AccountState` should already be managed.");
-
-    let account_manager = account_state.0.lock().await;
+    let account_manager = AccountManager::from_app_handle(&app_handle).await;
 
     // Assumed there is an active account.
     instance_manager.launch_instance(
@@ -319,10 +294,8 @@ pub async fn launch_instance(instance_name: String, app_handle: AppHandle<Wry>) 
 #[tauri::command(async)]
 pub async fn open_folder(instance_name: String, app_handle: AppHandle<Wry>) {
     debug!("open_folder with name: {}", instance_name);
-    let instance_state: State<InstanceState> = app_handle
-        .try_state()
-        .expect("`InstanceState` should already be managed.");
-    let instance_manager = instance_state.0.lock().await;
+    let instance_manager = InstanceManager::from_app_handle(&app_handle).await;
+
 
     // Determine the command to open the default file explorer
     let command = match env::consts::OS {
@@ -348,10 +321,8 @@ pub async fn open_folder(instance_name: String, app_handle: AppHandle<Wry>) {
 
 #[tauri::command(async)]
 pub async fn get_screenshots(app_handle: AppHandle<Wry>) -> HashMap<String, Vec<String>> {
-    let instance_state: State<InstanceState> = app_handle
-        .try_state()
-        .expect("`InstanceState` should already be managed.");
-    let instance_manager = instance_state.0.lock().await;
+    let instance_manager = InstanceManager::from_app_handle(&app_handle).await;
+
     let instance_dir = instance_manager.instances_dir();
 
     let mut instance_screenshots = HashMap::new();
@@ -416,10 +387,8 @@ fn create_instance_log_map(
 
 #[tauri::command(async)]
 pub async fn get_logs(app_handle: AppHandle<Wry>) -> HashMap<String, Vec<String>> {
-    let instance_state: State<InstanceState> = app_handle
-        .try_state()
-        .expect("`InstanceState` should already be managed.");
-    let instance_manager = instance_state.0.lock().await;
+    let instance_manager = InstanceManager::from_app_handle(&app_handle).await;
+
     let instance_dir = instance_manager.instances_dir();
 
     match create_instance_log_map(&instance_dir, &instance_manager.get_instance_names()) {
@@ -501,10 +470,8 @@ pub async fn read_log_lines(
     app_handle: AppHandle<Wry>,
 ) -> Vec<TaggedLine> {
     info!("Getting logs for {}", log_name);
-    let instance_state: State<InstanceState> = app_handle
-        .try_state()
-        .expect("`InstanceState` should already be managed.");
-    let instance_manager = instance_state.0.lock().await;
+    let instance_manager = InstanceManager::from_app_handle(&app_handle).await;
+
     let instance_dir = instance_manager.instances_dir();
 
     let path = instance_dir.join(instance_name).join("logs").join(log_name);

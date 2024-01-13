@@ -3,6 +3,7 @@
     windows_subsystem = "windows"
 )]
 
+mod authentication;
 mod commands;
 mod consts;
 mod option_parser;
@@ -10,8 +11,17 @@ mod state;
 #[cfg(test)]
 mod tests;
 mod web_services;
-mod authentication;
-
+use crate::state::ManagerFromAppHandle;
+use crate::{
+    authentication::validate_account,
+    commands::{
+        get_account_skin, get_accounts, get_curseforge_categories, get_logs, get_screenshots,
+        import_zip, launch_instance, load_instances, obtain_manifests, obtain_version, open_folder,
+        poll_device_code_authentication, read_log_lines, search_curseforge,
+        start_authentication_flow,
+    },
+    state::{instance_manager::InstanceState, resource_manager::ResourceState, account_manager::AccountManager},
+};
 use log::{error, info, warn};
 use regex::Regex;
 use serde::ser::StdError;
@@ -20,22 +30,7 @@ use std::{
     fs::{self},
     path::{Path, PathBuf},
 };
-use tauri::{
-    api::cli::Matches,
-    http::{Request, Response, ResponseBuilder},
-    App, AppHandle, Manager, Wry,
-};
-// use web_services::authentication::{authenticate, validate_account, AuthMode};
-
-use crate::{
-    commands::{
-        get_account_skin, get_accounts, get_curseforge_categories, get_logs, get_screenshots,
-        import_zip, launch_instance, load_instances, obtain_manifests,
-        obtain_version, open_folder, poll_device_code_authentication, read_log_lines,
-        search_curseforge, start_authentication_flow,
-    },
-    state::{instance_manager::InstanceState, resource_manager::ResourceState}, authentication::validate_account,
-};
+use tauri::{api::cli::Matches, App, Manager, Wry};
 
 const MAX_LOGS: usize = 20;
 fn main() {
@@ -113,10 +108,8 @@ fn setup(app: &mut App<Wry>) -> Result<(), Box<(dyn StdError + 'static)>> {
     // Spawn an async thread and use the app_handle to refresh active account.
     // TODO: Maybe emit event to display a toast telling the user what happened.
     tauri::async_runtime::spawn(async move {
-        let account_state: tauri::State<AccountState> = app_handle
-            .try_state()
-            .expect("`AccountState` should already be managed.");
-        let mut account_manager = account_state.0.lock().await;
+        let mut account_manager = AccountManager::from_app_handle(&app_handle).await;
+
         match account_manager.deserialize_accounts() {
             Ok(_) => {}
             Err(_) => {
@@ -168,56 +161,6 @@ fn setup(app: &mut App<Wry>) -> Result<(), Box<(dyn StdError + 'static)>> {
 
     Ok(())
 }
-
-// /// Callback for when a window is redirected to 'autmc://'
-// fn autmc_uri_scheme(
-//     app_handle: &AppHandle<Wry>,
-//     request: &Request,
-// ) -> Result<Response, Box<dyn std::error::Error>> {
-//     info!("Retrieved request to custom uri scheme 'autmc://'");
-//     if let Some(window) = app_handle.get_window("login") {
-//         // Neither of the following should be possible in this instance.
-//         // - Panics if the event loop is not running yet, usually when called on the [`setup`](crate::Builder#method.setup) closure.
-//         // - Panics when called on the main thread, usually on the [`run`](crate::App#method.run) closure.
-//         window.close().unwrap();
-//     }
-//     let url = request.uri().to_owned();
-//     let handle = app_handle.clone();
-//     // Spawn a thread to handle authentication.
-//     tauri::async_runtime::spawn(async move {
-//         let auth_mode = AuthMode::Full(url);
-//         let authentication_result = authenticate(auth_mode).await;
-
-//         // If the result if an error, emit error to user
-//         if let Err(authentication_error) = &authentication_result {
-//             if let Err(error) = handle.emit_to(
-//                 "main",
-//                 "authentication-error",
-//                 authentication_error.to_string(),
-//             ) {
-//                 error!("{}", error.to_string())
-//             }
-//         }
-//         let account = authentication_result.unwrap();
-
-//         let account_state: tauri::State<AccountState> = handle
-//             .try_state()
-//             .expect("`AccountState` should already be managed.");
-//         let mut account_manager = account_state.0.lock().await;
-
-//         // Save account to account manager.
-//         account_manager.add_and_activate_account(account, handle.clone());
-
-//         if let Err(error) = account_manager.serialize_accounts() {
-//             warn!(
-//                 "Could not properly serialize account information: {}",
-//                 error
-//             );
-//         }
-//     });
-//     let body: Vec<u8> = "<h1>Hello World!</h1>".as_bytes().to_vec();
-//     ResponseBuilder::new().mimetype("text/html").body(body)
-// }
 
 /// Sets up the logger and saves launcher logs to ${app_dir}/logs/launcher_log_${datetime}.log
 fn init_logger(log_dir: &PathBuf) -> Result<(), fern::InitError> {
