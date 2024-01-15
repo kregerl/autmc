@@ -88,12 +88,14 @@ impl Into<MicrosoftToken> for MicrosoftTokenResponse {
     }
 }
 
+#[derive(Debug)]
 pub struct MicrosoftToken {
     access_token: String,
     refresh_token: String,
     access_token_expiry: u64,
 }
 
+#[derive(Debug)]
 pub enum OAuthRefreshMode {
     Microsoft { refresh_token: String },
     Minecraft { token: MicrosoftToken },
@@ -104,7 +106,8 @@ pub async fn refresh_access_tokens(
 ) -> AuthenticationResult<MinecraftAccount> {
     let microsoft_token = match refresh_mode {
         OAuthRefreshMode::Microsoft { refresh_token } => {
-            refresh_microsoft_token(&refresh_token).await?.into()
+            let microsoft_token_response = refresh_microsoft_token(&refresh_token).await?;
+            microsoft_token_response.into()
         }
         OAuthRefreshMode::Minecraft { token } => token,
     };

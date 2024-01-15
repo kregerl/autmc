@@ -1,27 +1,11 @@
-use std::{
-    collections::HashMap,
-    env,
-    fs::{self, File},
-    io::{self, BufRead, BufReader, Read},
-    path::{Path, PathBuf},
-    process::{Command, Stdio},
+use crate::state::{
+    account_manager::AccountManager, resource_manager::ResourceManager, ManagerFromAppHandle,
 };
-use crate::state::{ManagerFromAppHandle, resource_manager::ResourceManager, account_manager::AccountManager};
-use autmc_authentication::{
-    poll_device_code_status, start_device_code_authentication, AuthenticationResult, DeviceCode,
-};
-use flate2::read::GzDecoder;
-use log::{debug, error, info, warn};
-use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager, State, Wry};
-use zip::ZipArchive;
-
 use crate::{
     consts::GZIP_SIGNATURE,
     state::{
-        account_manager::AccountState,
-        instance_manager::{InstanceConfiguration, InstanceState, InstanceManager},
-        resource_manager::{ManifestResult, ResourceState},
+        instance_manager::{InstanceConfiguration, InstanceManager},
+        resource_manager::ManifestResult,
     },
     web_services::{
         manifest::{path_to_utf8_str, vanilla::VanillaManifestVersion},
@@ -36,24 +20,22 @@ use crate::{
         resources::{create_instance, InstanceSettings},
     },
 };
-
-#[cfg(target_family = "unix")]
-fn get_init_script_for_os() -> String {
-    r#"
-        if (window.location.href.startsWith("https://login.microsoftonline.com/common/oauth2/nativeclient")) {
-            window.location.replace(`autmc://auth${window.location.search}`);
-        }
-    "#.into()
-}
-
-#[cfg(target_family = "windows")]
-fn get_init_script_for_os() -> String {
-    r#"
-        if (window.location.href.startsWith("https://login.microsoftonline.com/common/oauth2/nativeclient")) {
-            window.location.replace(`https://autmc.auth${window.location.search}`);
-        }
-    "#.into()
-}
+use autmc_authentication::{
+    poll_device_code_status, start_device_code_authentication, AuthenticationResult, DeviceCode,
+};
+use flate2::read::GzDecoder;
+use log::{debug, error, info, warn};
+use serde::{Deserialize, Serialize};
+use std::{
+    collections::HashMap,
+    env,
+    fs::{self, File},
+    io::{self, BufRead, BufReader, Read},
+    path::{Path, PathBuf},
+    process::{Command, Stdio},
+};
+use tauri::{AppHandle, Manager, Wry};
+use zip::ZipArchive;
 
 #[tauri::command(async)]
 pub async fn start_authentication_flow() -> AuthenticationResult<DeviceCode> {
@@ -83,33 +65,6 @@ pub async fn poll_device_code_authentication(
     }
     Ok(())
 }
-
-// #[tauri::command(async)]
-// pub async fn show_microsoft_login_page(app_handle: tauri::AppHandle<Wry>) -> Au<()> {
-//     let login_url = Url::parse_with_params(
-//         MICROSOFT_LOGIN_URL,
-//         &[
-//             ("prompt", "select_account"),
-//             ("client_id", CLIENT_ID),
-//             ("response_type", "code"),
-//             ("scope", "XboxLive.signin offline_access"),
-//             (
-//                 "redirect_uri",
-//                 "https://login.microsoftonline.com/common/oauth2/nativeclient",
-//             ),
-//         ],
-//     )?;
-
-//     debug!("Init script injected");
-//     let init_script = get_init_script_for_os();
-//     // Redirects to the custom protocol 'autmc://auth', preserving the query parameters.
-//     let window_url = tauri::WindowUrl::App(login_url.to_string().parse().unwrap());
-//     // Start window with init script
-//     let _login_window = tauri::WindowBuilder::new(&app_handle, "login", window_url)
-//         .initialization_script(&init_script)
-//         .build()?;
-//     Ok(())
-// }
 
 #[derive(Deserialize)]
 pub struct VersionFilter {
@@ -219,48 +174,9 @@ pub async fn get_accounts(app_handle: AppHandle<Wry>) -> AccountInformation {
     }
 }
 
-// #[tauri::command(async)]
-// pub async fn login_to_account(uuid: String, app_handle: AppHandle<Wry>) {
-//     let account_state: tauri::State<AccountState> = app_handle
-//         .try_state()
-//         .expect("`AccountState` should already be managed.");
-//     let mut account_manager = account_state.0.lock().await;
-
-//     account_manager.activate_account(&uuid, app_handle.clone());
-
-//     // Get the active account that was just set.
-//     match account_manager.get_active_account() {
-//         Some(active_account) => {
-//             let validation_result = validate_account(active_account).await;
-
-//             // If the result if an error, emit error to user
-//             if let Err(validation_error) = &validation_result {
-//                 if let Err(error) =
-//                     app_handle.emit_to("main", "authentication-error", validation_error.to_string())
-//                 {
-//                     error!("{}", error.to_string());
-//                     return;
-//                 }
-//             }
-
-//             if let Err(error) = account_manager.serialize_accounts() {
-//                 warn!(
-//                     "Could not properly serialize account information: {}",
-//                     error
-//                 );
-//             }
-//         }
-//         None => {
-//             // FIXME: Emit error to user
-//             error!("No account with uuid: {}", uuid);
-//         }
-//     }
-// }
-
 #[tauri::command(async)]
 pub async fn get_account_skin(app_handle: AppHandle<Wry>) -> String {
     let account_manager = AccountManager::from_app_handle(&app_handle).await;
-
 
     let account = account_manager.get_active_account().unwrap();
     debug!("Skin URL: {}", account.skin_url);
@@ -295,7 +211,6 @@ pub async fn launch_instance(instance_name: String, app_handle: AppHandle<Wry>) 
 pub async fn open_folder(instance_name: String, app_handle: AppHandle<Wry>) {
     debug!("open_folder with name: {}", instance_name);
     let instance_manager = InstanceManager::from_app_handle(&app_handle).await;
-
 
     // Determine the command to open the default file explorer
     let command = match env::consts::OS {
