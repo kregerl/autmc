@@ -1,8 +1,8 @@
 export enum MenuId {
-    Instances,
-    Screenshots,
-    Logs,
-    Servers,
+    Instances = "Instances",
+    Screenshots = "Screenshots",
+    Logs = "Logs",
+    Servers = "Servers",
 }
 
 export enum OpenModalType {

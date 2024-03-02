@@ -69,6 +69,12 @@
             active={activeMenuId === MenuId.Logs}
             on:click={() => changeMenuId(MenuId.Logs)}
         />
+        <SidebarButton
+            src="svg/Servers.svg"
+            text="Servers"
+            active={activeMenuId === MenuId.Servers}
+            on:click={() => changeMenuId(MenuId.Servers)}
+        />
     </div>
 </div>
 <Modal bind:this={modal} on:close />

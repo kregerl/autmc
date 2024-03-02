@@ -13,8 +13,10 @@
     import { listen, type UnlistenFn } from "@tauri-apps/api/event";
     import { ExitCode, instanceStateStore } from "./store/instancestatetore";
     import ScreenshotRow from "./screenshots/ScreenshotRow.svelte";
+    import Servers from "./server/Servers.svelte";
 
-    let activeMenuId: MenuId = MenuId.Instances;
+    // let activeMenuId: MenuId = MenuId.Instances;
+    let activeMenuId: MenuId = MenuId.Servers;
     let openModal: OpenModalType = OpenModalType.None;
 
     let isSideModalOpen: boolean = false;
@@ -136,6 +138,8 @@
         <Screenshots --grid-area="header / header / content / content" />
     {:else if activeMenuId == MenuId.Logs}
         <Logs --grid-area="content" />
+    {:else if activeMenuId == MenuId.Servers}
+        <Servers --grid-area="header / header / content / content" />
     {/if}
 </main>
 

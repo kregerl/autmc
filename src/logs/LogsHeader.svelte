@@ -50,7 +50,9 @@
                 --max-height="220px"
             />
         </div>
-        <TextBoxInput id="filter" label="Filter lines" bind:value={filter} />
+        <div class="textbox-wrapper">
+            <TextBoxInput id="filter" label="Filter lines" bind:value={filter} />
+        </div>
         <div class="regex-wrapper">
             <CheckboxInput text="Use Regex" bind:checked={useRegex}/>
         </div>
@@ -62,6 +64,10 @@
         z-index: 2;
         margin: 8px 0 0 8px;
         grid-area: var(--grid-area);
+    }
+
+    .textbox-wrapper {
+        margin-top: 6px;
     }
 
     .wrapper {

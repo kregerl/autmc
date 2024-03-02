@@ -131,7 +131,6 @@ impl AccountManager {
         let account = self.get_active_account().unwrap().clone();
         // Spawn a thread to refresh access tokens once they expire.
         tauri::async_runtime::spawn(async move {
-            // Assumes SystemTime is after UNIX_EPOCH
             let now = chrono::Local::now().timestamp() as u64;
             let refresh_mode =
                 if account.minecraft_access_token_expiry < account.microsoft_access_token_expiry {

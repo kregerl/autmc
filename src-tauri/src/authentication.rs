@@ -30,10 +30,11 @@ pub async fn validate_account(account: MinecraftAccount) -> AuthenticationResult
         None
     };
 
-    if let Some(mode) = refresh_mode {
-        refresh_access_tokens(mode).await
-    } else {
-        debug!("Minecraft Token Valid.");
-        Ok(account)
+    match refresh_mode {
+        Some(mode) => refresh_access_tokens(mode).await,
+        None => {
+            debug!("Minecraft Token Valid.");
+            Ok(account)
+        },
     }
 }
