@@ -3,74 +3,61 @@
   "build": {
     "beforeBuildCommand": "npm run build",
     "beforeDevCommand": "npm run dev",
-    "devPath": "http://localhost:8080",
-    "distDir": "../public"
+    "frontendDist": "../public",
+    "devUrl": "http://localhost:8080"
   },
-  "package": {
-    "productName": "mc-launcher",
-    "version": "0.1.0"
-  },
-  "tauri": {
-    "allowlist": {
-      "path": {
-        "all": true
-      },
-      "fs": {
-        "scope": ["$APP/instances/*"]
-      },
-      "protocol": {
-        "asset": true,
-        "assetScope": ["$APP/instances/**/screenshots/*.png"]
-      },
-      "dialog": {
-        "all": false,
-        "ask": false,
-        "confirm": false,
-        "message": false,
-        "open": true,
-        "save": false
-      }
+  "bundle": {
+    "active": true,
+    "category": "DeveloperTool",
+    "copyright": "",
+    "targets": "all",
+    "externalBin": [],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "certificateThumbprint": null,
+      "digestAlgorithm": "sha256",
+      "timestampUrl": ""
     },
-    "bundle": {
-      "active": true,
-      "category": "DeveloperTool",
-      "copyright": "",
+    "longDescription": "",
+    "macOS": {
+      "entitlements": null,
+      "exceptionDomain": "",
+      "frameworks": [],
+      "providerShortName": null,
+      "signingIdentity": null
+    },
+    "resources": [],
+    "shortDescription": "",
+    "linux": {
       "deb": {
         "depends": []
-      },
-      "externalBin": [],
-      "icon": [
-        "icons/32x32.png",
-        "icons/128x128.png",
-        "icons/128x128@2x.png",
-        "icons/icon.icns",
-        "icons/icon.ico"
-      ],
-      "identifier": "com.autm.launcher",
-      "longDescription": "",
-      "macOS": {
-        "entitlements": null,
-        "exceptionDomain": "",
-        "frameworks": [],
-        "providerShortName": null,
-        "signingIdentity": null
-      },
-      "resources": [],
-      "shortDescription": "",
-      "targets": "all",
-      "windows": {
-        "certificateThumbprint": null,
-        "digestAlgorithm": "sha256",
-        "timestampUrl": ""
       }
-    },
-    "security": {
-      "csp": "default-src 'self'; img-src 'self' asset: https://asset.localhost http://textures.minecraft.net/texture/ https://media.forgecdn.net/;"
-      
-    },
-    "updater": {
-      "active": false
-    },
+    }
+  },
+  "productName": "mc-launcher",
+  "mainBinaryName": "mc-launcher",
+  "version": "0.1.0",
+  "identifier": "com.autm.launcher",
+  "plugins": {
+    "cli": {
+      "description": "Launches the headless launcher to run a given minecraft instance.",
+      "args": [
+        {
+          "name": "instance",
+          "short": "i",
+          "takesValue": true,
+          "multiple": false
+        }
+      ]
+    }
+  },
+  "app": {
     "windows": [
       {
         "fullscreen": false,
@@ -80,19 +67,18 @@
         "title": "Mc Launcher",
         "width": 1280,
         "minWidth": 1280,
-        "url": "index.html"
+        "url": "index.html",
+        "useHttpsScheme": true
       }
     ],
-    "cli": {
-      "description": "Launches the headless launcher to run a given minecraft instance.",
-      "args": [
-        {
-         "name": "instance",
-         "short": "i",
-         "takesValue": true, 
-         "multiple": false
-        }
-      ]
+    "security": {
+      "assetProtocol": {
+        "scope": [
+          "$APP/instances/**/screenshots/*.png"
+        ],
+        "enable": true
+      },
+      "csp": "default-src 'self'; img-src 'self' asset: https://asset.localhost http://textures.minecraft.net/texture/ https://media.forgecdn.net/;; connect-src ipc: http://ipc.localhost"
     }
   }
 }

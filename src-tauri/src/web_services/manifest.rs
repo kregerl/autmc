@@ -1,13 +1,17 @@
-use std::{path::Path, io::Read};
+use std::{io::Read, path::Path};
 
 use log::error;
 use zip::read::ZipFile;
 
-pub mod vanilla;
-pub mod forge;
 pub mod fabric;
+pub mod forge;
+pub mod vanilla;
 
-pub fn maven_to_vec(maven_artifact: &str, append_str: Option<&str>, force_extension: Option<&str>) -> Vec<String> {
+pub fn maven_to_vec(
+    maven_artifact: &str,
+    append_str: Option<&str>,
+    force_extension: Option<&str>,
+) -> Vec<String> {
     let splits: Vec<&str> = maven_artifact.split(':').collect();
     let file_name_ending = if splits.get(3).is_some() {
         format!("{}-{}", splits[2], splits[3])
@@ -43,7 +47,6 @@ pub fn maven_to_vec(maven_artifact: &str, append_str: Option<&str>, force_extens
 
     result.iter().map(|s| (*s).to_owned()).collect()
 }
-
 
 /// Converts a path into a utf8 compatible string. If the string is not utf8 compatible then
 /// it is set to an obvious error str: '__INVALID_UTF8_STRING__'

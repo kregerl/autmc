@@ -5,7 +5,7 @@ use std::{
 };
 
 use indexmap::IndexMap;
-use log::{debug, warn, error};
+use log::{debug, error, warn};
 use serde::{
     de::{Error, SeqAccess, Visitor},
     Deserialize, Deserializer,
@@ -349,11 +349,7 @@ impl Library {
                 extraction_rule: self.extract.as_ref().cloned(),
             })
         } else {
-            error!(
-                "Unknown classifier key {} for library {}",
-                key,
-                self.name
-            );
+            error!("Unknown classifier key {} for library {}", key, self.name);
             None
         }
     }

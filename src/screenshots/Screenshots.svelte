@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { invoke } from "@tauri-apps/api";
+    import { invoke } from "@tauri-apps/api/core";
     
     import VirtualList from "../components/virtual-list/VirtualList.svelte";
     import TextLoader from "../components/loader/TextLoader.svelte";

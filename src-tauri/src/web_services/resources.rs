@@ -1,3 +1,9 @@
+use crate::state::{resource_manager::ResourceManager, ManagerFromAppHandle};
+use autmc_authentication::MinecraftAccount;
+use bytes::Bytes;
+use futures::future::BoxFuture;
+use log::{debug, error, info, warn};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::{
     collections::{HashMap, HashSet},
     env,
@@ -6,13 +12,7 @@ use std::{
     path::{Path, PathBuf},
     time::Instant,
 };
-use crate::state::{ManagerFromAppHandle, resource_manager::ResourceManager};
-use autmc_authentication::MinecraftAccount;
-use bytes::Bytes;
-use futures::future::BoxFuture;
-use log::{debug, error, info, warn};
-use serde::{Deserialize, Deserializer, Serialize};
-use tauri::{AppHandle, Manager, State, Wry};
+use tauri::{AppHandle, Emitter, Manager, State, Wry};
 use tempdir::TempDir;
 use xmltree::{Element, XMLNode};
 use zip::ZipArchive;
@@ -20,7 +20,7 @@ use zip::ZipArchive;
 use crate::{
     consts::{JAVA_VERSION_MANIFEST_URL, LAUNCHER_NAME, LAUNCHER_VERSION},
     state::{
-        instance_manager::{InstanceConfiguration, InstanceState, self, InstanceManager},
+        instance_manager::{self, InstanceConfiguration, InstanceManager, InstanceState},
         resource_manager::{ManifestError, ManifestResult, ResourceState},
     },
     web_services::{
@@ -1022,7 +1022,7 @@ impl InstanceSettings {
         vanilla_version: String,
         modloader_type: ModloaderType,
         modloader_version: String,
-        instance_icon: Option<PathBuf>
+        instance_icon: Option<PathBuf>,
     ) -> Self {
         Self {
             instance_name,
@@ -1229,8 +1229,8 @@ pub async fn create_instance(
             .collect::<HashSet<_>>()
             .into_iter()
             .filter(|path| {
-                // Filter out the classifier paths from the library paths since they were all donwloaded together but cannot be part of the 
-                // launch argument's classpath. 
+                // Filter out the classifier paths from the library paths since they were all donwloaded together but cannot be part of the
+                // launch argument's classpath.
                 let found = library_data.classifiers.iter().find(|classifier| {
                     let classifier_path = classifier.path(&resource_manager.libraries_dir());
                     classifier_path == *path
@@ -1294,7 +1294,6 @@ pub async fn create_instance(
 
     let instance_manager = InstanceManager::from_app_handle(&app_handle).await;
 
-
     // If there is no modloader, then set the "modloader_version" to the vanilla version for displaying
     // on the instances screen
     let instance_version = if settings.modloader_type == ModloaderType::None {
@@ -1311,7 +1310,7 @@ pub async fn create_instance(
         modloader_version: instance_version,
         author: author.unwrap_or("You").into(),
         instance_icon: None,
-        playtime: 0
+        playtime: 0,
     })?;
     debug!("After persistent args");
     extract_natives(

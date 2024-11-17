@@ -34,7 +34,7 @@ use std::{
     path::{Path, PathBuf},
     process::{Command, Stdio},
 };
-use tauri::{AppHandle, Manager, Wry};
+use tauri::{AppHandle, Emitter, Manager, Wry};
 use zip::ZipArchive;
 
 #[tauri::command(async)]
@@ -133,7 +133,7 @@ pub async fn obtain_version(
     let mut instance_manager = InstanceManager::from_app_handle(&app_handle).await;
 
     instance_manager.deserialize_instances();
-    app_handle.emit_all("new-instance", instance_name).unwrap();
+    app_handle.emit("new-instance", instance_name).unwrap();
     Ok(())
 }
 
@@ -250,7 +250,7 @@ pub async fn get_screenshots(app_handle: AppHandle<Wry>) -> HashMap<String, Vec<
                 let file_name = path.unwrap().file_name();
                 let file_name_str = file_name.to_str().unwrap();
                 let path = app_handle
-                    .path_resolver()
+                    .path()
                     .app_config_dir()
                     .unwrap()
                     .join(format!(

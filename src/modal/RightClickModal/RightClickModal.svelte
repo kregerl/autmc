@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { invoke } from "@tauri-apps/api/tauri";
+    import { invoke } from "@tauri-apps/api/core";
     import Modal from "../Modal.svelte";
     import { slide } from "svelte/transition";
 
@@ -115,7 +115,7 @@
     </div>
     <Modal on:close={close} --bg-opacity="0"/>
 {/if}
-<svelte:window on:contextmenu|preventDefault={onRightClick} />
+<!-- <svelte:window on:contextmenu|preventDefault={onRightClick} /> -->
 
 <style>
     #right-click-menu {

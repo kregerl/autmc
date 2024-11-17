@@ -1,7 +1,6 @@
-use std::collections::HashMap;
 use super::deserializers;
 use serde::Deserialize;
-
+use std::collections::HashMap;
 
 #[derive(Debug, Deserialize)]
 /// The launch arguments and metadata for a given vanilla version.
@@ -52,7 +51,10 @@ pub enum Argument {
     Arg(String),
     ConditionalArg {
         rules: Vec<Rule>,
-        #[serde(rename = "value", deserialize_with = "deserializers::string_or_strings_as_vec")]
+        #[serde(
+            rename = "value",
+            deserialize_with = "deserializers::string_or_strings_as_vec"
+        )]
         values: Vec<String>,
     },
 }

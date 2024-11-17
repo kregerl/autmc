@@ -123,13 +123,13 @@ impl Downloadable for ForgeLibrary {
                 } else {
                     None
                 };
-    
+
                 maven_to_vec(&self.name, append_str, None).join("/")
-            },
+            }
             None => {
                 let endpoint = maven_to_vec(&self.name, None, None).join("/");
                 format!("{}/{}", MINECRAFT_LIBRARIES_URL, endpoint)
-            },
+            }
         }
     }
 
@@ -270,12 +270,12 @@ pub async fn download_forge_version(
                 profile: serde_json::from_slice(&install_profile_bytes)?,
                 version: serde_json::from_slice(&version_bytes)?,
             }
-        },
+        }
         Err(_) => {
             ForgeInstallerProfile::Profile111(serde_json::from_slice(&install_profile_bytes)?)
-        },
+        }
     };
-    
+
     Ok(installer_profile)
 }
 

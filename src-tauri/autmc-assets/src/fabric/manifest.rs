@@ -3,7 +3,6 @@ use serde::Deserialize;
 
 use crate::consts::FABRIC_MANIFEST_URL;
 
-
 #[derive(Debug, Deserialize)]
 pub struct FabricLoaderVersion {
     // separator: String,

@@ -6,7 +6,7 @@ use crate::{
     },
     error::{
         AuthenticationError, AuthenticationResult, MicrosoftErrorResponse,
-        MincraftProfileErrorResponse, XboxErrorResponse, MinecraftTokenErrorResponse,
+        MincraftProfileErrorResponse, MinecraftTokenErrorResponse, XboxErrorResponse,
     },
 };
 use autmc_log::debug_if;
@@ -447,7 +447,7 @@ async fn get_minecraft_profile(
 
 /// Deserialize the response into `T` if the status is 200 OK  
 /// Otherwise attempt to deserialize into the error response struct `E`  
-/// 
+///
 /// If all else fails, return a generic HTTP error containing the error code.
 async fn get_response_if_ok<T, E>(response: Response) -> AuthenticationResult<T>
 where

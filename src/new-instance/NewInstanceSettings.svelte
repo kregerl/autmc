@@ -1,8 +1,8 @@
 <script lang="ts">
     import { appConfigDir } from "@tauri-apps/api/path";
     import { path } from "@tauri-apps/api";
-    import { open } from "@tauri-apps/api/dialog";
-    import { invoke } from "@tauri-apps/api/tauri";
+    import { open } from "@tauri-apps/plugin-dialog";
+    import { invoke } from "@tauri-apps/api/core";
 
     import { navigate, useLocation } from "svelte-navigator";
 

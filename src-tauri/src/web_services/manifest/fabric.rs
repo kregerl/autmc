@@ -1,14 +1,16 @@
 use std::path::{Path, PathBuf};
 
-use serde::{Deserialize};
+use serde::Deserialize;
 
 use crate::{
     consts::FABRIC_BASE_URL,
     state::resource_manager::ManifestResult,
-    web_services::downloader::{download_bytes_from_url, Downloadable, download_json_object_from_url},
+    web_services::downloader::{
+        download_bytes_from_url, download_json_object_from_url, Downloadable,
+    },
 };
 
-use super::{vanilla::{LaunchArguments}, get_directory_separator, maven_to_vec};
+use super::{get_directory_separator, maven_to_vec, vanilla::LaunchArguments};
 
 #[derive(Debug, Deserialize)]
 pub struct FabricLoaderVersion {
@@ -114,7 +116,11 @@ fn test_maven_to_fabric() {
         url: "https://maven.fabricmc.net/".into(),
     };
 
-    let result = format!("{}{}", lib.url, maven_to_vec(&lib.name, None, None).join(get_directory_separator()));
+    let result = format!(
+        "{}{}",
+        lib.url,
+        maven_to_vec(&lib.name, None, None).join(get_directory_separator())
+    );
     assert!(result == "https://maven.fabricmc.net/org/ow2/asm/asm-commons/9.2/asm-commons-9.2.jar");
 }
 

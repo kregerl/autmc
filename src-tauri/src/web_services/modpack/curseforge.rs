@@ -1,3 +1,8 @@
+use crate::state::ManagerFromAppHandle;
+use log::{debug, error, info};
+use reqwest::header::HeaderMap;
+use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::{
     collections::VecDeque,
     fs::{self, File},
@@ -5,11 +10,6 @@ use std::{
     path::{Path, PathBuf},
     time::Instant,
 };
-use crate::state::ManagerFromAppHandle;
-use log::{debug, error, info};
-use reqwest::header::HeaderMap;
-use serde::{Deserialize, Serialize};
-use serde_json::json;
 #[cfg(test)]
 use tauri::async_runtime::block_on;
 use tauri::{AppHandle, Manager, State, Wry};
@@ -20,7 +20,7 @@ use crate::{
         CURSEFORGE_API_URL, CURSEFORGE_FORGECDN_URL, CURSEFORGE_MODPACK_CLASS_ID,
         CURSEFORGE_PAGE_SIZE,
     },
-    state::instance_manager::{InstanceState, InstanceManager},
+    state::instance_manager::{InstanceManager, InstanceState},
     web_services::{
         downloader::{
             buffered_download_stream, download_json_object, validate_hash_sha1, DownloadError,
@@ -490,10 +490,12 @@ pub async fn import_curseforge_zip(
         vanilla_version.into(),
         modloader_type.into(),
         full_modloader_version,
-        None
+        None,
     );
 
-    create_instance(settings, &app_handle, Some(&curseforge_manifest.author)).await.unwrap();
+    create_instance(settings, &app_handle, Some(&curseforge_manifest.author))
+        .await
+        .unwrap();
 
     let instance_manager = InstanceManager::from_app_handle(&app_handle).await;
 

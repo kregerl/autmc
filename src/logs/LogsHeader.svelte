@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { invoke } from "@tauri-apps/api/tauri";
+    import { invoke } from "@tauri-apps/api/core";
     import DropdownMenu from "../components/dropdown/DropdownMenu.svelte";
     import { logStore } from "../store/logstore";
     import TextBoxInput from "../components/input/TextBoxInput.svelte";

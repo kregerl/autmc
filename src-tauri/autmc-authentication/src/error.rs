@@ -143,7 +143,7 @@ pub(crate) struct XboxErrorResponse {
 
 #[derive(Deserialize)]
 pub(crate) struct MinecraftTokenErrorResponse {
-    error: String
+    error: String,
 }
 
 #[derive(Deserialize)]

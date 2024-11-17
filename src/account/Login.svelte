@@ -2,7 +2,7 @@
     import { onDestroy, onMount } from "svelte";
     import AccountContainer from "./AccountContainer.svelte";
     import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-    import { invoke } from "@tauri-apps/api/tauri";
+    import { invoke } from "@tauri-apps/api/core";
     import { navigate } from "svelte-navigator";
 
     interface DeviceCode {

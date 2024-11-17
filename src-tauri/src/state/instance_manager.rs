@@ -10,8 +10,7 @@ use std::{
     sync::Arc,
 };
 use tauri::{
-    async_runtime::{JoinHandle, Mutex},
-    AppHandle, Manager, Wry,
+    async_runtime::{JoinHandle, Mutex}, AppHandle, Emitter, Manager, Wry
 };
 use tokio::io::{AsyncBufReadExt, BufReader as AsyncBufReader};
 use tokio::process::{Child, Command};
@@ -210,7 +209,7 @@ impl InstanceManager {
                     result = stdout_reader.next_line() => {
                         match result {
                             Ok(Some(line)) => {
-                                app_handle.emit_all("instance-logging", Logging { instance_name: instance_name.clone(), category: "Running".into(), line }).unwrap();
+                                app_handle.emit("instance-logging", Logging { instance_name: instance_name.clone(), category: "Running".into(), line }).unwrap();
                             },
                             Err(_) => break,
                             _ => (),
@@ -233,7 +232,7 @@ impl InstanceManager {
                                     instance_name: String,
                                     code: Option<i32>
                                 }
-                                app_handle.emit_all("instance-exit", ExitCode {instance_name: instance_name.clone(), code: exit_status.code()}).unwrap();
+                                app_handle.emit("instance-exit", ExitCode {instance_name: instance_name.clone(), code: exit_status.code()}).unwrap();
                                 break;
                             },
                             Err(_) => break,

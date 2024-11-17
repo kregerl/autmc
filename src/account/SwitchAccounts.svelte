@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { invoke } from "@tauri-apps/api/tauri";
+    import { invoke } from "@tauri-apps/api/core";
 
     import AccountContainer from "./AccountContainer.svelte";
     import Head from "../components/Head.svelte";

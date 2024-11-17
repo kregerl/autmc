@@ -1,0 +1,20 @@
+{
+  "identifier": "migrated",
+  "description": "permissions that were migrated from v1",
+  "local": true,
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    {
+      "identifier": "fs:scope",
+      "allow": [
+        "$APP/instances/*"
+      ]
+    },
+    "dialog:allow-open",
+    "fs:default",
+    "dialog:default"
+  ]
+}

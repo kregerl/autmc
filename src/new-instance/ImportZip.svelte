@@ -1,6 +1,6 @@
 <script lang="ts">
     import { path } from "@tauri-apps/api";
-    import { open } from "@tauri-apps/api/dialog";
+    import { open } from "@tauri-apps/plugin-dialog";
     import { UnlistenFn, listen } from "@tauri-apps/api/event";
     import { onDestroy, onMount } from "svelte";
 

@@ -13,18 +13,15 @@ pub mod resource_manager;
 /// Specify endpoint without a leading `/`.  
 pub fn redirect(app_handle: &tauri::AppHandle<Wry>, endpoint: &str) -> tauri::Result<()> {
     let window_name = "main";
-    let main_window = app_handle.get_window(window_name);
+    let main_window = app_handle.get_webview_window(window_name);
     debug!("Redirecting {} window to /{}", window_name, endpoint);
     match main_window {
         // If main window exists, try to redirect
         Some(window) => {
-            let mut new_url = window.url();
+            let mut new_url = window.url().unwrap();
             new_url.set_path(endpoint);
 
-            let js = format!(
-                "window.location.replace('{}')",
-                new_url
-            );
+            let js = format!("window.location.replace('{}')", new_url);
             Ok(window.eval(&js)?)
         }
         // REVIEW: If launcher ever goes to tray, this might need to be changed.

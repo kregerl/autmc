@@ -8,7 +8,7 @@ use bytes::Bytes;
 use crypto::{digest::Digest, md5::Md5, sha1::Sha1};
 use futures::StreamExt;
 use log::{debug, error, info};
-use reqwest::{header::HeaderMap};
+use reqwest::header::HeaderMap;
 use serde::{de::DeserializeOwned, Serialize};
 
 const BUFFER_SIZE: usize = 8;
@@ -126,15 +126,15 @@ where
 pub async fn download_json_object<T, Q>(
     url: &str,
     header_map: Option<HeaderMap>,
-    query_params: Option<&Q>
+    query_params: Option<&Q>,
 ) -> reqwest::Result<T>
 where
     T: DeserializeOwned,
-    Q: Serialize + ?Sized
+    Q: Serialize + ?Sized,
 {
     let client = reqwest::Client::new();
     let mut builder = client.get(url);
-    
+
     if let Some(headers) = header_map {
         builder = builder.headers(headers);
     }

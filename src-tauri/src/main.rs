@@ -34,11 +34,13 @@ use std::{
     fs::{self},
     path::{Path, PathBuf},
 };
-use tauri::{api::cli::Matches, App, Manager, Wry};
+use tauri::{App, Emitter, Manager, Wry};
 
 const MAX_LOGS: usize = 20;
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .setup(|app| {
             match setup(app) {
                 Ok(_) => {}
@@ -47,8 +49,8 @@ fn main() {
             Ok(())
         })
         // .register_uri_scheme_protocol("autmc", autmc_uri_scheme)
-        .on_window_event(|event| {
-            if let tauri::WindowEvent::CloseRequested { .. } = event.event() {
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { .. } = event {
                 info!("Closing");
             }
         })
@@ -75,7 +77,7 @@ fn main() {
 
 /// First thing called on application setup.
 fn setup(app: &mut App<Wry>) -> Result<(), Box<(dyn StdError + 'static)>> {
-    let path_resolver = app.path_resolver();
+    let path_resolver = app.path();
 
     let app_dir = path_resolver.app_config_dir().unwrap();
     fs::create_dir_all(&app_dir)?;
@@ -92,18 +94,18 @@ fn setup(app: &mut App<Wry>) -> Result<(), Box<(dyn StdError + 'static)>> {
     app.manage(AccountState::new(&app_dir));
     app.manage(ResourceState::new(&app_dir));
     app.manage(InstanceState::new(&app_dir));
-    let app_handle = app.handle();
+    let app_handle = app.handle().clone();
 
-    let cli_matches = match app.get_cli_matches() {
-        Ok(matches) => matches,
-        Err(e) => {
-            error!("Invalid CLI Arguments: {}", e);
-            app_handle.exit(1);
-            Matches::default()
-        }
-    };
+    // let cli_matches = match app.get_cli_matches() {
+    //     Ok(matches) => matches,
+    //     Err(e) => {
+    //         error!("Invalid CLI Arguments: {}", e);
+    //         app_handle.exit(1);
+    //         Matches::default()
+    //     }
+    // };
 
-    info!("Arguments: {:#?}", cli_matches);
+    // info!("Arguments: {:#?}", cli_matches);
     // let arguments = cli_matches.args.get("instance").unwrap();
     // if let Value::String(value) = &arguments.value {
     //     launch_instance(value.into(), app_handle.clone()).await;
@@ -155,7 +157,7 @@ fn setup(app: &mut App<Wry>) -> Result<(), Box<(dyn StdError + 'static)>> {
                                 error
                             );
                         }
-                    },
+                    }
                     Err(e) => match e {
                         MicrosoftError { .. } | XboxError { .. } => {
                             if let Err(error) = redirect(&app_handle, "login") {

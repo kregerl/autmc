@@ -17,7 +17,9 @@ use crate::{
     commands::VersionEntry,
     consts::{FABRIC_BASE_URL, FORGE_MANIFEST_URL, VANILLA_MANIFEST_URL},
     web_services::{
-        downloader::{download_bytes_from_url, validate_file_hash, validate_hash_sha1, DownloadError},
+        downloader::{
+            download_bytes_from_url, validate_file_hash, validate_hash_sha1, DownloadError,
+        },
         manifest::{
             fabric::FabricLoaderManifest,
             forge::ForgeManifest,
@@ -203,7 +205,6 @@ impl ResourceManager {
         Ok(())
     }
 
-
     /// Gets a list of all vanilla versions
     pub async fn get_vanilla_version_list(&mut self) -> reqwest::Result<Vec<VersionEntry>> {
         let mut result: Vec<VersionEntry> = Vec::new();
@@ -232,7 +233,9 @@ impl ResourceManager {
         Ok(result)
     }
 
-    pub async fn get_forge_version_list(&mut self) -> reqwest::Result<HashMap<String, Vec<String>>> {
+    pub async fn get_forge_version_list(
+        &mut self,
+    ) -> reqwest::Result<HashMap<String, Vec<String>>> {
         if self.forge_manifest.is_none() {
             self.download_forge_manifest().await?;
         }
@@ -275,7 +278,8 @@ impl ResourceManager {
 
                     self.serialize_version(version_id, &bytes)?;
 
-                    let vanilla_version = serde_json::from_slice::<VanillaVersion>(&bytes.to_vec())?;
+                    let vanilla_version =
+                        serde_json::from_slice::<VanillaVersion>(&bytes.to_vec())?;
                     info!("Finished downloading version `{}`", version_id);
                     Ok(vanilla_version)
                 }

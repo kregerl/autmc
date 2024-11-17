@@ -5,19 +5,19 @@ use std::{
     time::Instant,
 };
 
+use crate::state::ManagerFromAppHandle;
+use crate::{
+    state::instance_manager::{InstanceManager, InstanceState},
+    web_services::{
+        downloader::{buffered_download_stream, validate_hash_sha1, DownloadError, Downloadable},
+        manifest::bytes_from_zip_file,
+        resources::{create_instance, InstanceSettings, ModloaderType},
+    },
+};
 use log::{debug, error, info};
 use serde::Deserialize;
 use tauri::{AppHandle, Manager, State, Wry};
 use zip::ZipArchive;
-use crate::state::ManagerFromAppHandle;
-use crate::{
-    state::instance_manager::{InstanceState, InstanceManager},
-    web_services::{
-        downloader::{buffered_download_stream, validate_hash_sha1, DownloadError, Downloadable},
-        manifest::bytes_from_zip_file,
-        resources::{create_instance, ModloaderType, InstanceSettings},
-    },
-};
 
 #[derive(Debug, Deserialize)]
 struct ModrinthManifest {
@@ -112,10 +112,12 @@ pub async fn import_modrinth_zip(
         manifest.dependencies.minecraft,
         modloader_type,
         modloader_version,
-        None
+        None,
     );
 
-    create_instance(settings, app_handle, Some("Modrinth")).await.unwrap();
+    create_instance(settings, app_handle, Some("Modrinth"))
+        .await
+        .unwrap();
 
     let instance_manager = InstanceManager::from_app_handle(&app_handle).await;
 

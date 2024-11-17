@@ -17,7 +17,7 @@
 
 <slot />
 <div class="modal-background" />
-<svelte:body on:keydown|preventDefault={onKeyDown}/>
+<!-- <svelte:body on:keydown|preventDefault={onKeyDown}/> -->
 
 <style>
     .modal-background {

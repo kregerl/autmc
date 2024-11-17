@@ -7,8 +7,6 @@
 </script>
 
 <script lang="ts">
-    import { invoke } from "@tauri-apps/api/tauri";
-
     import { navigate, useLocation } from "svelte-navigator";
 
     import VanillaContent from "./VanillaContent.svelte";
@@ -19,6 +17,7 @@
     import { VersionManifest, manifestStore } from "../store/manifeststore";
     import TextLoader from "../components/loader/TextLoader.svelte";
     import SvgButton from "../components/buttons/SvgButton.svelte";
+    import { invoke } from "@tauri-apps/api/core";
 
     export let selectedInstanceType: InstanceType = InstanceType.Vanilla;
 

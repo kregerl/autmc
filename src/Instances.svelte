@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { invoke } from "@tauri-apps/api/tauri";
+    import { invoke } from "@tauri-apps/api/core";
     import { UnlistenFn, listen } from "@tauri-apps/api/event";
     import { onDestroy, onMount } from "svelte";
     import { navigate } from "svelte-navigator";

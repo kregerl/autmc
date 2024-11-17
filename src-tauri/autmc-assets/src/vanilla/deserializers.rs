@@ -1,5 +1,8 @@
 use indexmap::IndexMap;
-use serde::{de::{SeqAccess, Visitor}, Deserialize, Deserializer};
+use serde::{
+    de::{SeqAccess, Visitor},
+    Deserialize, Deserializer,
+};
 
 use super::manifest::VanillaManifestVersion;
 

@@ -20,8 +20,6 @@
 </script>
 
 <script lang="ts">
-    import { invoke } from "@tauri-apps/api/tauri";
-
     import { manifestStore } from "../../store/manifeststore";
     import {
         CurseforgeCategory,
@@ -34,6 +32,7 @@
     import DropdownMenu from "../../components/dropdown/DropdownMenu.svelte";
     import TextBoxInput from "../../components/input/TextBoxInput.svelte";
     import CurseforgePreviewPage from "./curseforge/CurseforgePreviewPage.svelte";
+    import { invoke } from "@tauri-apps/api/core";
 
     let selectedVersion: string;
     let selectedCategory: string;
