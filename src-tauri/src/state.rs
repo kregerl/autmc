@@ -18,9 +18,12 @@ pub fn redirect(app_handle: &tauri::AppHandle<Wry>, endpoint: &str) -> tauri::Re
     match main_window {
         // If main window exists, try to redirect
         Some(window) => {
+            let mut new_url = window.url();
+            new_url.set_path(endpoint);
+
             let js = format!(
-                "window.location.replace('http://localhost:8080/{}')",
-                endpoint
+                "window.location.replace('{}')",
+                new_url
             );
             Ok(window.eval(&js)?)
         }

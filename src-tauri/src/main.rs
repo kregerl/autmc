@@ -20,8 +20,12 @@ use crate::{
         poll_device_code_authentication, read_log_lines, search_curseforge,
         start_authentication_flow,
     },
-    state::{instance_manager::InstanceState, resource_manager::ResourceState, account_manager::AccountManager},
+    state::{
+        account_manager::AccountManager, instance_manager::InstanceState,
+        resource_manager::ResourceState,
+    },
 };
+use autmc_authentication::AuthenticationError::{MicrosoftError, XboxError};
 use log::{error, info, warn};
 use regex::Regex;
 use serde::ser::StdError;
@@ -140,15 +144,26 @@ fn setup(app: &mut App<Wry>) -> Result<(), Box<(dyn StdError + 'static)>> {
                     }
                 }
 
-                let account = validation_result.unwrap();
-                // Save account to account manager.
-                account_manager.add_and_activate_account(account, app_handle.clone());
+                match validation_result {
+                    Ok(account) => {
+                        // Save account to account manager.
+                        account_manager.add_and_activate_account(account, app_handle.clone());
 
-                if let Err(error) = account_manager.serialize_accounts() {
-                    warn!(
-                        "Could not properly serialize account information: {}",
-                        error
-                    );
+                        if let Err(error) = account_manager.serialize_accounts() {
+                            warn!(
+                                "Could not properly serialize account information: {}",
+                                error
+                            );
+                        }
+                    },
+                    Err(e) => match e {
+                        MicrosoftError { .. } | XboxError { .. } => {
+                            if let Err(error) = redirect(&app_handle, "login") {
+                                error!("{}", error.to_string());
+                            }
+                        }
+                        _ => error!("{}", e.to_string()),
+                    },
                 }
             }
             None => {
