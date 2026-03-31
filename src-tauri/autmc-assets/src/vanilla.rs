@@ -2,4 +2,5 @@ mod assets;
 mod deserializers;
 mod manifest;
 
-pub use manifest::{download_vanilla_manifest, VanillaManifest, VanillaManifestVersion};
+pub use assets::{*};
+pub use manifest::{*};

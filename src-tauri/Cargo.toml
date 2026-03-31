@@ -21,6 +21,12 @@ path = "./autmc-authentication"
 [dependencies.autmc-log]
 path = "./autmc-log"
 
+[dependencies.autmc-assets]
+path = "./autmc-assets"
+
+[dependencies.autmc-downloader]
+path = "./autmc-downloader"
+
 [dependencies]
 serde_json = "1.0.96"
 serde = { version = "1.0.163", features = ["derive"] }

@@ -1,5 +1,7 @@
 use crate::state::{resource_manager::ResourceManager, ManagerFromAppHandle};
+use autmc_assets::{Argument, AssetIndex, AssetObject, DownloadMetadata, DownloadableClassifier, ForgeInstallerProfile, InstallerArgumentPaths, JarType, JavaManifest, JavaRuntime, JavaRuntimeFile, JavaRuntimeManifest, JavaRuntimeType, JavaVersion, LaunchArguments, LaunchArguments113, Library, Logging, ManifestError, ManifestResult, Rule, RuleType, VanillaManifestVersion, VanillaVersion, download_fabric_profile, download_forge_hashes, download_forge_version, get_classpath_separator, obtain_fabric_library_hashes, patch_forge, path_to_utf8_str};
 use autmc_authentication::MinecraftAccount;
+use autmc_downloader::{DownloadError, Downloadable, boxed_buffered_download_stream, buffered_download_stream, download_bytes_from_url, download_json_object_from_url, validate_hash_sha1};
 use bytes::Bytes;
 use futures::future::BoxFuture;
 use log::{debug, error, info, warn};
@@ -21,35 +23,16 @@ use crate::{
     consts::{JAVA_VERSION_MANIFEST_URL, LAUNCHER_NAME, LAUNCHER_VERSION},
     state::{
         instance_manager::{self, InstanceConfiguration, InstanceManager, InstanceState},
-        resource_manager::{ManifestError, ManifestResult, ResourceState},
-    },
-    web_services::{
-        downloader::{
-            boxed_buffered_download_stream, buffered_download_stream, download_bytes_from_url,
-            download_json_object_from_url, validate_hash_sha1, DownloadError, Downloadable,
-        },
-        manifest::{
-            fabric::{download_fabric_profile, obtain_fabric_library_hashes},
-            forge::{
-                download_forge_hashes, download_forge_version, patch_forge, ForgeInstallerProfile,
-                InstallerArgumentPaths,
-            },
-            get_classpath_separator, path_to_utf8_str,
-            vanilla::{
-                Argument, AssetObject, DownloadableClassifier, JavaRuntimeFile,
-                JavaRuntimeManifest, JavaRuntimeType, VanillaVersion,
-            },
-        },
     },
 };
 
 use super::{
     downloader::{hash_bytes_sha1, validate_file_hash},
-    manifest::vanilla::{
-        AssetIndex, DownloadMetadata, JarType, JavaManifest, JavaRuntime, JavaVersion,
-        LaunchArguments, LaunchArguments113, Library, Logging, Rule, RuleType,
-        VanillaManifestVersion,
-    },
+    // manifest::vanilla::{
+    //     AssetIndex, DownloadMetadata, JarType, JavaManifest, JavaRuntime, JavaVersion,
+    //     LaunchArguments, LaunchArguments113, Library, Logging, Rule, RuleType,
+    //     VanillaManifestVersion,
+    // },
 };
 
 /// Checks if a single rule matches every case.
@@ -183,7 +166,7 @@ fn construct_jvm_arguments113(
         match jvm_arg {
             // For normal arguments, check if it has something that should be replaced and replace it
             Argument::Arg(value) => {
-                let sub_arg = substitute_jvm_arguments(value, mc_version, argument_paths);
+                let sub_arg = substitute_jvm_arguments(&value, mc_version, argument_paths);
                 formatted_arguments.push(match sub_arg {
                     Some(argument) => argument,
                     None => value.into(),
@@ -191,11 +174,11 @@ fn construct_jvm_arguments113(
             }
             // For conditional args, check their rules before adding to formatted_arguments vec
             Argument::ConditionalArg { rules, values } => {
-                if !rules_match(rules) {
+                if !rules_match(&rules) {
                     continue;
                 }
                 for value in values {
-                    let sub_arg = substitute_jvm_arguments(value, mc_version, argument_paths);
+                    let sub_arg = substitute_jvm_arguments(&value, mc_version, argument_paths);
                     formatted_arguments.push(match sub_arg {
                         Some(argument) => argument,
                         None => value.into(),

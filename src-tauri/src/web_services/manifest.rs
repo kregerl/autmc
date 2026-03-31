@@ -3,9 +3,9 @@ use std::{io::Read, path::Path};
 use log::error;
 use zip::read::ZipFile;
 
-pub mod fabric;
-pub mod forge;
-pub mod vanilla;
+// pub mod fabric;
+// pub mod forge;
+// pub mod vanilla;
 
 pub fn maven_to_vec(
     maven_artifact: &str,

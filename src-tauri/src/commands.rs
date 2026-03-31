@@ -5,10 +5,9 @@ use crate::{
     consts::GZIP_SIGNATURE,
     state::{
         instance_manager::{InstanceConfiguration, InstanceManager},
-        resource_manager::ManifestResult,
     },
     web_services::{
-        manifest::{path_to_utf8_str, vanilla::VanillaManifestVersion},
+        manifest::{path_to_utf8_str},
         modpack::{
             curseforge::{
                 import_curseforge_zip, retrieve_curseforge_categories, search_curseforge_modpacks,
@@ -20,6 +19,7 @@ use crate::{
         resources::{create_instance, InstanceSettings},
     },
 };
+use autmc_assets::{ManifestResult, VanillaManifestVersion};
 use autmc_authentication::{
     poll_device_code_status, start_device_code_authentication, AuthenticationResult, DeviceCode,
 };

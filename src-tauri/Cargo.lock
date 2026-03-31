@@ -309,7 +309,9 @@ name = "autmc"
 version = "0.1.0"
 dependencies = [
  "async-recursion",
+ "autmc-assets",
  "autmc-authentication",
+ "autmc-downloader",
  "autmc-log",
  "base64 0.21.7",
  "bytes",
@@ -341,12 +343,14 @@ dependencies = [
 name = "autmc-assets"
 version = "0.1.0"
 dependencies = [
+ "autmc-downloader",
  "autmc-log",
  "indexmap 2.6.0",
  "log",
  "reqwest 0.11.27",
  "serde",
  "serde_json",
+ "zip",
 ]
 
 [[package]]
@@ -367,10 +371,11 @@ dependencies = [
 name = "autmc-downloader"
 version = "0.1.0"
 dependencies = [
- "autmc-assets",
  "bytes",
  "futures",
+ "log",
  "reqwest 0.11.27",
+ "rust-crypto",
  "serde",
  "serde_json",
  "tokio",

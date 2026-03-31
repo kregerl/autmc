@@ -7,108 +7,18 @@ use std::{
     sync::Arc,
 };
 
+use autmc_assets::{FabricLoaderManifest, ForgeManifest, ManifestError, ManifestResult, VanillaManifest, VanillaManifestVersion, VanillaVersion};
+use autmc_downloader::{DownloadError, download_bytes_from_url, validate_file_hash, validate_hash_sha1};
 use bytes::Bytes;
 use log::info;
-use serde::Serialize;
 use tauri::async_runtime::Mutex;
-use zip::result::ZipError;
 
 use crate::{
     commands::VersionEntry,
     consts::{FABRIC_BASE_URL, FORGE_MANIFEST_URL, VANILLA_MANIFEST_URL},
-    web_services::{
-        downloader::{
-            download_bytes_from_url, validate_file_hash, validate_hash_sha1, DownloadError,
-        },
-        manifest::{
-            fabric::FabricLoaderManifest,
-            forge::ForgeManifest,
-            vanilla::{VanillaManifest, VanillaManifestVersion, VanillaVersion},
-        },
-    },
 };
 
 use super::{InnerState, ManagerFromAppHandle};
-
-pub type ManifestResult<T> = Result<T, ManifestError>;
-
-#[derive(Debug)]
-pub enum ManifestError {
-    HttpError(reqwest::Error),
-    SerializationFilesystemError(io::Error),
-    Utf8DeserializationError(FromUtf8Error),
-    JsonSerializationError(serde_json::Error),
-    VersionRetrievalError(String),
-    ResourceError(String),
-    MismatchedFileHash(String),
-    FileExtractionError(ZipError),
-}
-
-impl Serialize for ManifestError {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        match &self {
-            ManifestError::HttpError(error) => serializer.serialize_str(&error.to_string()),
-            ManifestError::SerializationFilesystemError(error) => {
-                serializer.serialize_str(&error.to_string())
-            }
-            ManifestError::Utf8DeserializationError(error) => {
-                serializer.serialize_str(&error.to_string())
-            }
-            ManifestError::JsonSerializationError(error) => {
-                serializer.serialize_str(&error.to_string())
-            }
-            ManifestError::VersionRetrievalError(error) => serializer.serialize_str(error),
-            ManifestError::ResourceError(error) => serializer.serialize_str(error),
-            ManifestError::MismatchedFileHash(error) => serializer.serialize_str(error),
-            ManifestError::FileExtractionError(error) => {
-                serializer.serialize_str(&error.to_string())
-            }
-        }
-    }
-}
-
-impl From<reqwest::Error> for ManifestError {
-    fn from(e: reqwest::Error) -> Self {
-        ManifestError::HttpError(e)
-    }
-}
-
-impl From<io::Error> for ManifestError {
-    fn from(error: io::Error) -> Self {
-        ManifestError::SerializationFilesystemError(error)
-    }
-}
-
-impl From<FromUtf8Error> for ManifestError {
-    fn from(error: FromUtf8Error) -> Self {
-        ManifestError::Utf8DeserializationError(error)
-    }
-}
-
-impl From<serde_json::Error> for ManifestError {
-    fn from(error: serde_json::Error) -> Self {
-        ManifestError::JsonSerializationError(error)
-    }
-}
-
-impl From<DownloadError> for ManifestError {
-    fn from(error: DownloadError) -> Self {
-        match error {
-            DownloadError::Request(e) => ManifestError::HttpError(e),
-            DownloadError::FileWrite(e) => ManifestError::SerializationFilesystemError(e),
-            DownloadError::InvalidFileHash(e) => ManifestError::MismatchedFileHash(e),
-        }
-    }
-}
-
-impl From<ZipError> for ManifestError {
-    fn from(error: ZipError) -> Self {
-        ManifestError::FileExtractionError(error)
-    }
-}
 
 pub struct ResourceState(pub Arc<Mutex<ResourceManager>>);
 
